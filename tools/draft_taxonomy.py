@@ -78,25 +78,28 @@ Be exhaustive: include small topics, and include non-topical categories you see 
 Posts:
 {posts}"""
 
-STAGE2 = """You are designing a topic taxonomy for Bluesky posts. It will be used to label posts with a classifier that reads option descriptions literally, and then to recommend posts to people based on the topics they like.
+STAGE2 = """You are designing a topic taxonomy for Bluesky posts. It will be used to label posts with a classifier that reads option descriptions literally, then to train a smaller model on those labels, and then to recommend posts to people based on the topics they like.
 
-Below are topic lists extracted from {chunks} chunks of real posts ({total} posts in total, spread across all hours of the day). Each entry has a broad topic, a subtopic, an approximate count, and example posts.
-
+Below are topic lists extracted from {chunks} chunks of real posts ({total} posts in total, spread evenly across {span}). Each entry has a broad topic, a subtopic, an approximate count (an LLM estimate), and example posts.
+{measured}
 Merge them into ONE two-level taxonomy and output it as YAML, following these rules exactly:
 
-1. 20 to 30 broad topics. Each broad topic has 5 to 15 subtopics, except `unclear`, which has none.
-2. Every broad topic that has subtopics includes a subtopic with id `other` ("other within this topic").
-3. Required broad topics:
+1. 20 to 30 broad topics. `unclear` has no subtopics. Every other broad topic has at least 2 subtopics (counting `other`).
+2. SUBTOPIC BUDGET: {min_subs} to {max_subs} subtopics in total across all broad topics, counting every `other`. This is a hard limit. Allocate subtopics in proportion to each broad topic's volume: a broad topic with ~1% of posts gets 2-3 subtopics, a large one (~10%) may get up to 10. Each subtopic should be expected to hold at least ~0.1% of all posts; the model will be trained on ~175,000 labeled posts and needs ~200 examples per subtopic. Merge thin subtopics rather than keeping them.
+3. Subtopics must be durable categories that will still make sense in a month. Do NOT create subtopics for a single news event, person, scandal, or product launch (e.g. no `epstein` subtopic); those posts belong in a durable subtopic such as `us_politics/scandals_investigations` or the topic's `other`.
+4. Every broad topic that has subtopics includes a subtopic with id `other` ("other within this topic"). Where a topic from a previous draft still fits, keep its id.
+5. Required broad topics:
    - `personal_life`: personal and everyday life with no other clear topic (greetings, "good morning", life updates, feelings, daily routines). Much of Bluesky is this.
    - `unclear`: no discernible topic, or not enough content to tell. No subtopics.
-4. Every topic has: `id` (snake_case), `name` (display name), `description` (one or two sentences, at most ~30 words), and for broad topics `examples` (2 to 3 short example posts, copied from the examples below, trimmed to at most 100 characters).
-5. Descriptions must state what the topic does NOT include wherever confusion with another topic is likely (e.g. "Not sports-betting promotions; see promotion."). The classifier reads them literally, so be precise about boundaries.
-6. Topics must be mutually exclusive enough that a post has one best broad topic. Prefer topics people would choose to follow. Size broad topics by volume: split very large ones, merge tiny ones.
-7. Keep descriptions tight: every question repeats its option list, so length costs money.
+6. Every topic has: `id` (snake_case), `name` (display name), `description` (one or two sentences, at most ~30 words), and for broad topics `examples` (2 to 3 short example posts, copied from the examples below, trimmed to at most 100 characters).
+7. Descriptions must state what the topic does NOT include wherever confusion with another topic is likely (e.g. "Not sports-betting promotions; see promotion."). The classifier reads them literally, so be precise about boundaries.
+8. Topics must be mutually exclusive enough that a post has one best broad topic. Prefer topics people would choose to follow. Size broad topics by volume: split very large ones, merge tiny ones.
+9. Keep descriptions tight: every question repeats its option list, so length costs money.
+10. Quote any YAML string value that contains a colon followed by a space.
 
 Output only YAML in exactly this shape, with no prose and no code fences:
 
-version: draft1
+version: {version}
 broad:
   - id: sports
     name: Sports
@@ -115,24 +118,73 @@ Topic lists:
 {lists}"""
 
 
+def measured_volumes(ref: str) -> str:
+    """Topic volumes measured by Jev on a previous labeling run, as a prompt section.
+
+    ref is "<taxonomy_version>:<label_config>". Counts use each post's top broad topic
+    and its best path (highest path score), as in the review report.
+    """
+    version, config = ref.split(":", 1)
+    rows = clickhouse(f"""
+        SELECT broad_probs, path_scores FROM jev_labels FINAL
+        WHERE taxonomy_version = '{version}' AND label_config = '{config}'""")
+    if not rows:
+        return ""
+    n = len(rows)
+    broad, paths = {}, {}
+    for r in rows:
+        top = max(r["broad_probs"].items(), key=lambda kv: kv[1])[0]
+        broad[top] = broad.get(top, 0) + 1
+        best = max(r["path_scores"].items(), key=lambda kv: kv[1])[0] if r["path_scores"] else top
+        paths[best] = paths.get(best, 0) + 1
+    lines = [f"\nMEASURED VOLUMES. A previous draft taxonomy ({version}) was used to label {n} random posts with the classifier. "
+             "These shares are measured, so trust them over the LLM estimates when sizing topics. "
+             "Subtopics under ~0.1% here are too thin to keep on their own. "
+             "Previous-draft subtopics with no posts at all are not listed.\n",
+             "Broad topic shares:"]
+    for k, v in sorted(broad.items(), key=lambda kv: -kv[1]):
+        lines.append(f"- {k}: {100 * v / n:.1f}%")
+    lines.append("\nSubtopic (best path) shares:")
+    for k, v in sorted(paths.items(), key=lambda kv: -kv[1]):
+        lines.append(f"- {k}: {100 * v / n:.2f}%")
+    return "\n".join(lines) + "\n"
+
+
+def count_subtopics(yaml_text: str) -> tuple[int, int]:
+    """(broad topics, subtopics) in the expected indentation of the output shape."""
+    broad = len(re.findall(r"^  - id: ", yaml_text, re.M))
+    subs = len(re.findall(r"^      - id: ", yaml_text, re.M))
+    return broad, subs
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="taxonomy/draft1.yaml")
-    ap.add_argument("--posts", type=int, default=6000)
+    ap.add_argument("--version", default=None, help="taxonomy version (default: output file name)")
+    ap.add_argument("--posts", type=int, default=9000)
     ap.add_argument("--chunk", type=int, default=1200)
     ap.add_argument("--model", default="claude-opus-5-5:api")
+    ap.add_argument("--min-subtopics", type=int, default=100)
+    ap.add_argument("--max-subtopics", type=int, default=120)
+    ap.add_argument("--measured-from", default="", help="<taxonomy_version>:<label_config> of a labeled run to size topics by")
     args = ap.parse_args()
+    version = args.version or os.path.splitext(os.path.basename(args.out))[0]
 
-    per_hour = -(-args.posts // 24)
+    # Spread the sample evenly over every hour in the data (all backfill days), not
+    # just the hours of one day.
+    hours = clickhouse("SELECT uniqExact(toStartOfHour(indexed_at)) AS h, min(indexed_at) AS lo, max(indexed_at) AS hi FROM posts")[0]
+    per_hour = -(-args.posts // int(hours["h"]))
+    span = f"{hours['h']} hours ({hours['lo'][:16]} to {hours['hi'][:16]} UTC)"
     rows = clickhouse(f"""
         SELECT text, arrayStringConcat(media_alts, ' | ') AS alts, link_domain, link_title, quote_text
         FROM posts FINAL
         WHERE uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post')
-        ORDER BY cityHash64(uri, 'taxonomy-sample')
-        LIMIT {per_hour} BY toHour(indexed_at)
+        ORDER BY cityHash64(uri, 'taxonomy-sample-{version}')
+        LIMIT {per_hour} BY toStartOfHour(indexed_at)
         LIMIT {args.posts}""")
     rows = [r for r in rows if render(r)]
-    print(f"sampled {len(rows)} posts", file=sys.stderr)
+    print(f"sampled {len(rows)} posts over {span}", file=sys.stderr)
+    measured = measured_volumes(args.measured_from) if args.measured_from else ""
 
     out_dir = os.path.dirname(args.out) or "."
     stem = os.path.splitext(os.path.basename(args.out))[0]
@@ -154,12 +206,27 @@ def main() -> int:
         print(f"chunk {ci}: {len(topics)} topics", file=sys.stderr)
 
     lists_text = "\n\n".join(f"Chunk {i + 1}:\n" + json.dumps(t, ensure_ascii=False) for i, t in enumerate(lists))
-    yaml_text = llm(args.model, STAGE2.format(chunks=len(lists), total=len(rows), lists=lists_text), 32000)
-    yaml_text = re.sub(r"^```(?:yaml)?\s*|\s*```$", "", yaml_text.strip())
-    open(os.path.join(work, "stage2.txt"), "w").write(yaml_text)
+    prompt = STAGE2.format(chunks=len(lists), total=len(rows), span=span, measured=measured, lists=lists_text,
+                           min_subs=args.min_subtopics, max_subs=args.max_subtopics, version=version)
+    open(os.path.join(work, "stage2-prompt.txt"), "w").write(prompt)
+    yaml_text = ""
+    for attempt in range(2):
+        yaml_text = re.sub(r"^```(?:yaml)?\s*|\s*```$", "", llm(args.model, prompt, 32000).strip())
+        open(os.path.join(work, f"stage2-attempt{attempt}.txt"), "w").write(yaml_text)
+        nb, ns = count_subtopics(yaml_text)
+        print(f"merge attempt {attempt}: {nb} broad topics, {ns} subtopics", file=sys.stderr)
+        if args.min_subtopics <= ns <= args.max_subtopics:
+            break
+        prompt += (f"\n\nYour previous answer had {ns} subtopics, outside the required {args.min_subtopics} to "
+                   f"{args.max_subtopics}. Here it is; revise it to fit the budget and output the full YAML again.\n\n{yaml_text}")
+    else:
+        print("WARNING: subtopic count still outside the budget; review before use", file=sys.stderr)
 
     header = (f"# DRAFT taxonomy, generated by tools/draft_taxonomy.py with {args.model}\n"
-              f"# from {len(rows)} posts sampled across all hours of the day. Needs human review (plan §8.2).\n")
+              f"# from {len(rows)} posts sampled evenly over {span}.\n"
+              f"# Subtopic budget {args.min_subtopics}-{args.max_subtopics}"
+              + (f"; sized using measured volumes from {args.measured_from}" if args.measured_from else "")
+              + ". Needs human review (plan §8.2).\n")
     with open(args.out, "w") as f:
         f.write(header + yaml_text + "\n")
     print(f"wrote {args.out}", file=sys.stderr)
