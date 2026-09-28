@@ -244,7 +244,7 @@ Docs: https://bsky.network/docs/jetstream/ and https://bsky.network/docs/jetstre
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | **Top-level English posts only** (no replies) | Cuts volume ~4× and matches what a feed shows. Checked by the `langs` tag **and** a local language detector. |
+| D1 | **Top-level English posts only** (no replies) | Cuts volume ~4× and matches what a feed shows. Checked by the `langs` tag **and** a local language detector. **Revisit (Hailey, 2026-09-28):** keep this for the first version, but later redo ingest to store *all* posts (replies and every language) in full and filter at read time instead. Today only the text of other posts is kept, in `post_texts`, for 7 days. |
 | D2 | **Jev labels six hours of posts, taken from 24 fifteen-minute windows spread over 2–3 days**; ingest keeps *everything* from those days | Covers every hour of the day and several days of news at ~175k posts (~$15). Variety across time matters more to the student than raw volume. The student classifies everything else, including the <24h feed candidates. Interest profiles start with 2–3 days of likes and grow as live data accumulates. |
 | D3 | **Hosted Jev is the teacher**, through AGW | Best available quality. Cost is small (~$15 for the labeling windows at full quality). |
 | D4 | **Spend freely on labeling quality**: option descriptions, top-3 broad-topic candidates, ranking questions | Money isn't the constraint. Label quality caps student quality. |
