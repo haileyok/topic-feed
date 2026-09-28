@@ -8,6 +8,7 @@ agreement depends on how sure Jev itself was.
 
 import argparse
 import json
+import os
 
 import numpy as np
 import torch
@@ -15,6 +16,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer
 
 import common
+import compare_viewer
 from train import Student, predict
 
 
@@ -23,6 +25,7 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--export", default=None, help="default: the export the model was trained on")
     ap.add_argument("--taxonomy", default="../taxonomy/v1.yaml")
+    ap.add_argument("--page", action="store_true", help="also write the side-by-side review page to /data/reports/<model>-vs-jev")
     a = ap.parse_args()
 
     cfg = json.load(open(f"{a.model}/config.json"))
@@ -82,6 +85,13 @@ def main():
     out["confident_disagreement_pairs"] = sorted(pairs.items(), key=lambda kv: -kv[1])[:8]
     json.dump(out, open(f"{a.model}/compare_jev.json", "w"), indent=2)
     print(json.dumps(out, indent=2))
+
+    if a.page:
+        name = os.path.basename(a.model.rstrip("/"))
+        page_dir = os.path.join("/data/reports", f"{name}-vs-jev")
+        os.makedirs(page_dir, exist_ok=True)
+        compare_viewer.write(os.path.join(page_dir, "index.html"), name, space, te, sb, sp, sig)
+        print(f"wrote {page_dir}/index.html")
 
 
 if __name__ == "__main__":

@@ -58,3 +58,16 @@ make train EXPORT=/data/exports/v1-full RUN=v1 EPOCHS=8
 | `train.log`, `tb/` | Logs and TensorBoard events |
 
 Agreement is measured against Jev on posts from windows the model never trained on.
+
+## Checking a model against Jev by hand
+
+```sh
+cd trainer && uv run python compare.py --model /data/models/v1 --page
+```
+
+Writes `compare_jev.json` into the model's directory (agreement by Jev's confidence,
+distribution distances, the most common confident disagreements) and a side-by-side
+review page at `http://<machine>:8090/<RUN>-vs-jev/`. The page filters by agreement,
+Jev's confidence, topic, and text, and has verdict buttons on each post (Jev right,
+student right, both fine, neither). Verdicts are saved in your browser; "Download
+verdicts" saves them as JSON, the start of the human-reviewed reference set.
