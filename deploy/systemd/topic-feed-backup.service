@@ -1,0 +1,9 @@
+[Unit]
+Description=topic-feed nightly backup
+After=docker.service
+
+[Service]
+Type=oneshot
+# %h is the user's home directory. `make install-backup` points this at the main checkout.
+WorkingDirectory=%h/bluesky/topic-feed
+ExecStart=%h/bluesky/topic-feed/deploy/backup.sh

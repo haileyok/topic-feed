@@ -19,7 +19,8 @@ services:
     volumes:
       - /data/clickhouse/data:/var/lib/clickhouse
       - /data/clickhouse/logs:/var/log/clickhouse-server
-      - /data/backups/clickhouse:/backups
+      # Backups go to the OS drive, so losing the data drive doesn't lose them too.
+      - ${HOME}/backups/topic-feed/clickhouse:/backups
       - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
     ulimits:
       nofile:
