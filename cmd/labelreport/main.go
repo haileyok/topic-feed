@@ -43,7 +43,7 @@ func main() {
 func run() error {
 	taxPath := flag.String("taxonomy", "taxonomy/draft1.yaml", "taxonomy YAML file")
 	labelConfig := flag.String("label-config", "", "label_config hash of the run (printed by labeler)")
-	out := flag.String("out", "", "output directory (default reports/<version>-<label_config>)")
+	out := flag.String("out", "", "output directory (default /data/reports/<version>-<label_config>, served by the viewer service)")
 	perTopic := flag.Int("examples", 10, "examples per broad topic")
 	flag.Parse()
 
@@ -55,7 +55,7 @@ func run() error {
 		return fmt.Errorf("-label-config is required")
 	}
 	if *out == "" {
-		*out = filepath.Join("reports", tax.Version+"-"+*labelConfig)
+		*out = filepath.Join("/data/reports", tax.Version+"-"+*labelConfig)
 	}
 	ctx := context.Background()
 	conn, err := chdb.Open(ctx, chdb.FromEnv())
@@ -129,6 +129,11 @@ func run() error {
 		return err
 	}
 	fmt.Println("wrote", path)
+	viewer := filepath.Join(*out, "index.html")
+	if err := writeViewer(viewer, tax, *labelConfig, rows); err != nil {
+		return err
+	}
+	fmt.Println("wrote", viewer)
 	return nil
 }
 
