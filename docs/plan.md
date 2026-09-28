@@ -305,6 +305,8 @@ Everything runs on one machine, `penguin` (inspected 2026-09-28):
 **Setup results (2026-09-28):**
 - `/data`: the second NVMe, XFS, mounted by UUID with `nofail`. Holds `clickhouse/`, `backups/`, `exports/`, `models/`.
 - ClickHouse `26.8.13.2` (an LTS release) runs from `deploy/docker-compose.yml`, bound to localhost, with data on `/data/clickhouse` and memory capped at 64GB. Under rootless Docker its files are owned by uid 100100 on the host (the container's `clickhouse` user).
+- Long-lived services run from the main checkout (`~/bluesky/topic-feed`, kept at `main`), never from a worktree. Rootless Docker runs as `penguin`, so **linger is enabled** (`loginctl enable-linger penguin`) to keep the containers running without a login session.
+- Nightly backup: `deploy/backup.sh`, run by the systemd user timer `topic-feed-backup.timer` at 03:30 UTC (`make install-backup`). It backs up `jev_labels`, `jev_requests`, and `models` with ClickHouse `BACKUP`, plus `/data/models`, to `~/backups/topic-feed` on the OS drive, and keeps 14 days. Ingest tables aren't backed up because the Jetstream archive can replay them.
 - PyTorch `2.14.0+cu132` in `trainer/` (Python 3.12.14) sees the RTX 4090. Under load: PCIe Gen 4 x16, 61°C, ~274W, ~161 TFLOPS bf16 matmul, ~27GB/s host-to-GPU copies.
 
 How the work is divided:
@@ -942,7 +944,7 @@ At $0.042 per million input tokens. **Estimates; replace with Phase 0 measuremen
 
 ## 19. Milestone checklist
 
-- [ ] **M0.1** Machine and repo setup. Done 2026-09-28: second NVMe formatted and mounted at `/data`; repo at `~/bluesky/topic-feed` with worktree `~/worktrees/topic-feed/setup` (branch `hailey/setup`); ClickHouse running via docker compose with data on `/data`; schema applied; `internal/postdoc` with golden-file tests; PyTorch (CUDA) in a Python 3.12 `uv` project, sees the GPU; Jev (via AGW) and Jetstream v2 replay access verified. **Remaining:** nightly backup.
+- [x] **M0.1** Machine and repo setup. Done 2026-09-28: second NVMe formatted and mounted at `/data`; repo at `~/bluesky/topic-feed` with worktree `~/worktrees/topic-feed/setup` (branch `hailey/setup`); ClickHouse running via docker compose with data on `/data`; schema applied; `internal/postdoc` with golden-file tests; PyTorch (CUDA) in a Python 3.12 `uv` project, sees the GPU; Jev (via AGW) and Jetstream v2 replay access verified; nightly backup installed (systemd user timer, 03:30 UTC) and a test restore succeeded.
 - [ ] **M0.2** Taxonomy v1 drafted by LLM from a real sample; reviewed and approved; committed as YAML.
 - [ ] **M0.3** Jev test run done: `max_batch` computed; batch size, top-K, and ranking questions chosen; tokens per post measured; costs updated.
 - [ ] **M0.4** ~500-post human-reviewed reference set committed, and labeled by Jev as `eval`.
