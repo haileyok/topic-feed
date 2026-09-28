@@ -16,6 +16,11 @@ var (
 		Help: "Post creates by outcome: kept, reply, not_tagged_en, detector_disagrees.",
 	}, []string{"outcome"})
 
+	metricStale = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ingest_stale_records_total",
+		Help: "Created records dropped because they are more than 24h older than their event (account resyncs, backdated imports), by collection.",
+	}, []string{"collection"})
+
 	metricRowsWritten = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "ingest_rows_written_total",
 		Help: "Rows written to ClickHouse, by table.",

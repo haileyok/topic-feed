@@ -187,6 +187,69 @@ func TestLikesRepostsDeletesAccounts(t *testing.T) {
 	}
 }
 
+func TestTIDTime(t *testing.T) {
+	// Encode a known time as a TID and decode it back.
+	want := time.Date(2026, 9, 27, 11, 59, 0, 0, time.UTC)
+	v := uint64(want.UnixMicro())<<10 | 7 // clock id bits
+	b := make([]byte, 13)
+	for i := 12; i >= 0; i-- {
+		b[i] = tidAlphabet[v&31]
+		v >>= 5
+	}
+	got, ok := tidTime(string(b))
+	if !ok || !got.Equal(want) {
+		t.Fatalf("tidTime(%s) = %v %v, want %v", b, got, ok, want)
+	}
+	if _, ok := tidTime("self"); ok {
+		t.Error("non-TID rkey should not decode")
+	}
+}
+
+func tidAt(tm time.Time) string {
+	v := uint64(tm.UnixMicro()) << 10
+	b := make([]byte, 13)
+	for i := 12; i >= 0; i-- {
+		b[i] = tidAlphabet[v&31]
+		v >>= 5
+	}
+	return string(b)
+}
+
+func TestStaleResyncRecordsAreDropped(t *testing.T) {
+	eventTime := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	// A resynced post: old record key and old createdAt, delivered today.
+	ev := post(map[string]any{"text": "An old post from last year that is being re-sent by a resync", "createdAt": "2025-01-15T15:05:04Z"})
+	ev.Commit.Rkey = tidAt(time.Date(2025, 1, 15, 15, 5, 4, 0, time.UTC))
+	rows, res := handle(t, ev)
+	if res.PostOutcome != PostStale || len(rows.Posts) != 0 || len(rows.PostTexts) != 1 {
+		t.Errorf("resynced post: outcome %q, posts %d, texts %d", res.PostOutcome, len(rows.Posts), len(rows.PostTexts))
+	}
+
+	// Fresh key but backdated createdAt (an import) is also dropped.
+	ev = post(map[string]any{"text": "An imported post with a backdated creation time from long ago", "createdAt": "2020-05-01T00:00:00Z"})
+	ev.Commit.Rkey = tidAt(eventTime.Add(-time.Second))
+	if _, res = handle(t, ev); res.PostOutcome != PostStale {
+		t.Errorf("backdated post: outcome %q", res.PostOutcome)
+	}
+
+	// A normal post a few minutes old is kept.
+	ev = post(map[string]any{"text": "A perfectly normal post written a few minutes ago about lunch", "createdAt": "2026-09-27T11:55:00Z"})
+	ev.Commit.Rkey = tidAt(eventTime.Add(-5 * time.Minute))
+	if _, res = handle(t, ev); res.PostOutcome != PostKept {
+		t.Errorf("fresh post: outcome %q", res.PostOutcome)
+	}
+
+	// A resynced like is dropped.
+	var likeRows Rows
+	p := &Parser{Lang: testLang}
+	res = p.Handle(commit(collLike, jetstream.OpCreate, tidAt(time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)), map[string]any{
+		"subject": map[string]any{"uri": "at://did:plc:x/app.bsky.feed.post/1"}, "createdAt": "2025-03-01T00:00:00Z"}), &likeRows)
+	if !res.Stale || len(likeRows.Likes) != 0 {
+		t.Errorf("resynced like kept: %+v", likeRows.Likes)
+	}
+}
+
 func TestTextCacheEvictsOldest(t *testing.T) {
 	c := NewTextCache(2)
 	c.Put("a", "1")

@@ -37,3 +37,34 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+
+  # Jetstream → ClickHouse (plan §9). First run replays INGEST_START_HOURS of history,
+  # then follows live; later runs resume from the position saved in ingest_cursor.
+  ingest:
+    build:
+      context: ..
+      dockerfile: deploy/go.Dockerfile
+      args:
+        CMD: ingest
+    image: topic-feed/ingest:local
+    container_name: topic-feed-ingest
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      JETSTREAM_API_KEY: ${JETSTREAM_API_KEY:?set JETSTREAM_API_KEY in ~/.config/topic-feed/env}
+      JETSTREAM_HOST: jetstream.us-east.bsky.network
+      INGEST_START_HOURS: "72"
+      METRICS_ADDR: ":9101"
+    ports:
+      - "127.0.0.1:9101:9101"  # Prometheus metrics
+    # A shutdown lets an in-progress write finish (up to 2 minutes).
+    stop_grace_period: 2m
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"

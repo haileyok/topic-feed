@@ -1,0 +1,10 @@
+.git
+trainer
+serving
+docs
+reports
+data
+exports
+models
+**/.venv
+**/__pycache__

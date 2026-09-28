@@ -24,7 +24,46 @@ const (
 	PostReply          = "reply"
 	PostNotTaggedEn    = "not_tagged_en"
 	PostDetectorReject = "detector_disagrees"
+	PostStale          = "stale"
 )
+
+// maxRecordAge is how much older than its event a created record may be. When an
+// account's repo is resynced, Jetstream re-sends all of its records as ordinary
+// creates, with their original record keys and createdAt. Those (and imports with
+// backdated createdAt) would otherwise look like fresh posts and likes.
+const maxRecordAge = 24 * time.Hour
+
+// stale reports whether a created record is much older than the event carrying it,
+// judged by its record key (a TID, which encodes its creation time) and createdAt.
+func stale(rkey, createdAt string, at time.Time) bool {
+	cutoff := at.Add(-maxRecordAge)
+	if t, ok := tidTime(rkey); ok && t.Before(cutoff) {
+		return true
+	}
+	if t, err := time.Parse(time.RFC3339Nano, createdAt); err == nil && t.Before(cutoff) {
+		return true
+	}
+	return false
+}
+
+const tidAlphabet = "234567abcdefghijklmnopqrstuvwxyz"
+
+// tidTime decodes the timestamp in an atproto TID record key: 13 base32-sortable
+// characters whose top 53 bits are microseconds since the Unix epoch.
+func tidTime(rkey string) (time.Time, bool) {
+	if len(rkey) != 13 {
+		return time.Time{}, false
+	}
+	var v uint64
+	for i := 0; i < len(rkey); i++ {
+		idx := strings.IndexByte(tidAlphabet, rkey[i])
+		if idx < 0 {
+			return time.Time{}, false
+		}
+		v = v<<5 | uint64(idx)
+	}
+	return time.UnixMicro(int64(v >> 10)).UTC(), true
+}
 
 // Parser turns Jetstream events into table rows.
 type Parser struct {
@@ -39,6 +78,7 @@ type Result struct {
 	Collection  string // commit collection, or "account"/"identity"/"sync"
 	Operation   string // create/update/delete for commits
 	PostOutcome string // set for post creates
+	Stale       bool   // a created record dropped as much older than its event
 }
 
 // Handle appends the rows produced by ev to rows.
@@ -80,6 +120,10 @@ func (p *Parser) Handle(ev *jetstream.Event, rows *Rows) Result {
 	rec := c.Record
 	switch c.Collection {
 	case collLike, collRepost:
+		if stale(c.Rkey, str(rec, "createdAt"), at) {
+			res.Stale = true
+			return res
+		}
 		row := LikeRow{
 			ActorDID:   ev.DID,
 			Rkey:       c.Rkey,
@@ -97,6 +141,7 @@ func (p *Parser) Handle(ev *jetstream.Event, rows *Rows) Result {
 		}
 	case collPost:
 		res.PostOutcome = p.handlePost(ev.DID, c, uri, at, rec, rows)
+		res.Stale = res.PostOutcome == PostStale
 	}
 	return res
 }
@@ -108,6 +153,10 @@ func (p *Parser) handlePost(did string, c *jetstream.Commit, uri string, at time
 		p.Texts.Put(uri, text)
 	}
 
+	// The text is kept above even for stale posts: quotes of old posts still need it.
+	if stale(c.Rkey, str(rec, "createdAt"), at) {
+		return PostStale
+	}
 	if rec["reply"] != nil {
 		return PostReply
 	}

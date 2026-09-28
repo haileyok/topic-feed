@@ -7,8 +7,8 @@ CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicf
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
 
-up: ## Start local services and wait until healthy
-	$(COMPOSE) up -d --wait
+up: ## Build and start local services, and wait until they're running
+	$(COMPOSE) up -d --build --wait
 
 down:
 	$(COMPOSE) down

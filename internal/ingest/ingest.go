@@ -83,6 +83,9 @@ func (in *Ingester) Run(ctx context.Context) error {
 			if res.PostOutcome != "" {
 				metricPosts.WithLabelValues(res.PostOutcome).Inc()
 			}
+			if res.Stale {
+				metricStale.WithLabelValues(res.Collection).Inc()
+			}
 			lastEvent = time.UnixMicro(ev.TimeUS)
 		}
 		if c := batch.LastCursor(); c > 0 {
@@ -93,7 +96,7 @@ func (in *Ingester) Run(ctx context.Context) error {
 		}
 
 		if rows.Len() >= in.Cfg.FlushRows || time.Since(lastFlush) >= in.Cfg.FlushEvery {
-			if err := in.flush(ctx, &rows, lastCursor); err != nil {
+			if err := in.flushDetached(ctx, &rows, lastCursor); err != nil {
 				return err
 			}
 			lastFlush = time.Now()
@@ -101,22 +104,33 @@ func (in *Ingester) Run(ctx context.Context) error {
 		if time.Since(lastLog) >= 30*time.Second {
 			st := client.Stats()
 			metricArchiveGap.Set(float64(st.ResidualGap))
-			in.Log.Info("progress", "cursor", lastCursor, "event_time", lastEvent.UTC().Format(time.RFC3339),
-				"lag", time.Since(lastEvent).Round(time.Second).String(), "archive_remaining_seqs", st.ResidualGap,
-				"text_cache", in.Parser.Texts.Len())
+			attrs := []any{"cursor", lastCursor, "archive_remaining_seqs", st.ResidualGap, "text_cache", in.Parser.Texts.Len()}
+			if !lastEvent.IsZero() {
+				attrs = append(attrs, "event_time", lastEvent.UTC().Format(time.RFC3339), "lag", time.Since(lastEvent).Round(time.Second).String())
+			}
+			in.Log.Info("progress", attrs...)
 			lastLog = time.Now()
+		}
+		if ctx.Err() != nil {
+			break
 		}
 	}
 
-	// Write whatever is pending on shutdown, with a fresh context so it can finish.
+	// Write whatever is pending on shutdown.
 	if rows.Len() > 0 && lastCursor > 0 {
-		fctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := in.flush(fctx, &rows, lastCursor); err != nil {
+		if err := in.flushDetached(ctx, &rows, lastCursor); err != nil {
 			return err
 		}
 	}
 	return ctx.Err()
+}
+
+// flushDetached runs a flush that a shutdown signal doesn't interrupt: once started,
+// it gets up to two minutes to finish, so a signal never discards a half-done write.
+func (in *Ingester) flushDetached(ctx context.Context, rows *Rows, cursor uint64) error {
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	return in.flush(fctx, rows, cursor)
 }
 
 // startPoint returns the sequence number to replay after, and a time before which
