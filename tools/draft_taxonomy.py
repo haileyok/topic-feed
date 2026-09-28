@@ -150,6 +150,18 @@ def measured_volumes(ref: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def parse_topics(raw: str):
+    """The JSON array in a stage-1 answer, or None if it doesn't parse."""
+    m = re.search(r"\[.*\]", raw, re.S)
+    if not m:
+        return None
+    try:
+        topics = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    return topics if isinstance(topics, list) else None
+
+
 def count_subtopics(yaml_text: str) -> tuple[int, int]:
     """(broad topics, subtopics) in the expected indentation of the output shape."""
     broad = len(re.findall(r"^  - id: ", yaml_text, re.M))
@@ -167,18 +179,21 @@ def main() -> int:
     ap.add_argument("--min-subtopics", type=int, default=100)
     ap.add_argument("--max-subtopics", type=int, default=120)
     ap.add_argument("--measured-from", default="", help="<taxonomy_version>:<label_config> of a labeled run to size topics by")
+    ap.add_argument("--until", default="", help="only sample posts at or before this UTC time (YYYY-MM-DD HH:MM:SS); "
+                    "pins the sample so a re-run reuses finished chunks")
     args = ap.parse_args()
     version = args.version or os.path.splitext(os.path.basename(args.out))[0]
+    until = f"AND indexed_at <= toDateTime64('{args.until}', 6, 'UTC')" if args.until else ""
 
     # Spread the sample evenly over every hour in the data (all backfill days), not
     # just the hours of one day.
-    hours = clickhouse("SELECT uniqExact(toStartOfHour(indexed_at)) AS h, min(indexed_at) AS lo, max(indexed_at) AS hi FROM posts")[0]
+    hours = clickhouse(f"SELECT uniqExact(toStartOfHour(indexed_at)) AS h, min(indexed_at) AS lo, max(indexed_at) AS hi FROM posts WHERE 1 {until}")[0]
     per_hour = -(-args.posts // int(hours["h"]))
     span = f"{hours['h']} hours ({hours['lo'][:16]} to {hours['hi'][:16]} UTC)"
     rows = clickhouse(f"""
         SELECT text, arrayStringConcat(media_alts, ' | ') AS alts, link_domain, link_title, quote_text
         FROM posts FINAL
-        WHERE uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post')
+        WHERE uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post') {until}
         ORDER BY cityHash64(uri, 'taxonomy-sample-{version}')
         LIMIT {per_hour} BY toStartOfHour(indexed_at)
         LIMIT {args.posts}""")
@@ -191,14 +206,32 @@ def main() -> int:
     work = os.path.join(out_dir, f"{stem}.work")
     os.makedirs(work, exist_ok=True)
 
+    # A finished chunk is reused only when the sample is pinned (--until) and its
+    # posts are identical, recorded as a hash next to the chunk's output.
+    import hashlib
+
     lists = []
     for ci, start in enumerate(range(0, len(rows), args.chunk)):
         chunk = rows[start:start + args.chunk]
         numbered = "\n".join(f"{i + 1}. {render(p)}" for i, p in enumerate(chunk))
-        raw = llm(args.model, STAGE1.format(n=len(chunk), posts=numbered), 16000)
-        open(os.path.join(work, f"stage1-chunk{ci}.txt"), "w").write(raw)
-        m = re.search(r"\[.*\]", raw, re.S)
-        topics = json.loads(m.group(0)) if m else []
+        key = hashlib.sha256(numbered.encode()).hexdigest()[:16]
+        raw_path, key_path = os.path.join(work, f"stage1-chunk{ci}.txt"), os.path.join(work, f"stage1-chunk{ci}.key")
+        topics = None
+        if args.until and os.path.exists(key_path) and open(key_path).read().strip() == key:
+            topics = parse_topics(open(raw_path).read())
+            if topics is not None:
+                print(f"chunk {ci}: reusing finished output", file=sys.stderr)
+        for attempt in range(3):
+            if topics is not None:
+                break
+            raw = llm(args.model, STAGE1.format(n=len(chunk), posts=numbered), 16000)
+            open(raw_path, "w").write(raw)
+            topics = parse_topics(raw)
+            if topics is None:
+                print(f"chunk {ci}: unparseable JSON on attempt {attempt}; retrying", file=sys.stderr)
+        if topics is None:
+            raise SystemExit(f"chunk {ci}: no valid JSON after 3 attempts; see {raw_path}")
+        open(key_path, "w").write(key)
         # Replace example numbers with the example text so stage 2 can quote them.
         for t in topics:
             t["examples"] = [render(chunk[n - 1])[:160] for n in t.get("examples", []) if isinstance(n, int) and 0 < n <= len(chunk)]
