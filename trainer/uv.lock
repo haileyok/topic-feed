@@ -1103,8 +1103,10 @@ dependencies = [
     { name = "onnx" },
     { name = "onnxruntime" },
     { name = "pyarrow" },
+    { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "torch" },
+    { name = "tqdm" },
     { name = "transformers" },
 ]
 
@@ -1114,8 +1116,10 @@ requires-dist = [
     { name = "onnx" },
     { name = "onnxruntime" },
     { name = "pyarrow" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scikit-learn" },
     { name = "torch", specifier = "==2.14.0", index = "https://download.pytorch.org/whl/cu132" },
+    { name = "tqdm", specifier = ">=4.70.1" },
     { name = "transformers" },
 ]
 

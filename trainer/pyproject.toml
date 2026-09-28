@@ -11,6 +11,8 @@ dependencies = [
     "scikit-learn",
     "onnx",
     "onnxruntime",
+    "pyyaml>=6.0.3",
+    "tqdm>=4.70.1",
 ]
 
 [tool.uv]
