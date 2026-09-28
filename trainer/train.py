@@ -23,6 +23,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, get_linear_schedule_with_warmup
 
 import common
@@ -101,6 +103,8 @@ def main():
     ap.add_argument("--max-len", type=int, default=256)
     ap.add_argument("--conf-floor", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--patience", type=int, default=2, help="stop after this many epochs without a validation gain")
+    ap.add_argument("--onnx", action="store_true", help="also export ONNX (not used: we serve on the GPU)")
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
@@ -115,12 +119,23 @@ def main():
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.01)
     sched = get_linear_schedule_with_warmup(opt, int(0.05 * steps), steps)
 
-    best, best_state, history = -1.0, None, []
+    # Live progress: a progress bar per epoch in the terminal, and TensorBoard scalars in
+    # <out>/tb (served by the tensorboard compose service on port 6006).
+    os.makedirs(a.out, exist_ok=True)
+    tb = SummaryWriter(f"{a.out}/tb")
+    tb.add_text("run", f"base `{a.base}` · export `{a.export}` · train {len(tr)} / val {len(va)} / test {len(te)} · "
+                       f"up to {a.epochs} epochs, batch {a.bs}, lr {a.lr}")
+    steps_per_epoch = math.ceil(len(tr) / a.bs)
+
+    best, best_epoch, best_state, history = -1.0, -1, None, []
     t_start = time.time()
+    global_step = 0
     for epoch in range(a.epochs):
         model.train()
         running, n = 0.0, 0
-        for step, (j, enc) in enumerate(batches(tr, tok, a.bs, a.max_len, True, rng)):
+        bar = tqdm(batches(tr, tok, a.bs, a.max_len, True, rng), total=steps_per_epoch, desc=f"epoch {epoch + 1}/{a.epochs}",
+                   dynamic_ncols=True, mininterval=2, unit="batch")
+        for step, (j, enc) in enumerate(bar):
             ids, mask = enc["input_ids"].cuda(), enc["attention_mask"].cuda()
             yb, yp = torch.tensor(tr.broad[j]).cuda(), torch.tensor(tr.path[j]).cuda()
             ys, yt = torch.tensor(tr.signals[j]).cuda(), torch.tensor(tr.tone[j]).cuda()
@@ -136,16 +151,29 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             sched.step()
-            running += loss.item(); n += 1
-            if step % 200 == 0:
-                print(f"epoch {epoch} step {step} loss {running / n:.4f} elapsed {time.time() - t_start:.0f}s", flush=True)
+            running += loss.item(); n += 1; global_step += 1
+            if step % 25 == 0:
+                bar.set_postfix(loss=f"{running / n:.3f}", lr=f"{sched.get_last_lr()[0]:.1e}")
+            if global_step % 50 == 0:
+                tb.add_scalar("train/loss", loss.item(), global_step)
+                tb.add_scalar("train/loss_epoch_avg", running / n, global_step)
+                tb.add_scalar("train/lr", sched.get_last_lr()[0], global_step)
+        bar.close()
         lb, lp, _, _ = predict(model, va, tok, a.max_len)
         vm = common.evaluate(space, F.softmax(lb, -1).numpy(), F.softmax(lp, -1).numpy(), va)
-        history.append({"epoch": epoch, "train_loss": running / n, "val_broad_top1": vm["broad_top1"], "val_path_top1": vm["path_top1"]})
-        print(json.dumps(history[-1]), flush=True)
+        history.append({"epoch": epoch + 1, "train_loss": running / n, "val_broad_top1": vm["broad_top1"], "val_path_top1": vm["path_top1"],
+                        "val_broad_top3": vm["broad_top3"], "val_path_top3": vm["path_top3"]})
+        for k in ("val_broad_top1", "val_path_top1", "val_broad_top3", "val_path_top3"):
+            tb.add_scalar(k.replace("val_", "val/"), history[-1][k], epoch + 1)
+        tb.flush()
+        print(f"epoch {epoch + 1}: train loss {running / n:.3f} · validation broad {vm['broad_top1']:.1%} (top-3 {vm['broad_top3']:.1%})"
+              f" · path {vm['path_top1']:.1%} (top-3 {vm['path_top3']:.1%}) · {time.time() - t_start:.0f}s elapsed", flush=True)
         if vm["broad_top1"] > best:
-            best = vm["broad_top1"]
+            best, best_epoch = vm["broad_top1"], epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        elif epoch - best_epoch >= a.patience:
+            print(f"stopping: no validation gain for {a.patience} epochs (best epoch {best_epoch})", flush=True)
+            break
     model.load_state_dict(best_state)
     train_seconds = time.time() - t_start
 
@@ -155,8 +183,12 @@ def main():
     tb, tp, ts, tt = predict(model, te, tok, a.max_len)
     metrics = common.evaluate(space, F.softmax(tb / t_broad, -1).numpy(), F.softmax(tp / t_path, -1).numpy(), te,
                               torch.sigmoid(ts).numpy(), F.softmax(tt, -1).numpy())
-    metrics.update({"split": info, "history": history, "temperature_broad": t_broad, "temperature_path": t_path,
-                    "train_seconds": train_seconds, "base": a.base, "args": vars(a)})
+    metrics.update({"split": info, "history": history, "best_epoch": best_epoch, "temperature_broad": t_broad,
+                    "temperature_path": t_path, "train_seconds": train_seconds, "base": a.base, "args": vars(a)})
+    # Serving runs on the GPU (Hailey, 2026-09-28): measure its throughput.
+    t0 = time.time()
+    predict(model, te, tok, a.max_len)
+    metrics["gpu_posts_per_second"] = len(te) / (time.time() - t0)
 
     os.makedirs(a.out, exist_ok=True)
     torch.save(model.state_dict(), f"{a.out}/model.pt")
@@ -170,9 +202,15 @@ def main():
     json.dump(config, open(f"{a.out}/config.json", "w"), indent=2)
     json.dump(manifest, open(f"{a.out}/data_manifest.json", "w"), indent=2)
 
-    metrics["onnx"] = export_onnx(model, tok, te, a, f"{a.out}/model.onnx")
+    if a.onnx:
+        metrics["onnx"] = export_onnx(model, tok, te, a, f"{a.out}/model.onnx")
     json.dump(metrics, open(f"{a.out}/metrics.json", "w"), indent=2)
-    print(json.dumps({k: v for k, v in metrics.items() if k not in ("broad_per_class", "split", "history", "args")}, indent=2))
+    for k in ("broad_top1", "broad_top3", "path_top1", "path_top3", "broad_ece", "tone_top1"):
+        tb.add_scalar(f"test/{k}", metrics[k], best_epoch + 1)
+    tb.close()
+    print(f"\nTEST (windows {', '.join(info['test_windows'])}, {len(te)} posts, best epoch {best_epoch + 1}): "
+          f"broad {metrics['broad_top1']:.1%} (top-3 {metrics['broad_top3']:.1%}) · path {metrics['path_top1']:.1%} "
+          f"(top-3 {metrics['path_top3']:.1%}) · GPU {metrics['gpu_posts_per_second']:.0f} posts/s · saved to {a.out}", flush=True)
 
 
 def export_onnx(model: Student, tok, te: common.Data, a, path: str) -> dict:

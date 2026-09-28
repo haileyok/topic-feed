@@ -13,6 +13,7 @@ dependencies = [
     "onnxruntime",
     "pyyaml>=6.0.3",
     "tqdm>=4.70.1",
+    "tensorboard>=2.21.0",
 ]
 
 [tool.uv]

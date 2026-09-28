@@ -52,6 +52,20 @@ services:
       - /data/reports:/usr/share/nginx/html:ro
       - ./viewer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
+  # Live training charts: http://<this machine>:6006/. Shows every run under
+  # /data/models (each run writes TensorBoard logs to <run>/tb). Internal network only.
+  tensorboard:
+    build:
+      context: .
+      dockerfile: tensorboard.Dockerfile
+    image: topic-feed/tensorboard:local
+    container_name: topic-feed-tensorboard
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:6006:6006"
+    volumes:
+      - /data/models:/logs:ro
+
   # Jev labeling run over the labeling windows (plan §10). Only starts on request
   # (`make label`), never with a plain `make up`. Restarts on failure and resumes:
   # posts already labeled under the same taxonomy version and label_config are skipped.
