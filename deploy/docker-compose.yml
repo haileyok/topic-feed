@@ -38,14 +38,16 @@ services:
       retries: 30
       start_period: 10s
 
-  # Browsable labeling reports: http://127.0.0.1:8090/ lists every report under
-  # /data/reports; each has an index.html viewer. Localhost only (reports contain post text).
+  # Browsable labeling reports: http://<this machine>:8090/ lists every report under
+  # /data/reports; each has an index.html viewer. Reachable from the internal network:
+  # the only active interface is the LAN (eno1). Don't expose this machine publicly
+  # without restricting this port, since reports contain post text.
   viewer:
     image: nginx:1.29-alpine
     container_name: topic-feed-viewer
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8090:80"
+      - "0.0.0.0:8090:80"
     volumes:
       - /data/reports:/usr/share/nginx/html:ro
       - ./viewer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
