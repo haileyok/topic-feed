@@ -932,7 +932,7 @@ At $0.042 per million input tokens. **Estimates; replace with Phase 0 measuremen
 
 ## 18. Open questions
 
-1. **Project name and repo location** (e.g. `~/bluesky/<name>`, on GitHub as `haileyok/<name>` or `bluesky-social/<name>`).
+1. ~~Project name and repo location~~: **resolved 2026-09-28.** `topic-feed`: locally at `~/bluesky/topic-feed`, on GitHub as the private repo `haileyok/topic-feed`.
 2. ~~Training host access~~ and 3. ~~One machine or two~~: **resolved 2026-09-28.** Everything runs on one machine, the Threadripper 7960X + RTX 4090 box (§6).
 4. ~~Jetstream endpoint~~: **resolved 2026-09-28.** Jetstream v2 replay at `jetstream.us-east.bsky.network` with an API key (§4.7).
 5. **Ongoing Jev labeling rate:** the default is ~20% random plus uncertain posts. Or label everything?
