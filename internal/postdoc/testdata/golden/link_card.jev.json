@@ -1,0 +1,8 @@
+{
+  "text": "New paper on sparse attention kernels is out",
+  "link": {
+    "domain": "arxiv.org",
+    "title": "Faster Sparse Attention on Modern GPUs",
+    "description": "We present a set of kernels that..."
+  }
+}

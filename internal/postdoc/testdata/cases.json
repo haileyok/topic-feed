@@ -1,0 +1,13 @@
+[
+  {"name": "plain_text", "input": {"Text": "Just watched the Eagles win in OT, what a game!!"}},
+  {"name": "multiline_text", "input": {"Text": "  Three things I learned today:\n\n1. tea is good\n2. naps are better\n3. both is best  "}},
+  {"name": "images", "input": {"Text": "Sunset from the ferry", "MediaAlts": ["Orange sky over the water,\nwith a ferry wake.", "", "Seagull on a railing"]}},
+  {"name": "video", "input": {"Text": "", "MediaAlts": ["A dog catching a frisbee in slow motion"]}},
+  {"name": "link_card", "input": {"Text": "New paper on sparse attention kernels is out", "LinkDomain": "arxiv.org", "LinkTitle": "Faster Sparse Attention on Modern GPUs", "LinkDescription": "We present a set of kernels that..."}},
+  {"name": "link_title_only", "input": {"Text": "read this", "LinkDomain": "example.com", "LinkTitle": "", "LinkDescription": ""}},
+  {"name": "quote", "input": {"Text": "This is exactly right.", "QuoteText": "Public transit is a climate policy\nand a housing policy."}},
+  {"name": "quote_with_media", "input": {"Text": "lol", "MediaAlts": ["Screenshot of a spreadsheet"], "QuoteText": "Show me your worst spreadsheet"}},
+  {"name": "tags", "input": {"Text": "Opening night!", "Tags": ["#theatre", "Broadway", "theatre", " ", "#Broadway"]}},
+  {"name": "everything", "input": {"Text": "Big day for the team", "MediaAlts": ["Players celebrating"], "LinkDomain": "espn.com", "LinkTitle": "Eagles win in overtime", "LinkDescription": "Recap of the game.", "QuoteText": "Who's watching tonight?", "Tags": ["nfl", "eagles"]}},
+  {"name": "empty", "input": {"Text": "   "}}
+]
