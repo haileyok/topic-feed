@@ -143,7 +143,7 @@ Sampled from the public Jetstream on 2026-09-28: one 30-second sample and one 60
 - The same gateway also serves LLMs through OpenAI- and Anthropic-compatible endpoints with the same key. We use these for drafting the taxonomy (Phase 0).
 - **Shared account:** AGW uses **Bluesky's production TypeSafe account**, which Attie also uses for its Jev checks and feed labeling. **Agreed budget: we may use about 1/3 to 1/2 of the account's rate limits** (~400–600 requests/min, ~80–125k tokens/s). Make this configurable.
 - Set an attribution header on every request (e.g. `X-Client: topic-feed`) so our traffic is identifiable.
-- **Never commit the AGW key.** Load it from an environment variable (e.g. `TYPESAFE_API_KEY`, which the Go client reads by default) or a local `.env` that's gitignored.
+- **Never commit the AGW key.** It lives in `~/.config/topic-feed/env` (mode 600, outside the repo) as `TYPESAFE_API_KEY`, which the Go client reads by default. *Verified 2026-09-28:* a one-question request through AGW returned `jev-1.13.0`'s answer for 395 input tokens.
 
 ### 4.4 Go client for Jev
 
@@ -177,7 +177,7 @@ Client behavior worth knowing:
 - **Retries:** by default up to 2 retries with backoff (500ms, doubling, capped at 5s) on 408, 429, 5xx, and connection errors. It honors `Retry-After` up to 60s and has a 30s total budget. Configure with `WithRetryPolicy`, or per request with `RequestRetryPolicy`.
 - **Every question gets an answer:** a successful response is guaranteed to contain an answer for every question ID asked. Otherwise the client returns a validation error.
 - **Other constructors:** `ChoiceNames` (options with no descriptions), `Score(instr, levels...)`, `Noul(instr).WithCriteria(yes, no)`, `Bare(name)`. `Choice` keeps options in the order given.
-- **Errors:** match with `errors.Is(err, typesafe.ErrRateLimit)` and similar. `APIError.RequestID` holds TypeSafe's request ID.
+- **Errors:** match with `errors.Is(err, typesafe.ErrRateLimit)` and similar. `APIError.RequestID` holds TypeSafe's request ID. On successful responses the ID arrives in the `x-typesafe-request-id` header (verified through AGW); check whether the client exposes it on success, since `jev_labels.request_ids` and `jev_requests.request_id` need it.
 
 ### 4.5 OpenJev (evaluated, not chosen for runtime)
 
@@ -208,10 +208,19 @@ The full-quality setup (§10) needs ~16k tokens/s, which is why **we distill int
 
 ### 4.7 Jetstream
 
-- `github.com/bluesky-social/jetstream`. The newer version is a full-network archive: an at-least-once event log with an archive path for backfill (paginated snapshot planning, then a single switch-over to the live socket). It ships a Go client with collection filtering (`jetstream.WithCollections([]string{"app.bsky.feed.post"})`) and **de-duplicates redelivered events by sequence number**. Clients must still write idempotently.
-- The live socket's replay window defaults to **36 hours** (`--cursor-lookback`). **Older history comes through the archive/backfill path**, which our 2–3 day backfill needs. Per Hailey, a 5-day history is available, so the **exact endpoint is still an open question**.
-- Deletions arrive as explicit events. Account status changes arrive as `#account` events with `active=false` and a status.
-- Event shapes: see [Appendix B](#appendix-b-jetstream-event-shapes). **Check the field names against the client version we end up using**, because v1 and v2 differ slightly (e.g. `time_us` vs `time`).
+Docs: https://bsky.network/docs/jetstream/ and https://bsky.network/docs/jetstream-replay/ (read 2026-09-28).
+
+- **We use Jetstream v2**, Bluesky's public instances: `wss://jetstream.us-east.bsky.network` (or `jetstream.us-west`). Replay (history) is only available on v2. The v1 instances (`jetstream1.us-west`, `jetstream2.us-east`) are live-only.
+- **Live tail:** a WebSocket to `/xrpc/network.bsky.jetstream.subscribeEvents` with subprotocol `xrpc.v1.json`. No authentication and not metered. Server-side filters: `collections` (repeatable, up to 100, `app.bsky.feed.*`-style wildcards allowed), `dids` (up to 10,000), and `kinds` (`commit`, `identity`, `account`, `sync`). A collection filter applies to commits only; account, identity, and sync events always come through, and we need the account ones.
+- **Replay (our backfill):** the Go SDK (`github.com/bluesky-social/jetstream`) does it in one loop: `jetstream.Subscribe(host, jetstream.WithAPIKey(key), jetstream.WithCollections(...), jetstream.WithAfterSeq(seq))`. It plans the history over HTTP (`planSnapshot`), downloads archive blocks in parallel, then connects the live socket at the archive tip, removing duplicates at the seam. Persist `batch.LastCursor()` to resume.
+  - The HTTP side needs an **API key** (`Authorization: Bearer`, which the SDK adds). Ours is `JETSTREAM_API_KEY` in `~/.config/topic-feed/env`. *Verified 2026-09-28:* `listSegments` returned 200 with our key.
+  - **Metered by bytes downloaded** (compressed). Over the limit returns 429 with `Retry-After`; downloads resume with HTTP `Range` requests, so nothing is charged twice.
+  - **The archive goes back to 2026-08-04** (first segment's time), so 72h of history is well within reach. Segments are ~256MB compressed; the segment list is paginated with a `cursor`.
+  - Replay starts from a **sequence number** (`afterSeq`), not a time. To start 72h back, find the first segment whose time range (`minWitnessedAt`/`maxWitnessedAt` from `listSegments`) covers that point and use its `minSeq`. (The live socket alone also accepts a unix-microsecond `cursor`, but only within its 36h window.)
+  - If a backfill takes longer than the live socket's **36-hour** lookback, the live connect fails with a 400 carrying the new floor, and the SDK re-plans from its last position. No data is skipped.
+- **Delivery:** at least once, in `seq` order per account. Cursors are inclusive. Writes must be idempotent (key on the record's `at://` URI).
+- **Folding:** replay delivers creates, updates, and deletes as they happened. An `account` event with `active: false` and `status: "deleted"`, or a `sync` divergence marker, removes **all** of that account's records.
+- Event shapes: see [Appendix B](#appendix-b-jetstream-event-shapes). v2 wraps each event in an envelope and uses `seq` plus an RFC 3339 `time`, not v1's `time_us`.
 
 ### 4.8 Feed generator protocol pieces (verified against lexicons)
 
@@ -291,7 +300,12 @@ Everything runs on one machine, `penguin` (inspected 2026-09-28):
 | GPU | NVIDIA RTX 4090, 24GB, PCIe 4.0 x16, driver 610.57 (CUDA 13.3) | Yes. ModernBERT-base and -large fine-tuning fit comfortably, and so does OpenJev's 4-bit build (16.5GB) for the optional comparison. |
 | Storage | 2 × 8TB WD_BLACK SN850X NVMe. `nvme0n1` holds the OS (6.9TB free); **`nvme1n1` is blank: no partition, not mounted** | Yes, by a wide margin (the plan needs ~100GB/month). |
 | Network | 1Gb Ethernet (`eno1`) | Yes. Live Jetstream is well under 1MB/s; the 3-day backfill is tens of GB and takes minutes to an hour. |
-| Software | Ubuntu 26.04.1, Go 1.26.7, uv 0.12.17, system Python 3.14.4, Docker 29.8.1 (rootless) with Compose v5.5.1 | Yes. No PyTorch or CUDA toolkit yet; PyTorch wheels bundle the CUDA runtime, so `nvcc` isn't needed. |
+| Software | Ubuntu 26.04.1, Go 1.26.7, uv 0.12.17, system Python 3.14.4, Docker 29.8.1 (rootless) with Compose v5.5.1 | Yes. PyTorch wheels bundle the CUDA runtime, so no CUDA toolkit (`nvcc`) is needed. |
+
+**Setup results (2026-09-28):**
+- `/data`: the second NVMe, XFS, mounted by UUID with `nofail`. Holds `clickhouse/`, `backups/`, `exports/`, `models/`.
+- ClickHouse `26.8.13.2` (an LTS release) runs from `deploy/docker-compose.yml`, bound to localhost, with data on `/data/clickhouse` and memory capped at 64GB. Under rootless Docker its files are owned by uid 100100 on the host (the container's `clickhouse` user).
+- PyTorch `2.14.0+cu132` in `trainer/` (Python 3.12.14) sees the RTX 4090. Under load: PCIe Gen 4 x16, 61°C, ~274W, ~161 TFLOPS bf16 matmul, ~27GB/s host-to-GPU copies.
 
 How the work is divided:
 - **GPU:** training, plus bulk re-scoring when a new model is promoted (0.7M posts takes minutes on the GPU vs up to an hour on CPU). Training and bulk re-scoring never run at the same time.
@@ -505,7 +519,7 @@ ORDER BY consumer;
 - Create the repo (name and location open). Per Hailey's conventions, do the work in a git worktree at `~/worktrees/<repo>/<slug>` on a branch named `hailey/<slug>`.
 - `deploy/docker-compose.yml`: ClickHouse (a current stable server image), with a mounted volume. Redis comes later.
 - `schema/*.sql` holds the DDL from §7, plus a small migration runner or a `make schema` target.
-- Configuration comes from environment variables or a `.env` file (gitignored). Keys: `TYPESAFE_API_KEY` (the AGW key), `TYPESAFE_BASE_URL=https://agw.noclues.net`, `JEV_MODEL=jev-1.13.0`, `CLICKHOUSE_DSN`, `JETSTREAM_URL`, the rate budget (`JEV_MAX_RPM`, `JEV_MAX_TPS`), and the batch size (`JEV_BATCH_SIZE`, set from the Phase 0 test).
+- Configuration comes from environment variables. Secrets live in `~/.config/topic-feed/env` (mode 600, outside the repo), which the Makefile passes to docker compose: `TYPESAFE_API_KEY` (the AGW key), `JETSTREAM_API_KEY`, and `CLICKHOUSE_PASSWORD`. Other keys: `TYPESAFE_BASE_URL=https://agw.noclues.net`, `JEV_MODEL=jev-1.13.0`, `CLICKHOUSE_DSN`, `JETSTREAM_URL`, the rate budget (`JEV_MAX_RPM`, `JEV_MAX_TPS`), and the batch size (`JEV_BATCH_SIZE`, set from the Phase 0 test).
 - `internal/postdoc` with golden-file tests: a fixed set of example posts (plain text, images, video, link card, quote, quote with media, tags, empty text) and their expected Jev JSON and student string. Any change to either rendering bumps the post document version, which is part of `label_config` and of each model's `config.json`.
 
 ### 8.2 Drafting the taxonomy (v1)
@@ -920,7 +934,7 @@ At $0.042 per million input tokens. **Estimates; replace with Phase 0 measuremen
 
 1. **Project name and repo location** (e.g. `~/bluesky/<name>`, on GitHub as `haileyok/<name>` or `bluesky-social/<name>`).
 2. ~~Training host access~~ and 3. ~~One machine or two~~: **resolved 2026-09-28.** Everything runs on one machine, the Threadripper 7960X + RTX 4090 box (§6).
-4. **Jetstream endpoint** for the 2–3 day backfill: exact URL, and whether it's the archive/backfill path or a socket with a longer replay window.
+4. ~~Jetstream endpoint~~: **resolved 2026-09-28.** Jetstream v2 replay at `jetstream.us-east.bsky.network` with an API key (§4.7).
 5. **Ongoing Jev labeling rate:** the default is ~20% random plus uncertain posts. Or label everything?
 6. **Taxonomy depth:** two levels (proposed), or a third level through Jev? The alternative for a finer level is embedding clusters later.
 7. **Likes retention for interest profiles:** keep 14 days of likes (proposed)? For feed users, should we also fetch and classify posts they liked before the backfill window, using the AppView's `app.bsky.feed.getPosts` and the student model?
@@ -928,7 +942,7 @@ At $0.042 per million input tokens. **Estimates; replace with Phase 0 measuremen
 
 ## 19. Milestone checklist
 
-- [ ] **M0.1** Second NVMe formatted and mounted at `/data`; repo created; worktree set up; ClickHouse running via docker compose with data on `/data`; schema applied; nightly backup set up; `internal/postdoc` with golden-file tests; PyTorch (CUDA) installed in a Python 3.12 `uv` project and sees the GPU.
+- [ ] **M0.1** Machine and repo setup. Done 2026-09-28: second NVMe formatted and mounted at `/data`; repo at `~/bluesky/topic-feed` with worktree `~/worktrees/topic-feed/setup` (branch `hailey/setup`); ClickHouse running via docker compose with data on `/data`; schema applied; `internal/postdoc` with golden-file tests; PyTorch (CUDA) in a Python 3.12 `uv` project, sees the GPU; Jev (via AGW) and Jetstream v2 replay access verified. **Remaining:** nightly backup.
 - [ ] **M0.2** Taxonomy v1 drafted by LLM from a real sample; reviewed and approved; committed as YAML.
 - [ ] **M0.3** Jev test run done: `max_batch` computed; batch size, top-K, and ranking questions chosen; tokens per post measured; costs updated.
 - [ ] **M0.4** ~500-post human-reviewed reference set committed, and labeled by Jev as `eval`.
@@ -1026,7 +1040,23 @@ A live check of a similar two-post, three-option request cost 372 input tokens a
 
 ## Appendix B: Jetstream event shapes
 
-These are v1 JSON shapes, observed on the public Jetstream. **Check field names against the client and server version we actually use**; v2 renames some timing fields.
+**Jetstream v2 (what we use).** Each WebSocket message is an envelope with the event under `payload`, tagged by `$type` (from the v2 docs):
+
+```json
+{"$type": "message",
+ "payload": {"$type": "network.bsky.jetstream.subscribeEvents#commit",
+   "did": "did:plc:7e6kocyzb77xkncplrkoojej", "seq": 24664288881, "time": "2026-08-13T06:47:43.959305Z",
+   "operation": "create", "collection": "app.bsky.feed.like", "rkey": "3msx2efqdxs27",
+   "rev": "3msx2efqjtc27", "cid": "bafyrei…",
+   "record": {"$type": "app.bsky.feed.like", "createdAt": "2026-08-13T06:47:44.859Z",
+     "subject": {"cid": "bafyrei…", "uri": "at://did:plc:…/app.bsky.feed.post/3mjfhkjsshs2q"}}}}
+```
+- Commit fields sit directly on the payload (no nested `commit` object). `time` is the event time we store as `indexed_at`.
+- A delete has no `record` or `cid`, only `collection` and `rkey`.
+- Other payload types: `#identity`, `#account`, `#sync`, each with a field of the same name. On v2, live events also carry a `cursor` field.
+- The Go SDK decodes these into typed events, so our code shouldn't parse the envelope by hand. Check the exact Go field names against the SDK version we pin.
+
+**Jetstream v1 (for reference).** These are the older shapes, observed on the v1 public instances:
 
 ```json
 {"did": "did:plc:…", "time_us": 1759030000000000, "kind": "commit",
