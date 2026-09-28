@@ -1,8 +1,9 @@
-package main
+package labelreport
 
 import (
 	"encoding/json"
 	"html/template"
+	"math/rand/v2"
 	"os"
 	"strings"
 
@@ -38,7 +39,19 @@ func bskyLink(uri string) string {
 	return "https://bsky.app/profile/" + parts[0] + "/post/" + parts[2]
 }
 
-func writeViewer(path string, tax *taxonomy.Taxonomy, labelConfig string, rows []row) error {
+// maxViewerRows caps the posts embedded in the viewer page so it stays loadable in a
+// browser. Larger runs show a fixed random sample; the report and CSV cover everything.
+const maxViewerRows = 10000
+
+func writeViewer(path string, tax *taxonomy.Taxonomy, labelConfig string, all []row) error {
+	total := len(all)
+	rows := all
+	if len(rows) > maxViewerRows {
+		rows = append([]row(nil), all...)
+		rng := rand.New(rand.NewPCG(3, 4))
+		rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
+		rows = rows[:maxViewerRows]
+	}
 	vrows := make([]viewerRow, 0, len(rows))
 	for _, r := range rows {
 		tb := topBroad(r.label)
@@ -88,6 +101,7 @@ func writeViewer(path string, tax *taxonomy.Taxonomy, labelConfig string, rows [
 		"Taxonomy":    tax.Version,
 		"LabelConfig": labelConfig,
 		"N":           len(rows),
+		"Total":       total,
 		"Data":        template.JS(data),
 	})
 }
@@ -120,7 +134,7 @@ a{color:var(--acc);text-decoration:none}.count{color:var(--mut);margin-left:auto
 #more{margin:8px 0 24px}
 </style></head><body>
 <header>
-<h1>Jev labels <small>taxonomy <b>{{.Taxonomy}}</b> · label_config <code>{{.LabelConfig}}</code> · {{.N}} posts</small></h1>
+<h1>Jev labels <small>taxonomy <b>{{.Taxonomy}}</b> · label_config <code>{{.LabelConfig}}</code> · {{if lt .N .Total}}random sample of {{.N}} of {{.Total}} labeled posts (counts below are within the sample; report.md covers all){{else}}{{.N}} posts{{end}}</small></h1>
 <div class="controls">
 <input type="search" id="q" placeholder="Search post text…">
 <label>Confidence <input type="number" id="cmin" min="0" max="1" step="0.05" value="0"> – <input type="number" id="cmax" min="0" max="1" step="0.05" value="1"></label>

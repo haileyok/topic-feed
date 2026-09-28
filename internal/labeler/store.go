@@ -3,11 +3,13 @@ package labeler
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	"github.com/haileyok/topic-feed/internal/postdoc"
+	"github.com/haileyok/topic-feed/internal/windows"
 )
 
 // Store reads posts to label and writes labels and request logs.
@@ -35,12 +37,47 @@ func (s *Store) SelectSpread(ctx context.Context, taxonomyVersion, labelConfig s
 		WHERE uri NOT IN (SELECT uri FROM jev_labels WHERE taxonomy_version = ? AND label_config = ?)
 		  AND uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post')
 		  AND did NOT IN (SELECT did FROM account_status FINAL WHERE active = 0)
+		  AND `+hasTextOrAlt+`
 		ORDER BY cityHash64(uri)
 		LIMIT ? BY toStartOfHour(indexed_at)
 		LIMIT ?`, taxonomyVersion, labelConfig, perHour, n)
 	if err != nil {
 		return nil, err
 	}
+	return scanPosts(rows)
+}
+
+// hasTextOrAlt skips posts with neither post text nor alt text (Hailey, 2026-09-28).
+// A post with alt text but no text is kept; a link card or quote alone is not enough.
+const hasTextOrAlt = `(trimBoth(text) != '' OR arrayExists(a -> trimBoth(a) != '', media_alts))`
+
+// SelectWindows returns every post in the labeling windows that isn't yet labeled
+// under (taxonomyVersion, labelConfig), in a stable hashed order (not time order, so
+// a partial run still covers every window). Deleted posts, inactive authors, and posts
+// with neither text nor alt text are skipped.
+func (s *Store) SelectWindows(ctx context.Context, taxonomyVersion, labelConfig string, ws []windows.Window) ([]Post, error) {
+	var conds []string
+	args := []any{taxonomyVersion, labelConfig}
+	for _, w := range ws {
+		conds = append(conds, "(indexed_at >= ? AND indexed_at < ?)")
+		args = append(args, w.Start, w.End)
+	}
+	rows, err := s.Conn.Query(ctx, `
+		SELECT uri, text, media_alts, link_domain, link_title, link_description, quote_text, tags
+		FROM posts FINAL
+		WHERE uri NOT IN (SELECT uri FROM jev_labels WHERE taxonomy_version = ? AND label_config = ?)
+		  AND (`+strings.Join(conds, " OR ")+`)
+		  AND uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post')
+		  AND did NOT IN (SELECT did FROM account_status FINAL WHERE active = 0)
+		  AND `+hasTextOrAlt+`
+		ORDER BY cityHash64(uri)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	return scanPosts(rows)
+}
+
+func scanPosts(rows driver.Rows) ([]Post, error) {
 	defer rows.Close()
 	var out []Post
 	for rows.Next() {

@@ -52,6 +52,44 @@ services:
       - /data/reports:/usr/share/nginx/html:ro
       - ./viewer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
+  # Jev labeling run over the labeling windows (plan §10). Only starts on request
+  # (`make label`), never with a plain `make up`. Restarts on failure and resumes:
+  # posts already labeled under the same taxonomy version and label_config are skipped.
+  # Writes the review report to /data/reports/<version>-<label_config> when done.
+  labeler:
+    profiles: ["labeling"]
+    build:
+      context: ..
+      dockerfile: deploy/go.Dockerfile
+      args:
+        CMD: labeler
+    image: topic-feed/labeler:local
+    container_name: topic-feed-labeler
+    restart: on-failure:20
+    # Container root maps to penguin under rootless Docker, which owns /data/reports.
+    user: "0:0"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:?set TYPESAFE_API_KEY in ~/.config/topic-feed/env}
+      TYPESAFE_BASE_URL: https://agw.noclues.net
+      JEV_MODEL: jev-1.13.0
+    working_dir: /work
+    volumes:
+      - ../taxonomy:/work/taxonomy:ro
+      - ../config:/work/config:ro
+      - /data/reports:/data/reports
+    command: ["-taxonomy", "taxonomy/v1.yaml", "-windows", "config/labeling_windows.yaml",
+              "-report", "auto", "-batch", "1", "-max-rpm", "500"]
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+
   # Jetstream → ClickHouse (plan §9). First run replays INGEST_START_HOURS of history,
   # then follows live; later runs resume from the position saved in ingest_cursor.
   ingest:

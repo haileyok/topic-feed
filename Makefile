@@ -2,7 +2,7 @@ ENV_FILE ?= $(HOME)/.config/topic-feed/env
 COMPOSE  := docker compose --env-file $(ENV_FILE) -f deploy/docker-compose.yml
 CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicfeed --password "$$CLICKHOUSE_PASSWORD" --database topicfeed --multiquery'
 
-.PHONY: up down ps logs schema ch test backup install-backup
+.PHONY: up down ps logs schema ch test backup install-backup label label-logs
 
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
@@ -27,6 +27,12 @@ ch: ## Interactive ClickHouse client
 
 test:
 	go test ./...
+
+label: ## Start (or resume) the Jev labeling run over the labeling windows
+	$(COMPOSE) --profile labeling up -d --build labeler
+
+label-logs:
+	$(COMPOSE) --profile labeling logs --tail=50 -f labeler
 
 backup: ## Run the backup now
 	deploy/backup.sh
