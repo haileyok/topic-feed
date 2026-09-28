@@ -110,6 +110,7 @@ def main():
     torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
     space = common.Space.from_taxonomy(a.taxonomy)
+    eq = common.Equivalence.for_taxonomy(a.taxonomy, space)
     tr, va, te, info = common.split(common.load(a.export, space))
     print(json.dumps(info), flush=True)
 
@@ -182,7 +183,7 @@ def main():
     t_broad, t_path = fit_temperature(vb, va.broad), fit_temperature(vp, va.path)
     test_b, test_p, test_s, test_t = predict(model, te, tok, a.max_len)
     metrics = common.evaluate(space, F.softmax(test_b / t_broad, -1).numpy(), F.softmax(test_p / t_path, -1).numpy(), te,
-                              torch.sigmoid(test_s).numpy(), F.softmax(test_t, -1).numpy())
+                              torch.sigmoid(test_s).numpy(), F.softmax(test_t, -1).numpy(), eq)
     metrics.update({"split": info, "history": history, "best_epoch": best_epoch, "temperature_broad": t_broad,
                     "temperature_path": t_path, "train_seconds": train_seconds, "base": a.base, "args": vars(a)})
     # Serving runs on the GPU (Hailey, 2026-09-28): measure its throughput.
@@ -205,12 +206,14 @@ def main():
     if a.onnx:
         metrics["onnx"] = export_onnx(model, tok, te, a, f"{a.out}/model.onnx")
     json.dump(metrics, open(f"{a.out}/metrics.json", "w"), indent=2)
-    for k in ("broad_top1", "broad_top3", "path_top1", "path_top3", "broad_ece", "tone_top1"):
+    for k in ("broad_top1", "broad_top3", "path_top1", "path_top3", "path_top1_equiv", "path_plausible",
+              "path_plausible_equiv", "broad_ece", "tone_top1"):
         tb.add_scalar(f"test/{k}", metrics[k], best_epoch + 1)
     tb.close()
     print(f"\nTEST (windows {', '.join(info['test_windows'])}, {len(te)} posts, best epoch {best_epoch + 1}): "
           f"broad {metrics['broad_top1']:.1%} (top-3 {metrics['broad_top3']:.1%}) · path {metrics['path_top1']:.1%} "
-          f"(top-3 {metrics['path_top3']:.1%}) · GPU {metrics['gpu_posts_per_second']:.0f} posts/s · saved to {a.out}", flush=True)
+          f"(top-3 {metrics['path_top3']:.1%}, one of Jev's plausible answers {metrics['path_plausible_equiv']:.1%}) · "
+          f"GPU {metrics['gpu_posts_per_second']:.0f} posts/s · saved to {a.out}", flush=True)
 
 
 def export_onnx(model: Student, tok, te: common.Data, a, path: str) -> dict:

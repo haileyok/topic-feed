@@ -1,0 +1,21 @@
+# Answers treated as interchangeable when scoring a model against Jev (trainer/common.py,
+# Equivalence). These are boundaries the v1 taxonomy does not draw clearly: Jev often
+# scores both sides close, and human review accepted either side. Editing this file
+# changes scores only; labels and training targets stay the same.
+taxonomy: v1
+
+# Each group is a set of paths that all match each other.
+groups:
+  # Short posts with little topical content. Jev's most frequent close calls, and
+  # human review accepted shitposts for online_culture/other.
+  - [unclear, humor/shitposts, online_culture/other]
+
+# "<broad>/other" matches any subtopic of the same broad topic, e.g. gaming/other and
+# gaming/tabletop_games. Human review accepted four such pairs.
+sibling_other: true
+
+# On posts that quote another post, these paths match any answer: a reply to "name your
+# favorite bad movie" is both a quote-prompt reply and a movie post. Human review
+# accepted quote_prompts next to music, movies and shitposts on quoting posts, and
+# rejected it on a post that quoted nothing.
+quote_reply_paths: [online_culture/quote_prompts]

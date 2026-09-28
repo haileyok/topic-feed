@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -148,12 +149,95 @@ def per_class(pred: np.ndarray, target: np.ndarray, names: list[str]) -> dict:
     return out
 
 
+# A path counts as one of Jev's plausible answers when its probability is at least this
+# share of Jev's top path probability. Jev's path_scores are the square roots of these
+# joint probabilities, so 0.25 here means "at least half of Jev's best path score".
+PLAUSIBLE_RATIO = 0.25
+
+
+@dataclass
+class Equivalence:
+    """Paths treated as interchangeable when scoring, from taxonomy/<version>-equivalences.yaml."""
+
+    same: np.ndarray  # (P, P) bool, symmetric, true on the diagonal
+    quote_any: np.ndarray  # (P,) bool: on posts that quote another post, matches any path
+
+    @classmethod
+    def identity(cls, space: Space) -> "Equivalence":
+        n = len(space.paths)
+        return cls(np.eye(n, dtype=bool), np.zeros(n, dtype=bool))
+
+    @classmethod
+    def from_yaml(cls, path: str, space: Space) -> "Equivalence":
+        cfg = yaml.safe_load(open(path))
+        eq, pi = cls.identity(space), {p: i for i, p in enumerate(space.paths)}
+
+        def idx(p: str) -> int:
+            if p not in pi:
+                raise SystemExit(f"{path}: unknown path {p!r}")
+            return pi[p]
+
+        for group in cfg.get("groups") or []:
+            ids = [idx(p) for p in group]
+            for a in ids:
+                eq.same[a, ids] = True
+        if cfg.get("sibling_other"):
+            for i, p in enumerate(space.paths):
+                if p.endswith("/other"):
+                    b = p.split("/", 1)[0]
+                    sib = [j for j, q in enumerate(space.paths) if q.startswith(b + "/")]
+                    eq.same[i, sib] = eq.same[sib, i] = True
+        for p in cfg.get("quote_reply_paths") or []:
+            eq.quote_any[idx(p)] = True
+        return eq
+
+    @classmethod
+    def for_taxonomy(cls, taxonomy_path: str, space: Space) -> "Equivalence":
+        """The equivalence file next to the taxonomy (v1.yaml -> v1-equivalences.yaml), or none."""
+        p = taxonomy_path.removesuffix(".yaml") + "-equivalences.yaml"
+        return cls.from_yaml(p, space) if os.path.exists(p) else cls.identity(space)
+
+
+def quotes_a_post(text: str) -> bool:
+    return ("\n" + text).find("\n[quote] ") >= 0
+
+
+def plausible_paths(target: np.ndarray, ratio: float = PLAUSIBLE_RATIO) -> np.ndarray:
+    """(n, P) bool: Jev's plausible paths for each post (always includes Jev's top path)."""
+    return target >= ratio * target.max(1, keepdims=True)
+
+
+def matches(answer: np.ndarray, accepted: np.ndarray, eq: Equivalence, quoting: np.ndarray) -> np.ndarray:
+    """(n,) bool: answer index matches one of the accepted paths, directly or through eq."""
+    ok = (eq.same[answer] & accepted).any(1)
+    return ok | (quoting & (eq.quote_any[answer] | (accepted & eq.quote_any[None, :]).any(1)))
+
+
+def path_scores(path: np.ndarray, d: Data, eq: Equivalence) -> dict:
+    """More lenient versions of path_top1: the student's top path counts as right when it
+    matches Jev's top path through the equivalences, is one of Jev's plausible paths, or
+    matches a plausible path through the equivalences."""
+    top, jev_top = path.argmax(1), d.path.argmax(1)
+    exact = np.zeros_like(d.path, dtype=bool)
+    exact[np.arange(len(d)), jev_top] = True
+    plaus = plausible_paths(d.path)
+    quoting = np.array([quotes_a_post(t) for t in d.texts], dtype=bool)
+    return {
+        "path_top1_equiv": float(matches(top, exact, eq, quoting).mean()),
+        "path_plausible": float(plaus[np.arange(len(d)), top].mean()),
+        "path_plausible_equiv": float(matches(top, plaus, eq, quoting).mean()),
+        "jev_plausible_paths_mean": float(plaus.sum(1).mean()),
+    }
+
+
 def evaluate(space: Space, broad: np.ndarray, path: np.ndarray, d: Data,
-             signals: np.ndarray | None = None, tone: np.ndarray | None = None) -> dict:
+             signals: np.ndarray | None = None, tone: np.ndarray | None = None,
+             eq: Equivalence | None = None) -> dict:
     m = {
         "n": len(d),
         "broad_top1": topk_agreement(broad, d.broad, 1), "broad_top3": topk_agreement(broad, d.broad, 3),
         "path_top1": topk_agreement(path, d.path, 1), "path_top3": topk_agreement(path, d.path, 3),
+        **path_scores(path, d, eq or Equivalence.identity(space)),
         "broad_ece": ece(broad, d.broad),
         "broad_per_class": per_class(broad, d.broad, space.broad),
     }

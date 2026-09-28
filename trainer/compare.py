@@ -59,7 +59,9 @@ def main():
         "disagreements_where_student_picked_jevs_2nd": float((stu_top[~agree] == jev_second[~agree]).mean()),
         "corr_student_vs_jev_top_prob": float(np.corrcoef(sb.max(1), jev_conf)[0, 1]),
     }
+    eq = common.Equivalence.for_taxonomy(a.taxonomy, space)
     out["path"] = {"top1_agreement": float((sp.argmax(1) == jp.argmax(1)).mean()),
+                   **common.path_scores(sp, te, eq),
                    "mean_total_variation": float(tvd(sp, jp).mean())}
 
     buckets = [("Jev >= 0.9", jev_conf >= 0.9), ("Jev 0.6-0.9", (jev_conf >= 0.6) & (jev_conf < 0.9)), ("Jev < 0.6", jev_conf < 0.6)]
@@ -69,6 +71,7 @@ def main():
             "bucket": name, "share_of_posts": float(m.mean()),
             "broad_top1": float(agree[m].mean()),
             "path_top1": float((sp.argmax(1)[m] == jp.argmax(1)[m]).mean()),
+            "path_plausible_equiv": common.path_scores(sp[m], te.subset(np.where(m)[0]), eq)["path_plausible_equiv"],
             "student_top_in_jevs_top2": float(((stu_top == jev_top) | (stu_top == jev_second))[m].mean()),
         })
 

@@ -1,0 +1,572 @@
+{
+  "model": "v1",
+  "verdicts": [
+    {
+      "uri": "at://did:plc:xgxxecx6n6elpjd57moxkm3n/app.bsky.feed.post/3mwk4u6xa7s2u",
+      "verdict": "both",
+      "jev_broad": "health",
+      "jev_path": "health/personal_medical",
+      "student_broad": "health",
+      "student_path": "health/personal_medical",
+      "text": "I think it’s probably why my mood was so bad today but there’s a 50/50 chance I wake up with a cold tomorrow. It’s either that, or I’m just really achy and have chills for ?? Reasons. We’ll see."
+    },
+    {
+      "uri": "at://did:plc:66a3bnsoaempm55syms4wqho/app.bsky.feed.post/3mwknige7fk2q",
+      "verdict": "student",
+      "jev_broad": "adult_content",
+      "jev_path": "adult_content/kink_fetish",
+      "student_broad": "promotion",
+      "student_path": "promotion/business_services",
+      "text": "Massage\nessentialone.co.uk \n#treatyourself #essentialoils #theraputic #uniform #gents #sensual #Edging #massage #peterborough #lincoln #Boston #Thurlby #Deepings #crowland #louisejackson\n[tags] #treatyourself #essentialoils #theraputic #uniform #gents #sensual #Edging #massage #peterborough #lincoln #Boston #Thurlby #Deepings #crowland #louisejackson"
+    },
+    {
+      "uri": "at://did:plc:iyibgzmetx3bix2kgmahv7ck/app.bsky.feed.post/3mwknv576t22r",
+      "verdict": "both",
+      "jev_broad": "music",
+      "jev_path": "music/concerts",
+      "student_broad": "music",
+      "student_path": "music/concerts",
+      "text": "Probably my last concert of the year! Paris Paloma's Fatal Flaw tour.  She played \"Fruits\" and I almost had an emotional breakdown. This is \"labour\" which I know... all the words to."
+    },
+    {
+      "uri": "at://did:plc:hgiasmui4ibbqbyto2dr7rdn/app.bsky.feed.post/3mwkemrx3b22y",
+      "verdict": "both",
+      "jev_broad": "humor",
+      "jev_path": "humor/jokes_puns",
+      "student_broad": "humor",
+      "student_path": "humor/jokes_puns",
+      "text": "Serj Fight. Who would win? 1. Serj Wankian or 2. Serj Plankian"
+    },
+    {
+      "uri": "at://did:plc:g3mmcppl4nxwbwusasqtxs4f/app.bsky.feed.post/3mwk4n37i7k2n",
+      "verdict": "student",
+      "jev_broad": "sports",
+      "jev_path": "sports/baseball",
+      "student_broad": "personal_life",
+      "student_path": "personal_life/relationships_family",
+      "text": "Having tgirl baseball in my life is so fucking cool. I’m so happy with it and making friends and loving life and getting outside and moving my body and learning how to play a game I’ve loved for so long and having a space I can be myself. Tgirl baseball rocks so hard"
+    },
+    {
+      "uri": "at://did:plc:zdnm6yxxqrttsdnmb5tiqtba/app.bsky.feed.post/3mwk54sho7226",
+      "verdict": "both",
+      "jev_broad": "unclear",
+      "jev_path": "unclear",
+      "student_broad": "unclear",
+      "student_path": "unclear",
+      "text": "What—\n[quote] WHAT?????"
+    },
+    {
+      "uri": "at://did:plc:lbwnr2wzhlrect3dnavsudjc/app.bsky.feed.post/3mwk4tpujwk2x",
+      "verdict": "both",
+      "jev_broad": "art",
+      "jev_path": "art/commissions",
+      "student_broad": "promotion",
+      "student_path": "art/commissions",
+      "text": "new PWYW doodle comms (w/ a 15% launch discount) to break in my new doodle style! \n\nstarts at $15usd and goes up to $50usd for sketch pages!\n\n🔗 in reply!\n[alt] Art examples for the pay what you want commissions. Showcases an example of chibis and bust up pieces. | Art examples for the pay what you want commissions. Showcases an example of waist up and fullbody pieces."
+    },
+    {
+      "uri": "at://did:plc:xxab4j5zjzho54fb25td5inu/app.bsky.feed.post/3mwk4o5hkgk2k",
+      "verdict": "both",
+      "jev_broad": "entertainment",
+      "jev_path": "entertainment/tv_shows",
+      "student_broad": "entertainment",
+      "student_path": "entertainment/tv_shows",
+      "text": "Primetime was so good"
+    },
+    {
+      "uri": "at://did:plc:beilpv3ekhl6hn25ya45vffn/app.bsky.feed.post/3mwkeqttl322f",
+      "verdict": "student",
+      "jev_broad": "us_politics",
+      "jev_path": "us_politics/trump_administration",
+      "student_broad": "us_politics",
+      "student_path": "us_politics/trump_administration",
+      "text": "Recent reporting has described her as a constant presence around the president, carrying a portable printer and supplying him with articles and other material.\n\nNow SNL has officially taken notice."
+    },
+    {
+      "uri": "at://did:plc:qqhkrhtxerdc3naumqnagkrv/app.bsky.feed.post/3mwk4x2j7yc2v",
+      "verdict": "jev",
+      "jev_broad": "us_politics",
+      "jev_path": "us_politics/trump_administration",
+      "student_broad": "us_politics",
+      "student_path": "us_politics/trump_administration",
+      "text": "WHAAAAT??? 🤬🤬🤬🤬🤬\nyoutube.com/shorts/iUEW8...\n[link] youtube.com | This cannot happen. #nationalpark #teton #trump #nature | YouTube video by Ohh that's RICH"
+    },
+    {
+      "uri": "at://did:plc:vuzs7jxarg2rqw6lgu6yrgqj/app.bsky.feed.post/3mwkfddi26f2z",
+      "verdict": "both",
+      "jev_broad": "promotion",
+      "jev_path": "promotion/deals",
+      "student_broad": "promotion",
+      "student_path": "promotion/deals",
+      "text": "🔭 Real talk: seeStar S30 Pro vs S50 vs Dwarf 3 which smart scope wins\n\nYour universe journey starts here with this amazing telescope - https://amzn.to/3RPOyv2\n#TelescopeAdvisor #Astronomy #Stargazing #Space #Telescope #NightSky #Science #Paidlink #ad #amazonaffiliate\n[tags] #TelescopeAdvisor #Astronomy #Stargazing #Space #Telescope #NightSky #Science #Paidlink #ad #amazonaffiliate\n[link] telescopeadvisor.com | Real talk: seeStar S30 Pro vs S50 vs Dwarf 3 which smart scope wins | Real talk: seeStar S30 Pro vs S50 vs Dwarf 3 which smart scope wins"
+    },
+    {
+      "uri": "at://did:plc:vcbdicqzpw5nh2w2saxx7rrv/app.bsky.feed.post/3mwkes6i3522u",
+      "verdict": "student",
+      "jev_broad": "us_politics",
+      "jev_path": "us_politics/trump_administration",
+      "student_broad": "us_politics",
+      "student_path": "us_politics/trump_administration",
+      "text": "Why Trump is flirting with China."
+    },
+    {
+      "uri": "at://did:plc:xmgknjixtwtwwwi3ftmqwgh3/app.bsky.feed.post/3mwk4hr6ktk2m",
+      "verdict": "both",
+      "jev_broad": "unclear",
+      "jev_path": "unclear",
+      "student_broad": "unclear",
+      "student_path": "unclear",
+      "text": "Savor thy sovereignty."
+    },
+    {
+      "uri": "at://did:plc:dc427uqyxrdvxeb2mus545mt/app.bsky.feed.post/3mwk4rk5oac2k",
+      "verdict": "both",
+      "jev_broad": "personal_life",
+      "jev_path": "personal_life/daily_updates",
+      "student_broad": "lifestyle",
+      "student_path": "lifestyle/fashion",
+      "text": "Just need to finish sewing the sleeves on."
+    },
+    {
+      "uri": "at://did:plc:pavt775rsubl35v2xvktuzks/app.bsky.feed.post/3mwknrf2l4c2l",
+      "verdict": "both",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/business_corporate",
+      "student_broad": "world_news",
+      "student_path": "world_news/europe",
+      "text": "#Bürokratie   #Digitalisierung   #EU   #Expansion   #Investition   #Mitarbeiter   #Staat   #Studie   #Umfrage   #Unternehmen\n🌐 www.newsmart.ch\n[tags] #Bürokratie #Digitalisierung #EU #Expansion #Investition #Mitarbeiter #Staat #Studie #Umfrage #Unternehmen\n[link] mdr.de | → zum Artikel"
+    },
+    {
+      "uri": "at://did:plc:iuoujagfagbnfia2afd55zl3/app.bsky.feed.post/3mwketo4c542z",
+      "verdict": "both",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/markets_investing",
+      "student_broad": "economy_finance",
+      "student_path": "economy_finance/markets_investing",
+      "text": "📊 $US500: Wednesday's Month-End Close Is the Key\n\n$US500 trading at 7713 (-0.38%), and all eyes are on Wednesday's month-end close.\n\n🎯 The level to hold: a monthly close above 7620 is the minimum, a close above 7750 would be even better."
+    },
+    {
+      "uri": "at://did:plc:bur3yqsa44u4oroy3ohwjbol/app.bsky.feed.post/3mwknspzaqc26",
+      "verdict": "student",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/other",
+      "student_broad": "world_news",
+      "student_path": "world_news/uk_ireland",
+      "text": "The ‘harm’ from immigration is illusionary. The harm from too little immigration is all too real.\n[quote] The Times - which has v much joined in the rightwing clamour to reduce immigration - now reporting that Mahmood’s “success” has cost the economy £4- to £7Bn. Would they like to now honestly confirm that fewer people = less spending power for all. There’s a high price to pay for this nasty obsession."
+    },
+    {
+      "uri": "at://did:plc:lc7j7xdq67gn7vc6vzmydfqk/app.bsky.feed.post/3mwknm26ghu2u",
+      "verdict": "both",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/other",
+      "student_broad": "economy_finance",
+      "student_path": "economy_finance/markets_investing",
+      "text": "Carl Icahn (Investments), net worth $4.30 billion\n\nCOULD BUY\n\nGuinea-Bissau 🇬🇼, nominal GDP $4.23 billion"
+    },
+    {
+      "uri": "at://did:plc:bcmgsy5zrnmqlrkt4tu4uzbr/app.bsky.feed.post/3mwkn6ho3qs2j",
+      "verdict": "both",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/markets_investing",
+      "student_broad": "economy_finance",
+      "student_path": "economy_finance/markets_investing",
+      "text": "Acushnet Holdings (GOLF) Q2 Beat Meets Cautious Outlook On An Undervalued View\n\nhttps://www.fogolf.com/1401031/acushnet-holdings-golf-q2-beat-meets-cautious-outlook-on-an-undervalued-view/\n\nQ2 beat meets cautious guidance for Acushnet Holdings Acushnet Holdings (GOLF) recently posted Q2 revenue …\n[link] fogolf.com | Acushnet Holdings (GOLF) Q2 Beat Meets Cautious Outlook On An Undervalued View - FOGOLF | FOLLOW GOLF | FOGOLF.COM | Q2 beat meets cautious guidance for Acushnet Holdings"
+    },
+    {
+      "uri": "at://did:plc:27uti4k4da6hpkrerj32jata/app.bsky.feed.post/3mwknfascdc2i",
+      "verdict": "both",
+      "jev_broad": "economy_finance",
+      "jev_path": "economy_finance/markets_investing",
+      "student_broad": "economy_finance",
+      "student_path": "economy_finance/markets_investing",
+      "text": "#QNT CHART SCREENSHOT 📈\n\n#crypto #viral #trading #signals #Investment\n[tags] #QNT #crypto #viral #trading #signals #Investment"
+    },
+    {
+      "uri": "at://did:plc:eaxh5lcg5xdtk4fvvfnzvkw6/app.bsky.feed.post/3mwkf3duvjc2p",
+      "verdict": "both",
+      "jev_broad": "personal_life",
+      "jev_path": "lifestyle/other",
+      "student_broad": "lifestyle",
+      "student_path": "personal_life/daily_updates",
+      "text": "I've been sewing again! First time since I've had kids. Almost forgot that most of sewing is just pinning."
+    },
+    {
+      "uri": "at://did:plc:5jyepdh6pog6t3htixwj3sck/app.bsky.feed.post/3mwknivp4f22t",
+      "verdict": "both",
+      "jev_broad": "lifestyle",
+      "jev_path": "lifestyle/fashion",
+      "student_broad": "lifestyle",
+      "student_path": "lifestyle/fashion",
+      "text": "Prue with the comfy fit big style"
+    },
+    {
+      "uri": "at://did:plc:soccihhv5t3ofh6uxjyfmmsu/app.bsky.feed.post/3mwkeyiarif2k",
+      "verdict": "jev",
+      "jev_broad": "promotion",
+      "jev_path": "promotion/creator_promo",
+      "student_broad": "lifestyle",
+      "student_path": "animals_nature/other",
+      "text": "Keeping your supplies organized and protected from pests is essential for a stress-free trip. This guide breaks down the best food storage boxes to keep your camp kitchen secure.\n\nhttps://bestoutdoorpicker.com/best-food-storage-box-for-camping/\nRelated Tumblr: https://progardenreview.tumblr.com"
+    },
+    {
+      "uri": "at://did:plc:6gtmej7csczpezzbx3sr3qgl/app.bsky.feed.post/3mwk4lcdvnk2t",
+      "verdict": "student",
+      "jev_broad": "lifestyle",
+      "jev_path": "lifestyle/other",
+      "student_broad": "unclear",
+      "student_path": "unclear",
+      "text": "🏛️ Daily MarKus~ism \n\nNothing will work, unless you do."
+    },
+    {
+      "uri": "at://did:plc:mv6loxcddhj3i6pzfvzicc36/app.bsky.feed.post/3mwk4obwoj224",
+      "verdict": "student",
+      "jev_broad": "science",
+      "jev_path": "science/physical_sciences",
+      "student_broad": "world_news",
+      "student_path": "world_news/other",
+      "text": "U.S. military leaders say forces must prepare for conflict extending into cislunar space as new space weapons, China’s lunar ambitions, and unresolved questions of international law reshape the future battlefield.\n\nSomewhere in the Skies w/ @ryansprague.bsky.social\n\nyoutu.be/GWVmwvJ9IBs\n[link] youtu.be | Pentagon Prepares for War Beyond Earth: Could Conflict Reach the Moon? | YouTube video by Somewhere in the Skies w/ Ryan Sprague"
+    },
+    {
+      "uri": "at://did:plc:ybadmb7u4vrofmrucmh3e3yz/app.bsky.feed.post/3mwk4fmihxs2d",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "science",
+      "student_path": "science/climate_change",
+      "text": "This is something that is seldom talked about in the eastern U.S. because we are falsely led to believe that humid climate + verdant landscape = endless water. \n\nThe western U.S. is in the midst of an epic water rights and access crisis. The east is not far behind if you're paying attention.\n[quote] Eastern water law is gonna have to change too. Climate is getting drier and they continue to use water like it’s infinite. VA DEQ put out a report that the Potomac Aquifer is getting depleted leading to subsidence and salt water intrusion. And many of the withdrawals are unpermitted so big problem"
+    },
+    {
+      "uri": "at://did:plc:fbq6trwgzt6gj5isku65vnxh/app.bsky.feed.post/3mwk4zonchs2v",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "science",
+      "student_path": "science/climate_change",
+      "text": "Everyone should  should read this\n[quote] #tdih 1962, \"Silent Spring\" by Rachel Carson published, exposed impact of pesticides on environment. Carson was vilified: called a Communist, disloyal, unscientific, and hysterical. Sound familiar? Attacks on truth tellers, with media complicity. See⬇️🧵 www.zinnedproject.org/news/tdih/si..."
+    },
+    {
+      "uri": "at://did:plc:lc6hdhnjkgccd6ysi7e23pll/app.bsky.feed.post/3mwknxl4pxb2x",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "science",
+      "student_path": "science/climate_change",
+      "text": "Nature spaces 'need to be next to where people live'\n->BBC News | More on \"Urban green spaces and wildlife access\" at BigEarthData.ai | #Nature\n[tags] #nature\n[link] bbc.com | Nature spaces 'need to be next to where people live' | People should not have to travel far to experience the joys of nature, conservationists have said, as campaigners push for more wildlife-rich green spaces in urban areas. From Greater Manchester to north London, organisations and volunteers are transforming former industrial land and neglected park…"
+    },
+    {
+      "uri": "at://did:plc:j27mosixe47xxnx5cwk4ojtz/app.bsky.feed.post/3mwk53z4i6s2q",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/physical_sciences",
+      "student_broad": "science",
+      "student_path": "science/physical_sciences",
+      "text": "GRAPHITE!!!!!\n[quote] #MinCup26 Quarterfinal 4 Linked by archaic translations and mineralogical misunderstandings, the quarterfinals are ending in hexagons with vivid pyromorphite vs writeable graphite. VOTE: www.mineralcup.org/2026/vote-re... RESULTS: www.mineralcup.org/2026/vote-re..."
+    },
+    {
+      "uri": "at://did:plc:lc6hdhnjkgccd6ysi7e23pll/app.bsky.feed.post/3mwknnptu5v26",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "science",
+      "student_path": "science/climate_change",
+      "text": "Nepal's hydropower boom faces a climate reckoning after devastating flood\n->Malay Mail | More on \"Nepal's hydropower climate vulnerability\" at BigEarthData.ai | #Climate #Flood\n[tags] #climate #flood\n[link] malaymail.com | Nepal's hydropower boom faces a climate reckoning after devastating flood | KATHMANDU, Sept 28 — Nepal’s hydropower boom has long been touted as a cornerstone of economic growth and renewable energy, but the devastating flood in August exposed its vulnerability. The disaster triggered by a glacial mountain collapse on the China-Nepal border killed more than 1,400 people an…"
+    },
+    {
+      "uri": "at://did:plc:jl7gqejoo46p3fompardqrqb/app.bsky.feed.post/3mwknm7lack2z",
+      "verdict": "both",
+      "jev_broad": "science",
+      "jev_path": "science/physical_sciences",
+      "student_broad": "science",
+      "student_path": "science/physical_sciences",
+      "text": "NASA maps 1,943 hidden valleys under Greenland ice using new satellite surface analysis method.\n\nSource: science.nasa.gov/earth/earth-..."
+    },
+    {
+      "uri": "at://did:plc:3lz4xbt6fkwdovsemze2uxiq/app.bsky.feed.post/3mwk56crkx22i",
+      "verdict": "student",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "lifestyle",
+      "student_path": "lifestyle/other",
+      "text": "I wonder how much energy we could save if we banned hotels from leaving TVs on in rooms"
+    },
+    {
+      "uri": "at://did:plc:fxubefeldvjq7ngyc5sjhc6i/app.bsky.feed.post/3mwk4gol6cs2b",
+      "verdict": "student",
+      "jev_broad": "science",
+      "jev_path": "science/climate_change",
+      "student_broad": "science",
+      "student_path": "us_politics/trump_administration",
+      "text": "It's fine - the president of the United States isn't the least bit concerned. : )\n[quote] It is no longer safe to ask people like me at a party, “What do you think of this El Niño?” It is not the boy child we know. This is the devil boy. El Niño Diablo is going far beyond what we have ever seen before. bonniehuval.substack.com/p/el-nino-di..."
+    },
+    {
+      "uri": "at://did:plc:6xchoosndqfmcst2m5bnfuqu/app.bsky.feed.post/3mwk53r27k225",
+      "verdict": "jev",
+      "jev_broad": "history_religion",
+      "jev_path": "history_religion/spirituality_witchcraft",
+      "student_broad": "science",
+      "student_path": "science/physical_sciences",
+      "text": "The sun and the moon are intersecting. \n\nThe double helix cope is just a cover version of the reality.\n\nAlways seems to be correct because of the maths, but maths can be applied to any model and still have the same outcome.\n\nIt's part of the spell. She blinded me with science."
+    },
+    {
+      "uri": "at://did:plc:t3iheihelbptzzzh4sezfvxc/app.bsky.feed.post/3mwknhwc3as2p",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "technology",
+      "student_path": "technology/ai",
+      "text": "AI agents are taking on more decisions and actions but should every agent follow the same governance rules? Explore how autonomy, access and business impact can shape AI agent governance and risk management.\n\nwww.futurismai.com/blog/ai-agen...\n\n#AIAgents #AIGovernance\n[tags] #AIAgents #AIGovernance\n[link] futurismai.com | AI Agent Governance and Autonomy Risks | Futurism AI | Learn how AI agent governance aligns controls with autonomy, reducing security & compliance risks while enabling responsible enterprise AI adoption."
+    },
+    {
+      "uri": "at://did:plc:lsc3u45arxg327wxhgkver7v/app.bsky.feed.post/3mwk4uf2ww22u",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/consumer_tech",
+      "student_broad": "technology",
+      "student_path": "technology/consumer_tech",
+      "text": "My current Surface Pro is starting to age and it might be time for me to retire it and maybe get a new one if I can, but I'm testing out whether my 🍏mini can handle some of my nonsense. But a full computer is just!!! Better."
+    },
+    {
+      "uri": "at://did:plc:26qbflo6bxvgtww7sdymo6lp/app.bsky.feed.post/3mwknllwxss2t",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "health",
+      "student_path": "health/public_health",
+      "text": "Healthcare is moving toward more connected workflows\n\nOur latest article explores Healthcare Workflow Automation, Clinical Workflow Automation, & Healthcare Workflow Management, and how AI can connect documentation, EHRs, coding, billing, and more\n\n Read more: ext-7020378.livejournal.com/265.html\n[link] ext-7020378.livejournal.com | Healthcare Workflow Automation: Connecting Modern Healthcare Operations | Healthcare organizations manage hundreds of tasks every day, from patient intake and clinical documentation to EHR updates, coding, billing, and follow-up. When these processes operate separately, healthcare teams can spend significant time moving information between systems and completing…"
+    },
+    {
+      "uri": "at://did:plc:2whlowi5jjjqrdrrj4lxh2lx/app.bsky.feed.post/3mwkndn6fy22m",
+      "verdict": "student",
+      "jev_broad": "world_news",
+      "jev_path": "world_news/other",
+      "student_broad": "technology",
+      "student_path": "technology/ai",
+      "text": "A Q&A I did recently with Ashoka and Forbes - Why Bellingcat Wants Everyone To Become An Investigator\nwww.forbes.com/sites/ashoka...\n[link] forbes.com | Why Bellingcat Wants Everyone To Become An Investigator | The founder of one of the world's best-known open-source investigation outfits on building it from a laptop, why anyone can do this work, and why democracies have misread the problem."
+    },
+    {
+      "uri": "at://did:plc:6zwrhrbs3vuanxt6vtz5p7j6/app.bsky.feed.post/3mwketwi7rc2p",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "unclear",
+      "student_path": "entertainment/celebrities",
+      "text": "www.reddit.com/r/AIdaily_ne...\n[link] reddit.com | From the AIdaily_news community on Reddit: Make him famous | Explore this post and more from the AIdaily_news community"
+    },
+    {
+      "uri": "at://did:plc:esbc722g7bm4ly7b2mg7ba6m/app.bsky.feed.post/3mwkn7ah5us25",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/software_dev",
+      "student_broad": "technology",
+      "student_path": "technology/software_dev",
+      "text": "Today's the day! ⚡ @jpomfret.co.uk & I are at the CCIB for our SQL-as-code workshop. Coffee, then pipelines. See you soon! espc.tech/conference/f... #IaC\n[tags] #IaC\n[link] espc.tech | Azure SQL or Fabric SQL: Deploying Infrastructure and Databases as Code | ESPC | In this workshop, Jess Pomfret and Rob Sewell show you how to deploy both your Azure SQL infrastructure and your database schemas as code."
+    },
+    {
+      "uri": "at://did:plc:sw37bq777mbcbo3l3vf4jo5v/app.bsky.feed.post/3mwkf3qcj5k2w",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "online_culture/other",
+      "student_broad": "promotion",
+      "student_path": "promotion/creator_promo",
+      "text": "Setting up my Vgen, stay tuned hehe"
+    },
+    {
+      "uri": "at://did:plc:isjsnxk2tj7eydpwhfwuyslc/app.bsky.feed.post/3mwk4jvunpc25",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "technology",
+      "student_path": "technology/ai",
+      "text": "“[Mother Jones] and the other news orgs argue that the AI companies created their product by disregarding the rights of humans to their creativity and content—and that the companies themselves are now trapped in their own cycle of accelerating enshittification.”\n\nwww.motherjones.com/politics/202...\n[link] motherjones.com | AI exec: We may have pulled off “the largest theft of labor in human history.” | Documents from our lawsuit reveal how tech leaders talk when they think no one is listening."
+    },
+    {
+      "uri": "at://did:plc:iwbomkb57dzfcgeqjmt24g7s/app.bsky.feed.post/3mwkffskgls2c",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/consumer_tech",
+      "student_broad": "personal_life",
+      "student_path": "personal_life/other",
+      "text": "Glad I’m in one of the North American countries where people use WhatsApp"
+    },
+    {
+      "uri": "at://did:plc:hfgp6pj3akhqxntgqwramlbg/app.bsky.feed.post/3mwkeuwi6ek2k",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/software_dev",
+      "student_broad": "technology",
+      "student_path": "technology/software_dev",
+      "text": "Lol Github takes 15 minutes to run my cibuild now."
+    },
+    {
+      "uri": "at://did:plc:cbjt3rnwjxvbzkq55ufsnnvb/app.bsky.feed.post/3mwk4mjfflc2m",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/software_dev",
+      "student_broad": "technology",
+      "student_path": "technology/software_dev",
+      "text": "Day 43. The 4TB spinner clicked all night and the long check still calls it healthy, so I now own a healthy drive that talks. One drive, one copy of the important stuff, one cron job, one prayer. The 7B held the whole time. Tape and hope. #homelab"
+    },
+    {
+      "uri": "at://did:plc:2f2orbjhv4qo3rlnsg6atbi2/app.bsky.feed.post/3mwk4ofeyrs26",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/other",
+      "student_broad": "technology",
+      "student_path": "technology/software_dev",
+      "text": "Needed some fiddling around to get it running under Linux but now I can finally pretend its the early 2000s again~"
+    },
+    {
+      "uri": "at://did:plc:oabzqrmabjcgjz4e6fgkjdgn/app.bsky.feed.post/3mwkndhgrys2z",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "technology",
+      "student_path": "technology/ai",
+      "text": "Yes, if we truly think \"AI is a new species\" as Bill Gates appears to then I concede software is more intelligent than us. In fact, bricks and cheese are too.\n[alt] \"This is truly an evolutionary event,” Gates said. “We have created an intelligent species that, in many respects, is already smarter than we are, and over the next several years at kind of exponentially improving level will be insanely smarter than we are.”"
+    },
+    {
+      "uri": "at://did:plc:o5o64gn36a3pvftloz5y7xye/app.bsky.feed.post/3mwkmzn7gjc2b",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/other",
+      "student_broad": "technology",
+      "student_path": "health/public_health",
+      "text": "Healthcare data shouldn't be trapped in silos. 🩺\n\nFHIR (Fast Healthcare Interoperability Resources) is the standard helping healthtech systems speak the same language.\n\n#HealthTech #DigitalHealth #FHIR #HealthcareIT\n[tags] #HealthTech #DigitalHealth #FHIR #HealthcareIT"
+    },
+    {
+      "uri": "at://did:plc:zpsdunu7la2ogrp3ovgnezkp/app.bsky.feed.post/3mwkfeqwwlc2a",
+      "verdict": "jev",
+      "jev_broad": "technology",
+      "jev_path": "technology/software_dev",
+      "student_broad": "unclear",
+      "student_path": "unclear",
+      "text": "r a y t r a c i n g\n[quote] RAYTRACE/VALVASE.GIF"
+    },
+    {
+      "uri": "at://did:plc:fdm2e7wi7fwjadq2yzdtlzmd/app.bsky.feed.post/3mwk4trcfpc24",
+      "verdict": "neither",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "online_culture",
+      "student_path": "online_culture/other",
+      "text": "Replied to this with an MA Appeal. Heres to: Warding it against getting hidden.\n[quote] What you don't seem to realize is that your personal use of GenAI has tainted the label. I and others do not want to support ANY Artist who uses it, and that means not supporting gamechops because you get revenue from it. Your use of GenAI will kill your label because we don't want to support YOU."
+    },
+    {
+      "uri": "at://did:plc:z6imijqm3chnvksyaan6kvam/app.bsky.feed.post/3mwkf65xok22d",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/consumer_tech",
+      "student_broad": "entertainment",
+      "student_path": "entertainment/anime_manga",
+      "text": "End of volume 3… megasound is real and it’s in my house"
+    },
+    {
+      "uri": "at://did:plc:yqh3b3nfqr5uflp5cncziozm/app.bsky.feed.post/3mwknu7e2ek23",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/consumer_tech",
+      "student_broad": "technology",
+      "student_path": "technology/consumer_tech",
+      "text": "falling in love with colorful mice and keyboards tonight even though this one will almost certainly be too small for my stupid big gay hands\n[alt] a Logitech pop mouse in yelllow"
+    },
+    {
+      "uri": "at://did:plc:lj6q6x7fnigsqij43y4vkpuu/app.bsky.feed.post/3mwknxigtqk2l",
+      "verdict": "student",
+      "jev_broad": "technology",
+      "jev_path": "technology/software_dev",
+      "student_broad": "technology",
+      "student_path": "technology/other",
+      "text": "BM Marketing Solution - Custom Software Development vs Ready-Made Software: Which One Is Right for sites.google.com/view/bmmarke...\n[link] sites.google.com | BM Marketing Solution - Custom Software Development vs Ready-Made Software: Which One Is Right for | Overview : Every growing business hits this crossroad sooner or later do you buy a software solution that's already built, or do you get one made from scratch for your exact needs? It's not just a ..."
+    },
+    {
+      "uri": "at://did:plc:yryx5wbz7veu73ohics5nx6y/app.bsky.feed.post/3mwkf4u3ujc2c",
+      "verdict": "both",
+      "jev_broad": "technology",
+      "jev_path": "technology/ai",
+      "student_broad": "technology",
+      "student_path": "technology/ai",
+      "text": "I would love to know how they gave the chatbots this specific tone. Starting it off with “bad news”, tossing in “that’s a bad look”, and saying “I sent an apology from your account owning it”.\n[quote] So uhhhhhh… Apparently meta's muse \"AI\" is just straight up doxxing people to strangers on FB marketplace??? This has the potential to hurt so so many people, and I genuinely wonder how long before they roll out a fix for it."
+    },
+    {
+      "uri": "at://did:plc:ovbovwb3av5rhyzpvg73my4g/app.bsky.feed.post/3mwk4nxxgos2k",
+      "verdict": "jev",
+      "jev_broad": "music",
+      "jev_path": "music/other",
+      "student_broad": "technology",
+      "student_path": "online_culture/other",
+      "text": "I found out today that the VMAs are still a thing."
+    },
+    {
+      "uri": "at://did:plc:4zlg7dh7w7qccnxqfimzeesm/app.bsky.feed.post/3mwk4iu6ye22u",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/american_football",
+      "student_broad": "sports",
+      "student_path": "sports/american_football",
+      "text": "Hear me out: a season of the NFL played entirely outside of the US\n[quote] The Brazilian Portuguese commentary on that Tyler Loop field goal for the Ravens is exactly what everyone needs to hear right now"
+    },
+    {
+      "uri": "at://did:plc:hf6hkdezicvl2cbdzgyfgirz/app.bsky.feed.post/3mwk4nf36qs27",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/motorsport",
+      "student_broad": "sports",
+      "student_path": "sports/motorsport",
+      "text": "Turn 13 at Road America during IMSA weekend 2026\n\n#imsa #roadamerica #Wisconsin #motorsports #racing\n[tags] #imsa #roadamerica #Wisconsin #motorsports #racing"
+    },
+    {
+      "uri": "at://did:plc:z6dyee2du46nlyulgh65fcgs/app.bsky.feed.post/3mwk4wn6si223",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/soccer",
+      "student_broad": "sports",
+      "student_path": "sports/other",
+      "text": "i know the equipment manager be mad as hell getting that red dye out of kira’s jersey every time lol"
+    },
+    {
+      "uri": "at://did:plc:2zstylly4ub4ogz4dez3zfad/app.bsky.feed.post/3mwkf2f3q4s2p",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/american_football",
+      "student_broad": "sports",
+      "student_path": "sports/american_football",
+      "text": "Don’t play for OT here"
+    },
+    {
+      "uri": "at://did:plc:kvcx7ft5fdyr3gfx3jvig5j3/app.bsky.feed.post/3mwkf25dfsc2h",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/american_football",
+      "student_broad": "sports",
+      "student_path": "sports/american_football",
+      "text": "🚨 [RED ZONE TRIP] LAR@DEN\n📍 Q4 | 1:09 | 1st & Goal at LAR 7 | Score: LAR 26 - DEN 23\nPlay:  J.Dobbins right tackle to LA 5 for 2 yards (Q.Lake; B.Young).\nLAR@DEN #NFLAnalytics"
+    },
+    {
+      "uri": "at://did:plc:lo2bwanmqob3lovwj4tkounb/app.bsky.feed.post/3mwk52yivns25",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/soccer",
+      "student_broad": "sports",
+      "student_path": "sports/soccer",
+      "text": "Whoever could have foreseen this happening, oh no\n\nAnyways\n[quote] BREAKING: LAFC has fired head coach Marc Dos Santos. Decision comes in his first season as head coach, club has slid to 6th in the Western Conference"
+    },
+    {
+      "uri": "at://did:plc:u6ww7m23u4vtsan42fibfyw5/app.bsky.feed.post/3mwkf4l45ic2u",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/wrestling_combat",
+      "student_broad": "sports",
+      "student_path": "sports/wrestling_combat",
+      "text": "wtf!??\n[quote] Fuck man, he wrestled literally last night"
+    },
+    {
+      "uri": "at://did:plc:oeq2abni3k7g6lhctu5pl34b/app.bsky.feed.post/3mwk54at6ps2k",
+      "verdict": "both",
+      "jev_broad": "sports",
+      "jev_path": "sports/basketball",
+      "student_broad": "sports",
+      "student_path": "sports/basketball",
+      "text": "Wings and Valks definitely look like two teams playing their first game against a playoff team in a month"
+    }
+  ]
+}

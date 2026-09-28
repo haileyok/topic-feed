@@ -58,7 +58,7 @@ def main():
     path = fit_predict(x_tr, tr.path.argmax(1), x_te, len(space.paths))
     print(f"fit in {time.time() - t0:.0f}s")
 
-    m = common.evaluate(space, broad, path, te)
+    m = common.evaluate(space, broad, path, te, eq=common.Equivalence.for_taxonomy(a.taxonomy, space))
     m["split"] = info
     m["embed_model"] = EMBED_MODEL
     os.makedirs(a.out, exist_ok=True)
