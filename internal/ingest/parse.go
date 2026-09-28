@@ -1,0 +1,309 @@
+package ingest
+
+import (
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/bluesky-social/jetstream"
+)
+
+const (
+	collPost   = "app.bsky.feed.post"
+	collLike   = "app.bsky.feed.like"
+	collRepost = "app.bsky.feed.repost"
+)
+
+// Collections is the Jetstream collection filter for ingest. Account events come
+// through regardless of the filter.
+var Collections = []string{collPost, collLike, collRepost}
+
+// Outcome of handling one post create, for metrics.
+const (
+	PostKept           = "kept"
+	PostReply          = "reply"
+	PostNotTaggedEn    = "not_tagged_en"
+	PostDetectorReject = "detector_disagrees"
+)
+
+// Parser turns Jetstream events into table rows.
+type Parser struct {
+	Lang *LangChecker
+	// Texts, when set, receives the text of every post create (any language, replies
+	// included) so quoted posts can be resolved without a database round trip.
+	Texts *TextCache
+}
+
+// Result describes what Handle did with one event, for metrics.
+type Result struct {
+	Collection  string // commit collection, or "account"/"identity"/"sync"
+	Operation   string // create/update/delete for commits
+	PostOutcome string // set for post creates
+}
+
+// Handle appends the rows produced by ev to rows.
+func (p *Parser) Handle(ev *jetstream.Event, rows *Rows) Result {
+	at := time.UnixMicro(ev.TimeUS).UTC()
+	switch ev.Kind {
+	case jetstream.KindAccount:
+		if a := ev.Account; a != nil {
+			rows.Accounts = append(rows.Accounts, AccountRow{DID: ev.DID, Active: b2u(a.Active), Status: a.Status, IndexedAt: at})
+		}
+		return Result{Collection: "account"}
+	case jetstream.KindCommit:
+		// handled below
+	default:
+		return Result{Collection: string(ev.Kind)}
+	}
+
+	c := ev.Commit
+	if c == nil {
+		return Result{}
+	}
+	res := Result{Collection: c.Collection, Operation: string(c.Operation)}
+	uri := "at://" + ev.DID + "/" + c.Collection + "/" + c.Rkey
+
+	switch c.Operation {
+	case jetstream.OpDelete:
+		switch c.Collection {
+		case collPost, collLike, collRepost:
+			rows.Deletions = append(rows.Deletions, DeletionRow{DID: ev.DID, Collection: c.Collection, Rkey: c.Rkey, URI: uri, IndexedAt: at})
+		}
+		return res
+	case jetstream.OpCreate:
+		// handled below
+	default:
+		// Updates are rare for these collections and are ignored for now.
+		return res
+	}
+
+	rec := c.Record
+	switch c.Collection {
+	case collLike, collRepost:
+		row := LikeRow{
+			ActorDID:   ev.DID,
+			Rkey:       c.Rkey,
+			SubjectURI: str(mapv(rec, "subject"), "uri"),
+			CreatedAt:  parseTime(str(rec, "createdAt"), at),
+			IndexedAt:  at,
+		}
+		if row.SubjectURI == "" {
+			return res
+		}
+		if c.Collection == collLike {
+			rows.Likes = append(rows.Likes, row)
+		} else {
+			rows.Reposts = append(rows.Reposts, row)
+		}
+	case collPost:
+		res.PostOutcome = p.handlePost(ev.DID, c, uri, at, rec, rows)
+	}
+	return res
+}
+
+func (p *Parser) handlePost(did string, c *jetstream.Commit, uri string, at time.Time, rec map[string]any, rows *Rows) string {
+	text := str(rec, "text")
+	rows.PostTexts = append(rows.PostTexts, PostTextRow{URI: uri, Text: text, IndexedAt: at})
+	if p.Texts != nil {
+		p.Texts.Put(uri, text)
+	}
+
+	if rec["reply"] != nil {
+		return PostReply
+	}
+	langs := strs(rec, "langs")
+	verdict := p.Lang.Check(text, langs)
+	if !verdict.Keep {
+		return verdict.Reason
+	}
+
+	row := PostRow{
+		URI:          uri,
+		DID:          did,
+		Rkey:         c.Rkey,
+		CID:          c.CID,
+		CreatedAt:    parseTime(str(rec, "createdAt"), at),
+		IndexedAt:    at,
+		Text:         text,
+		Langs:        langs,
+		DetectedLang: verdict.Detected,
+		EmbedType:    "none",
+		MediaAlts:    []string{},
+		Tags:         []string{},
+		LinkDomains:  []string{},
+	}
+	extractEmbed(mapv(rec, "embed"), &row)
+	extractFacets(rec, &row)
+	if labels := mapv(rec, "labels"); labels != nil && len(slice(labels, "values")) > 0 {
+		row.HasLabels = 1
+	}
+	rows.Posts = append(rows.Posts, row)
+	return PostKept
+}
+
+// extractEmbed fills the embed columns from a post's embed (plan §9.1 step 3).
+func extractEmbed(embed map[string]any, row *PostRow) {
+	if embed == nil {
+		return
+	}
+	typ := str(embed, "$type")
+	switch typ {
+	case "app.bsky.embed.images":
+		row.EmbedType = "images"
+		addImageAlts(embed, row)
+	case "app.bsky.embed.video":
+		row.EmbedType = "video"
+		addAlt(str(embed, "alt"), row)
+	case "app.bsky.embed.external":
+		row.EmbedType = "external"
+		addExternal(mapv(embed, "external"), row)
+	case "app.bsky.embed.record":
+		row.EmbedType = "record"
+		setQuote(mapv(embed, "record"), row)
+	case "app.bsky.embed.recordWithMedia":
+		row.EmbedType = "recordWithMedia"
+		// The quoted record is nested one level deeper: {record: {record: {uri, cid}}}.
+		setQuote(mapv(mapv(embed, "record"), "record"), row)
+		media := mapv(embed, "media")
+		switch str(media, "$type") {
+		case "app.bsky.embed.images":
+			addImageAlts(media, row)
+		case "app.bsky.embed.video":
+			addAlt(str(media, "alt"), row)
+		case "app.bsky.embed.external":
+			addExternal(mapv(media, "external"), row)
+		}
+	default:
+		if typ != "" {
+			row.EmbedType = "other"
+		}
+	}
+}
+
+func addImageAlts(embed map[string]any, row *PostRow) {
+	for _, img := range slice(embed, "images") {
+		if m, ok := img.(map[string]any); ok {
+			addAlt(str(m, "alt"), row)
+		}
+	}
+}
+
+func addAlt(alt string, row *PostRow) {
+	if alt = strings.TrimSpace(alt); alt != "" {
+		row.MediaAlts = append(row.MediaAlts, alt)
+	}
+}
+
+func addExternal(ext map[string]any, row *PostRow) {
+	if ext == nil {
+		return
+	}
+	row.LinkURI = str(ext, "uri")
+	row.LinkDomain = domainOf(row.LinkURI)
+	row.LinkTitle = str(ext, "title")
+	row.LinkDescription = str(ext, "description")
+}
+
+// setQuote records the quoted post's URI. Quotes of other record types (feeds,
+// lists, starter packs) are not posts and are skipped.
+func setQuote(ref map[string]any, row *PostRow) {
+	uri := str(ref, "uri")
+	if strings.Contains(uri, "/"+collPost+"/") {
+		row.QuoteURI = uri
+	}
+}
+
+// extractFacets collects hashtags and link domains from facets, plus the record's
+// top-level `tags` field.
+func extractFacets(rec map[string]any, row *PostRow) {
+	seenTag := map[string]bool{}
+	addTag := func(t string) {
+		t = strings.TrimLeft(strings.TrimSpace(t), "#")
+		if t != "" && !seenTag[strings.ToLower(t)] {
+			seenTag[strings.ToLower(t)] = true
+			row.Tags = append(row.Tags, t)
+		}
+	}
+	seenDomain := map[string]bool{}
+	for _, f := range slice(rec, "facets") {
+		fm, _ := f.(map[string]any)
+		for _, feat := range slice(fm, "features") {
+			ft, _ := feat.(map[string]any)
+			switch str(ft, "$type") {
+			case "app.bsky.richtext.facet#tag":
+				addTag(str(ft, "tag"))
+			case "app.bsky.richtext.facet#link":
+				if d := domainOf(str(ft, "uri")); d != "" && !seenDomain[d] {
+					seenDomain[d] = true
+					row.LinkDomains = append(row.LinkDomains, d)
+				}
+			}
+		}
+	}
+	for _, t := range strs(rec, "tags") {
+		addTag(t)
+	}
+}
+
+// domainOf returns the lowercased host of a URL without a leading "www.".
+func domainOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+}
+
+// parseTime parses a record's createdAt. Unparseable or missing values fall back to
+// the event time; createdAt is stored but never trusted.
+func parseTime(s string, fallback time.Time) time.Time {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999Z0700"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC()
+		}
+	}
+	return fallback
+}
+
+// Helpers for the generic, JSON-shaped records the SDK decodes.
+
+func mapv(m map[string]any, key string) map[string]any {
+	if m == nil {
+		return nil
+	}
+	v, _ := m[key].(map[string]any)
+	return v
+}
+
+func str(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, _ := m[key].(string)
+	return v
+}
+
+func slice(m map[string]any, key string) []any {
+	if m == nil {
+		return nil
+	}
+	v, _ := m[key].([]any)
+	return v
+}
+
+func strs(m map[string]any, key string) []string {
+	out := []string{}
+	for _, v := range slice(m, key) {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func b2u(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
+}
