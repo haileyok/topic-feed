@@ -1,0 +1,21 @@
+# Secrets live in ~/.config/topic-feed/env; never commit env files.
+.env
+*.env
+
+# Review reports contain post text.
+reports/
+
+# Local data, exports, and model files (these live under /data).
+data/
+exports/
+models/
+*.parquet
+*.onnx
+
+# Go
+/bin/
+
+# Python
+.venv/
+__pycache__/
+*.pyc

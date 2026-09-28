@@ -1,0 +1,24 @@
+<clickhouse>
+    <!-- The machine also trains on the GPU and serves the classifier; cap ClickHouse at 64GB of the 256GB. -->
+    <max_server_memory_usage>68719476736</max_server_memory_usage>
+
+    <logger>
+        <level>information</level>
+        <size>500M</size>
+        <count>5</count>
+    </logger>
+
+    <!-- Disk used by `BACKUP TABLE ... TO Disk('backups', '...')` for the nightly backup. -->
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/backups/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+        <allowed_path>/backups/</allowed_path>
+    </backups>
+</clickhouse>

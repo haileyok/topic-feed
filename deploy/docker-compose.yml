@@ -1,0 +1,36 @@
+# Local services for topic-feed. Run through the Makefile (`make up`), which passes
+# ~/.config/topic-feed/env as the env file so secrets never live in the repo.
+name: topic-feed
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.13.2  # LTS release; bump deliberately
+    container_name: topic-feed-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: topicfeed
+      CLICKHOUSE_USER: topicfeed
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in ~/.config/topic-feed/env}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      # Bound to localhost only; nothing outside this machine needs the database.
+      - "127.0.0.1:8123:8123"  # HTTP
+      - "127.0.0.1:9000:9000"  # native protocol (Go client)
+    volumes:
+      - /data/clickhouse/data:/var/lib/clickhouse
+      - /data/clickhouse/logs:/var/log/clickhouse-server
+      - /data/backups/clickhouse:/backups
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    cap_add:
+      - SYS_NICE
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user topicfeed --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
