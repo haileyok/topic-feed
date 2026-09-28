@@ -57,6 +57,11 @@ var (
 		Help: "Recoverable errors reported by the Jetstream client.",
 	})
 
+	metricRestarts = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ingest_stream_restarts_total",
+		Help: "Reconnects from the last written position after a stream error while replaying history.",
+	})
+
 	metricArchiveGap = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "ingest_archive_remaining_seqs",
 		Help: "Sealed-archive sequence numbers still to download before switching to live (0 once live).",

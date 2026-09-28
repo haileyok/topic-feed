@@ -30,12 +30,54 @@ type Ingester struct {
 	Log    *slog.Logger
 }
 
+// Archive downloads are metered: Bluesky's hosted instances allow a 1GB burst, then
+// refill at 2MB/s (from the headwind-quota-* response headers; not in the docs).
+// Downloading a few whole segments at a time, one range request each, stays close to
+// the refill rate instead of bursting past it.
+const (
+	downloadConcurrency = 2
+	segmentStripes      = 1
+	downloadAttempts    = 20
+)
+
+// While replaying history (more than this far behind live), any stream error
+// triggers a restart from the last written position. The SDK treats a failed
+// archive download as recoverable and skips past it, which would leave a hole.
+const replayingLag = time.Hour
+
+// errRestart asks Run to reconnect from the last written position.
+var errRestart = errors.New("restart stream")
+
 // Run consumes events until ctx is cancelled or the stream fails fatally.
 func (in *Ingester) Run(ctx context.Context) error {
 	after, skipBefore, err := in.startPoint(ctx)
 	if err != nil {
 		return err
 	}
+	backoff := time.Minute
+	for {
+		cursor, err := in.runOnce(ctx, after, skipBefore)
+		if !errors.Is(err, errRestart) {
+			return err
+		}
+		if cursor > after {
+			after = cursor
+			backoff = time.Minute // made progress since the last restart
+		}
+		in.Log.Warn("restarting stream from last written position", "after_seq", after, "wait", backoff.String())
+		metricRestarts.Inc()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 10*time.Minute)
+	}
+}
+
+// runOnce streams from after until ctx ends, a fatal error, or a restart is needed.
+// It returns the last sequence number whose rows are all written.
+func (in *Ingester) runOnce(ctx context.Context, after uint64, skipBefore time.Time) (uint64, error) {
 	in.Log.Info("starting stream", "after_seq", after, "skip_before", skipBefore)
 
 	client, err := jetstream.Subscribe(in.Cfg.JetstreamHost,
@@ -44,16 +86,19 @@ func (in *Ingester) Run(ctx context.Context) error {
 		jetstream.WithKinds([]jetstream.Kind{jetstream.KindCommit, jetstream.KindAccount}),
 		jetstream.WithAfterSeq(after),
 		jetstream.WithBatchSize(1024),
+		jetstream.WithDownloadConcurrency(downloadConcurrency),
+		jetstream.WithSegmentStripes(segmentStripes),
+		jetstream.WithMaxDownloadAttempts(downloadAttempts),
 		jetstream.WithLogger(in.Log.With("component", "jetstream")),
 	)
 	if err != nil {
-		return fmt.Errorf("subscribe: %w", err)
+		return after, fmt.Errorf("subscribe: %w", err)
 	}
 	defer client.Close()
 
 	var (
 		rows       Rows
-		lastCursor uint64
+		lastCursor = after // everything up to here is written
 		lastFlush  = time.Now()
 		lastEvent  time.Time
 		lastLog    = time.Now()
@@ -63,13 +108,21 @@ func (in *Ingester) Run(ctx context.Context) error {
 	for batch, err := range client.Events(ctx) {
 		if err != nil {
 			if errors.Is(err, jetstream.ErrFatal) {
-				return err
+				return lastCursor, err
 			}
 			if ctx.Err() != nil {
 				break
 			}
 			metricStreamErrors.Inc()
 			in.Log.Warn("stream error", "err", err)
+			if lastEvent.IsZero() || time.Since(lastEvent) > replayingLag {
+				// Errors arrive in order, so everything handled so far precedes the
+				// failed download. Write it, then reconnect from there.
+				if err := in.flushDetached(ctx, &rows, lastCursor); err != nil {
+					return lastCursor, err
+				}
+				return lastCursor, errRestart
+			}
 			continue
 		}
 		events := batch.Events()
@@ -97,7 +150,7 @@ func (in *Ingester) Run(ctx context.Context) error {
 
 		if rows.Len() >= in.Cfg.FlushRows || time.Since(lastFlush) >= in.Cfg.FlushEvery {
 			if err := in.flushDetached(ctx, &rows, lastCursor); err != nil {
-				return err
+				return lastCursor, err
 			}
 			lastFlush = time.Now()
 		}
@@ -119,10 +172,14 @@ func (in *Ingester) Run(ctx context.Context) error {
 	// Write whatever is pending on shutdown.
 	if rows.Len() > 0 && lastCursor > 0 {
 		if err := in.flushDetached(ctx, &rows, lastCursor); err != nil {
-			return err
+			return lastCursor, err
 		}
 	}
-	return ctx.Err()
+	if ctx.Err() != nil {
+		return lastCursor, ctx.Err()
+	}
+	// The iterator ended without cancellation; reconnect rather than exit.
+	return lastCursor, errRestart
 }
 
 // flushDetached runs a flush that a shutdown signal doesn't interrupt: once started,
