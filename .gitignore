@@ -19,3 +19,6 @@ models/
 .venv/
 __pycache__/
 *.pyc
+
+# Raw LLM outputs from tools/draft_taxonomy.py
+taxonomy/*.work/
