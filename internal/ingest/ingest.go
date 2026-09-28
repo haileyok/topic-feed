@@ -34,10 +34,14 @@ type Ingester struct {
 // refill at 2MB/s (from the headwind-quota-* response headers; not in the docs).
 // Downloading a few whole segments at a time, one range request each, stays close to
 // the refill rate instead of bursting past it.
+//
+// Don't use jetstream.WithMaxDownloadAttempts: in SDK v0.2.5 it builds a retry
+// policy with only the attempt count set, and the first retry panics reading the
+// unset base delay (atmos xrpc RetryPolicy.delay). The SDK's default policy (3
+// attempts with backoff) plus our restart-on-error below covers retries instead.
 const (
 	downloadConcurrency = 2
 	segmentStripes      = 1
-	downloadAttempts    = 20
 )
 
 // While replaying history (more than this far behind live), any stream error
@@ -88,7 +92,6 @@ func (in *Ingester) runOnce(ctx context.Context, after uint64, skipBefore time.T
 		jetstream.WithBatchSize(1024),
 		jetstream.WithDownloadConcurrency(downloadConcurrency),
 		jetstream.WithSegmentStripes(segmentStripes),
-		jetstream.WithMaxDownloadAttempts(downloadAttempts),
 		jetstream.WithLogger(in.Log.With("component", "jetstream")),
 	)
 	if err != nil {
