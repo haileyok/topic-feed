@@ -5,38 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
-
-// ClickHouseConfig holds connection settings.
-type ClickHouseConfig struct {
-	Addr     string // host:port of the native protocol
-	Database string
-	User     string
-	Password string
-}
-
-// OpenClickHouse opens and pings a native-protocol connection.
-func OpenClickHouse(ctx context.Context, cfg ClickHouseConfig) (driver.Conn, error) {
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{cfg.Addr},
-		Auth: clickhouse.Auth{Database: cfg.Database, Username: cfg.User, Password: cfg.Password},
-		Compression: &clickhouse.Compression{
-			Method: clickhouse.CompressionLZ4,
-		},
-		DialTimeout:     10 * time.Second,
-		MaxOpenConns:    8,
-		ConnMaxLifetime: time.Hour,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := conn.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("ping clickhouse: %w", err)
-	}
-	return conn, nil
-}
 
 // Writer inserts parsed rows and saves the stream position.
 type Writer struct {

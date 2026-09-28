@@ -28,6 +28,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/ingest"
 )
 
@@ -60,12 +61,7 @@ func run(log *slog.Logger) error {
 		}
 	}()
 
-	conn, err := ingest.OpenClickHouse(ctx, ingest.ClickHouseConfig{
-		Addr:     env("CLICKHOUSE_ADDR", "localhost:9000"),
-		Database: env("CLICKHOUSE_DB", "topicfeed"),
-		User:     env("CLICKHOUSE_USER", "topicfeed"),
-		Password: password,
-	})
+	conn, err := chdb.Open(ctx, chdb.FromEnv())
 	if err != nil {
 		return err
 	}
