@@ -1,0 +1,26 @@
+[project]
+name = "topic-feed-trainer"
+version = "0.1.0"
+description = "Trains, evaluates, and exports the topic classifier (plan §11)."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch==2.14.0",
+    "transformers",
+    "datasets",
+    "pyarrow",
+    "scikit-learn",
+    "onnx",
+    "onnxruntime",
+]
+
+[tool.uv]
+package = false
+
+# CUDA build of PyTorch; the driver here reports CUDA 13.3, which supports cu132 wheels.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu132" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
