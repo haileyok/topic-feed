@@ -88,7 +88,7 @@ def fit_temperature(logits: torch.Tensor, target: np.ndarray) -> float:
         return loss
 
     opt.step(closure)
-    return float(log_t.exp())
+    return float(log_t.detach().exp())
 
 
 def main():
@@ -180,9 +180,9 @@ def main():
     # Temperatures on validation, then test metrics with calibrated probabilities.
     vb, vp, _, _ = predict(model, va, tok, a.max_len)
     t_broad, t_path = fit_temperature(vb, va.broad), fit_temperature(vp, va.path)
-    tb, tp, ts, tt = predict(model, te, tok, a.max_len)
-    metrics = common.evaluate(space, F.softmax(tb / t_broad, -1).numpy(), F.softmax(tp / t_path, -1).numpy(), te,
-                              torch.sigmoid(ts).numpy(), F.softmax(tt, -1).numpy())
+    test_b, test_p, test_s, test_t = predict(model, te, tok, a.max_len)
+    metrics = common.evaluate(space, F.softmax(test_b / t_broad, -1).numpy(), F.softmax(test_p / t_path, -1).numpy(), te,
+                              torch.sigmoid(test_s).numpy(), F.softmax(test_t, -1).numpy())
     metrics.update({"split": info, "history": history, "best_epoch": best_epoch, "temperature_broad": t_broad,
                     "temperature_path": t_path, "train_seconds": train_seconds, "base": a.base, "args": vars(a)})
     # Serving runs on the GPU (Hailey, 2026-09-28): measure its throughput.
