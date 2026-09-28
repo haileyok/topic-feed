@@ -603,6 +603,16 @@ Also create a **fixed reference set of ~500 posts** reviewed by a human (LLM-ass
 - **Deletes:** write to `deletions`. **Account events:** write to `account_status`.
 - **Throughput:** batch inserts into ClickHouse (e.g. every 1s or every 5–10k rows). Backfill replay should run far above live speed. Live is ~230 events/s total.
 - **Idempotency:** the same event twice produces the same row, collapsed by the table engine.
+- **Drop resynced and backdated records.** *Found in the first smoke test (2026-09-28):* when an account's repo is resynced, Jetstream re-sends **all** of its records as ordinary creates, with their original record keys and `createdAt`. The Go SDK maps these to plain creates with no marker. One account alone added 2,119 posts created between January 2025 and September 2026, all stamped with the resync time, so they looked fresh. Ingest now drops post, like, and repost creates whose record key (a TID, which encodes its creation time) or `createdAt` is more than 24 hours older than the event. Post text still goes to `post_texts` so quotes of old posts resolve. Metric: `ingest_stale_records_total`.
+
+**As built (2026-09-28):** `cmd/ingest` + `internal/ingest`, run as the `ingest` compose service (`deploy/go.Dockerfile`, distroless image).
+- Jetstream Go SDK `github.com/bluesky-social/jetstream` v0.2.5. `Subscribe(host, WithAPIKey, WithCollections, WithKinds(commit, account), WithAfterSeq)`; events arrive in global sequence order (archive replay included), so saving `Batch.LastCursor()` after the batch's rows are written is a safe resume point. Event time comes from `Event.TimeUS`.
+- First run: `listSegments` finds the segment covering 72h ago (`SeqAtTime`), replay starts there, and events older than 72h are dropped. Later runs resume from `ingest_cursor`.
+- Writes every 1s or 20k rows; the cursor is saved only after all of a flush's rows are written, and a failed flush retries without advancing it. A shutdown lets an in-progress flush finish.
+- Quote text: in-memory cache of recent post texts (3M entries), then `post_texts`, then `app.bsky.feed.getPosts` on the public AppView (25 URIs per call, at most ~10 calls/s).
+- Metrics on `127.0.0.1:9101/metrics` (`ingest_*`); JSON logs with a progress line every 30s.
+- Backfill speed: roughly 130× real time (72h in about half an hour), limited mostly by the serial flush, whose time goes largely to AppView quote lookups.
+- Gotcha: mounting a directory over ClickHouse's `config.d` hides the image's `docker_related_config.xml`, and the server then listens only inside the container. Mount single files.
 
 ### 9.2 Checks
 - The backfill covers the full range (check `min(indexed_at)` / `max(indexed_at)`).
