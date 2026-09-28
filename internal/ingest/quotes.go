@@ -105,11 +105,24 @@ func (q *QuoteResolver) Resolve(ctx context.Context, rows *Rows) {
 	}
 }
 
+// lookupChunk keeps each IN (...) list well under ClickHouse's default 256KB query
+// size limit (a post URI is ~70 bytes).
+const lookupChunk = 2000
+
 func (q *QuoteResolver) fromClickHouse(ctx context.Context, need map[string]bool, found map[string]string) error {
 	uris := make([]string, 0, len(need))
 	for u := range need {
 		uris = append(uris, u)
 	}
+	for i := 0; i < len(uris); i += lookupChunk {
+		if err := q.lookupChunk(ctx, uris[i:min(i+lookupChunk, len(uris))], found); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *QuoteResolver) lookupChunk(ctx context.Context, uris []string, found map[string]string) error {
 	rows, err := q.Conn.Query(ctx, "SELECT uri, argMax(text, indexed_at) FROM post_texts WHERE uri IN (?) GROUP BY uri", uris)
 	if err != nil {
 		return err
