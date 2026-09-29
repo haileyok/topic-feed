@@ -60,6 +60,15 @@ feeds:
     min_prob: 0.85
     exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
 
+  - rkey: mlb   # "baseball" is taken by the peruse Baseball Feed on hailey.at
+    display_name: Baseball
+    description: Posts about baseball (MLB, the playoffs, and the rest of the game), picked by a topic classifier. No keyword lists.
+    # Same settings as NFL (Hailey, 2026-09-29): only clear baseball posts, no politics.
+    paths: [sports/baseball]
+    min_prob: 0.85
+    exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
+    max_posts: 10000   # ~2,800 posts in 48 hours at 0.85 during the playoffs
+
   - rkey: ai
     display_name: AI
     description: Posts about artificial intelligence (models, products, research, and the arguments about them), picked by a topic classifier. No keyword lists.
