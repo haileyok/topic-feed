@@ -38,6 +38,9 @@ type Feed struct {
 	AcceptsInteractions bool `yaml:"accepts_interactions"`
 	// Tone filters and nudges posts by the model's tone probabilities.
 	Tone ToneRules `yaml:"tone"`
+	// MaxPosts caps the feed's candidates, newest first (0: FEEDGEN_MAX_POSTS). Busy
+	// topics need more to reach back as far as quiet ones.
+	MaxPosts int `yaml:"max_posts"`
 }
 
 // Tones are the model's tone labels; a post's tone probabilities sum to 1.
@@ -215,6 +218,9 @@ func (c *Config) Validate(paths map[string]bool) error {
 		if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
 			r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
 			return fmt.Errorf("feed %q: ranking values can't be negative", f.Rkey)
+		}
+		if f.MaxPosts < 0 || f.MaxPosts > 20000 {
+			return fmt.Errorf("feed %q: max_posts must be 0-20000", f.Rkey)
 		}
 		if err := f.Tone.validate(); err != nil {
 			return fmt.Errorf("feed %q: %w", f.Rkey, err)

@@ -14,6 +14,8 @@
 #                 ask Bluesky to send interactions with the feed's posts (seen, like,
 #                 show more/less, ...) to table feed_interactions (default true;
 #                 takes effect after `make feeds-publish`)
+#   max_posts     candidates kept, newest first (default FEEDGEN_MAX_POSTS, 3000); busy
+#                 topics need more to reach back as far: 3000 is ~3.5h of video games
 #   tone          optional; filter or nudge posts by the model's tone probabilities
 #                 (0-1, summing to 1): informative, humorous, personal, outraged,
 #                 supportive, other
@@ -59,3 +61,10 @@ feeds:
     min_prob: 0.6
     tone:
       max: {outraged: 0.5}   # no angry posts (about 7% of AI posts on 2026-09-29)
+
+  - rkey: video-games
+    display_name: Video Games
+    description: Posts about video games (playing, reviews, news, and indie development), picked by a topic classifier. No keyword lists.
+    paths: [gaming/video_games]
+    min_prob: 0.5
+    max_posts: 10000   # ~800 posts/hour at 0.5 (2026-09-29): about 12 hours of candidates

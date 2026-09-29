@@ -146,7 +146,11 @@ func (fs *Feeds) refresh(ctx context.Context, f Feed) {
 	start := time.Now()
 	bctx, cancel := context.WithTimeout(ctx, max(fs.Every, 10*time.Second))
 	defer cancel()
-	posts, rm, err := fs.Builder.Build(bctx, f, start.Add(-fs.Window), fs.MaxPosts)
+	limit := fs.MaxPosts
+	if f.MaxPosts > 0 {
+		limit = f.MaxPosts
+	}
+	posts, rm, err := fs.Builder.Build(bctx, f, start.Add(-fs.Window), limit)
 	metricRefreshSeconds.WithLabelValues(f.Rkey).Observe(time.Since(start).Seconds())
 	if err != nil {
 		if ctx.Err() == nil {
