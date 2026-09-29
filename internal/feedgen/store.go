@@ -7,10 +7,14 @@ import (
 	"slices"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	"github.com/haileyok/topic-feed/internal/labelpolicy"
 )
+
+// maxQuerySize allows IN lists of up to 20,000 post URIs (the max_posts limit).
+const maxQuerySize = 4 << 20
 
 // Store builds feeds from ClickHouse.
 type Store struct {
@@ -43,6 +47,9 @@ type Removed struct {
 // Build returns a feed's candidate posts since the given time with their engagement,
 // newest first, at most limit. Ranking happens in the caller.
 func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) ([]Post, Removed, error) {
+	// The lookups below pass every candidate's URI; with max_posts at 10,000 that is
+	// ~700 KB of query text, past ClickHouse's 256 KB default.
+	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"max_query_size": maxQuerySize}))
 	policies := []string{labelpolicy.OK}
 	if f.AllowAdult {
 		policies = append(policies, labelpolicy.AdultOnly)
