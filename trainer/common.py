@@ -60,11 +60,13 @@ class Data:
     path: np.ndarray  # (n, P) target distribution
     signals: np.ndarray  # (n, 4) in 0..1
     tone: np.ndarray  # (n, 6) distribution
-    conf: np.ndarray  # (n,) Jev broad confidence
+    conf: np.ndarray  # (n,) the label's broad confidence (Jev's, or the relabel's for relabeled posts)
+    sources: list[str]  # label source per post: "window"/"sample" (Jev's run) or "uncertain" (a relabel)
 
     def subset(self, idx: np.ndarray) -> "Data":
         return Data([self.uris[i] for i in idx], [self.texts[i] for i in idx], [self.windows[i] for i in idx],
-                    self.broad[idx], self.path[idx], self.signals[idx], self.tone[idx], self.conf[idx])
+                    self.broad[idx], self.path[idx], self.signals[idx], self.tone[idx], self.conf[idx],
+                    [self.sources[i] for i in idx])
 
     def __len__(self) -> int:
         return len(self.uris)
@@ -74,7 +76,7 @@ def load(export_dir: str, space: Space) -> Data:
     bi = {b: i for i, b in enumerate(space.broad)}
     pi = {p: i for i, p in enumerate(space.paths)}
     has_subs = {space.broad[space.path_broad[i]] for i, p in enumerate(space.paths) if "/" in p}
-    uris, texts, wins, B, P, S, T, C = [], [], [], [], [], [], [], []
+    uris, texts, wins, B, P, S, T, C, src = [], [], [], [], [], [], [], [], []
     with gzip.open(f"{export_dir}/labels.jsonl.gz", "rt") as f:
         for line in f:
             r = json.loads(line)
@@ -103,7 +105,8 @@ def load(export_dir: str, space: Space) -> Data:
             t = t / t.sum() if t.sum() > 0 else np.full(len(TONES), 1 / len(TONES), np.float32)
             uris.append(r["uri"]); texts.append(r["model_input"]); wins.append(r["window_id"])
             B.append(b); P.append(p); S.append(s); T.append(t); C.append(r["broad_confidence"])
-    return Data(uris, texts, wins, np.stack(B), np.stack(P), np.stack(S), np.stack(T), np.array(C, np.float32))
+            src.append(r.get("source") or "window")
+    return Data(uris, texts, wins, np.stack(B), np.stack(P), np.stack(S), np.stack(T), np.array(C, np.float32), src)
 
 
 def split(d: Data) -> tuple[Data, Data, Data, dict]:

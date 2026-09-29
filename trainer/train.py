@@ -28,6 +28,10 @@ from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, get_linear_schedule_with_warmup
 
 import common
+import losses
+import tb_report
+import tbreport
+from losses import soft_ce
 
 POSTDOC_VERSION = "pd1"  # must match internal/postdoc.Version used by the export
 
@@ -48,10 +52,6 @@ class Student(nn.Module):
         m = attention_mask.unsqueeze(-1).to(hs.dtype)
         pooled = self.drop((hs * m).sum(1) / m.sum(1).clamp(min=1))  # mean pooling
         return self.broad(pooled), self.path(pooled), self.signals(pooled), self.tone(pooled)
-
-
-def soft_ce(logits, target):
-    return -(target * F.log_softmax(logits.float(), -1)).sum(-1)
 
 
 def batches(d: common.Data, tok, bs: int, max_len: int, shuffle: bool, rng=None):
@@ -124,13 +124,19 @@ def main():
     # <out>/tb (served by the tensorboard compose service on port 6006).
     os.makedirs(a.out, exist_ok=True)
     tb = SummaryWriter(f"{a.out}/tb")
+    n_relabeled = sum(s == "uncertain" for s in tr.sources)
     tb.add_text("run", f"base `{a.base}` · export `{a.export}` · train {len(tr)} / val {len(va)} / test {len(te)} · "
-                       f"up to {a.epochs} epochs, batch {a.bs}, lr {a.lr}")
+                       f"{n_relabeled} training posts relabeled · up to {a.epochs} epochs, batch {a.bs}, lr {a.lr}")
     steps_per_epoch = math.ceil(len(tr) / a.bs)
+    # Posts people judged (all in the test windows): their counts are logged every epoch
+    # to watch, never used to pick the epoch.
+    human = tbreport.Human()
+    human_data = human.subset(te)
 
     best, best_epoch, best_state, history = -1.0, -1, None, []
     t_start = time.time()
     global_step = 0
+    t_log, posts_since_log = time.time(), 0
     for epoch in range(a.epochs):
         model.train()
         running, n = 0.0, 0
@@ -143,32 +149,44 @@ def main():
             w = torch.tensor(np.maximum(tr.conf[j], a.conf_floor)).cuda()
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 lb, lp, ls, lt = model(ids, mask)
-            loss = (soft_ce(lb, yb) + soft_ce(lp, yp)
-                    + 0.5 * F.binary_cross_entropy_with_logits(ls.float(), ys, reduction="none").mean(-1)
-                    + 0.3 * soft_ce(lt, yt))
-            loss = (loss * w).sum() / w.sum()
+            parts = losses.parts(lb, lp, ls, lt, yb, yp, ys, yt)
+            loss = losses.total(parts, w)
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             sched.step()
-            running += loss.item(); n += 1; global_step += 1
+            running += loss.item(); n += 1; global_step += 1; posts_since_log += len(j)
             if step % 25 == 0:
                 bar.set_postfix(loss=f"{running / n:.3f}", lr=f"{sched.get_last_lr()[0]:.1e}")
             if global_step % 50 == 0:
                 tb.add_scalar("train/loss", loss.item(), global_step)
                 tb.add_scalar("train/loss_epoch_avg", running / n, global_step)
                 tb.add_scalar("train/lr", sched.get_last_lr()[0], global_step)
+                tb.add_scalar("train/grad_norm", float(grad_norm), global_step)
+                for k, v in parts.items():  # weighted like the objective, before the head weights
+                    tb.add_scalar(f"train_loss/{k}", float((v.detach() * w).sum() / w.sum()), global_step)
+                now = time.time()
+                tb.add_scalar("system/posts_per_second", posts_since_log / max(now - t_log, 1e-9), global_step)
+                tb.add_scalar("system/gpu_memory_gb", torch.cuda.max_memory_allocated() / 2**30, global_step)
+                t_log, posts_since_log = now, 0
         bar.close()
-        lb, lp, _, _ = predict(model, va, tok, a.max_len)
-        vm = common.evaluate(space, F.softmax(lb, -1).numpy(), F.softmax(lp, -1).numpy(), va)
-        history.append({"epoch": epoch + 1, "train_loss": running / n, "val_broad_top1": vm["broad_top1"], "val_path_top1": vm["path_top1"],
-                        "val_broad_top3": vm["broad_top3"], "val_path_top3": vm["path_top3"]})
-        for k in ("val_broad_top1", "val_path_top1", "val_broad_top3", "val_path_top3"):
-            tb.add_scalar(k.replace("val_", "val/"), history[-1][k], epoch + 1)
+        val_out = predict(model, va, tok, a.max_len)
+        # Everything for validation this epoch: scores (val/...), loss parts (val_loss/...),
+        # confidence and label-source splits, confusion matrix and calibration chart.
+        vl = tbreport.log(tb, epoch + 1, "val", space, eq, va, val_out, conf_floor=a.conf_floor)
+        vm = vl["scores"]
+        if human_data is not None:
+            human.log(tb, epoch + 1, space, human_data, predict(model, human_data, tok, a.max_len))
+        history.append({"epoch": epoch + 1, "train_loss": running / n, "val_loss": vl["loss"]["total"],
+                        "val_broad_top1": vm["broad_top1"], "val_path_top1": vm["path_top1"],
+                        "val_broad_top3": vm["broad_top3"], "val_path_top3": vm["path_top3"],
+                        "val_path_plausible_equiv": vm["path_plausible_equiv"]})
         tb.flush()
-        print(f"epoch {epoch + 1}: train loss {running / n:.3f} · validation broad {vm['broad_top1']:.1%} (top-3 {vm['broad_top3']:.1%})"
-              f" · path {vm['path_top1']:.1%} (top-3 {vm['path_top3']:.1%}) · {time.time() - t_start:.0f}s elapsed", flush=True)
+        print(f"epoch {epoch + 1}: train loss {running / n:.3f} · validation loss {vl['loss']['total']:.3f} · "
+              f"broad {vm['broad_top1']:.1%} (top-3 {vm['broad_top3']:.1%}) · path {vm['path_top1']:.1%} "
+              f"(top-3 {vm['path_top3']:.1%}, plausible or look-alike {vm['path_plausible_equiv']:.1%}) · "
+              f"{time.time() - t_start:.0f}s elapsed", flush=True)
         if vm["broad_top1"] > best:
             best, best_epoch = vm["broad_top1"], epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -210,6 +228,14 @@ def main():
               "path_plausible_equiv", "broad_ece", "tone_top1"):
         tb.add_scalar(f"test/{k}", metrics[k], best_epoch + 1)
     tb.close()
+
+    # The full final report (run <out>/tb/final): val and test with every chart and table,
+    # the common Jev-only test yardstick, people's judgments, and the HParams row.
+    name = os.path.basename(a.out.rstrip("/"))
+    print("\nwriting the final TensorBoard report ...", flush=True)
+    tb_report.final_report(a.out, model, tok, space=space, eq=eq, export=a.export, va=va, te=te,
+                           temps=(t_broad, t_path), best_epoch=best_epoch, max_len=a.max_len,
+                           hparams=tb_report.hparams_for(name, config, metrics, a.export), conf_floor=a.conf_floor)
     print(f"\nTEST (windows {', '.join(info['test_windows'])}, {len(te)} posts, best epoch {best_epoch + 1}): "
           f"broad {metrics['broad_top1']:.1%} (top-3 {metrics['broad_top3']:.1%}) · path {metrics['path_top1']:.1%} "
           f"(top-3 {metrics['path_top3']:.1%}, one of Jev's plausible answers {metrics['path_plausible_equiv']:.1%}) · "
