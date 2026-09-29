@@ -1,0 +1,1201 @@
+{
+  "labels": "v1-gold-100.labels-1.json",
+  "posts": 88,
+  "models": {
+    "Jev": {
+      "best": {
+        "right": 43,
+        "share": 0.48863636363636365,
+        "ci95": [
+          0.387,
+          0.591
+        ]
+      },
+      "acceptable": {
+        "right": 46,
+        "share": 0.5227272727272727,
+        "ci95": [
+          0.42,
+          0.624
+        ]
+      },
+      "look_alike": {
+        "right": 54,
+        "share": 0.6136363636363636,
+        "ci95": [
+          0.509,
+          0.709
+        ]
+      },
+      "broad": {
+        "right": 63,
+        "share": 0.7159090909090909,
+        "ci95": [
+          0.614,
+          0.8
+        ]
+      },
+      "missing": 0
+    },
+    "v1": {
+      "best": {
+        "right": 41,
+        "share": 0.4659090909090909,
+        "ci95": [
+          0.365,
+          0.569
+        ]
+      },
+      "acceptable": {
+        "right": 44,
+        "share": 0.5,
+        "ci95": [
+          0.398,
+          0.602
+        ]
+      },
+      "look_alike": {
+        "right": 53,
+        "share": 0.6022727272727273,
+        "ci95": [
+          0.498,
+          0.698
+        ]
+      },
+      "broad": {
+        "right": 56,
+        "share": 0.6363636363636364,
+        "ci95": [
+          0.532,
+          0.729
+        ]
+      },
+      "missing": 0
+    },
+    "v2": {
+      "best": {
+        "right": 41,
+        "share": 0.4659090909090909,
+        "ci95": [
+          0.365,
+          0.569
+        ]
+      },
+      "acceptable": {
+        "right": 45,
+        "share": 0.5113636363636364,
+        "ci95": [
+          0.409,
+          0.613
+        ]
+      },
+      "look_alike": {
+        "right": 54,
+        "share": 0.6136363636363636,
+        "ci95": [
+          0.509,
+          0.709
+        ]
+      },
+      "broad": {
+        "right": 57,
+        "share": 0.6477272727272727,
+        "ci95": [
+          0.544,
+          0.739
+        ]
+      },
+      "missing": 0
+    },
+    "v3-blend": {
+      "best": {
+        "right": 41,
+        "share": 0.4659090909090909,
+        "ci95": [
+          0.365,
+          0.569
+        ]
+      },
+      "acceptable": {
+        "right": 45,
+        "share": 0.5113636363636364,
+        "ci95": [
+          0.409,
+          0.613
+        ]
+      },
+      "look_alike": {
+        "right": 55,
+        "share": 0.625,
+        "ci95": [
+          0.521,
+          0.719
+        ]
+      },
+      "broad": {
+        "right": 60,
+        "share": 0.6818181818181818,
+        "ci95": [
+          0.579,
+          0.77
+        ]
+      },
+      "missing": 0
+    },
+    "gpt-6-luna:api": {
+      "best": {
+        "right": 47,
+        "share": 0.5340909090909091,
+        "ci95": [
+          0.431,
+          0.635
+        ]
+      },
+      "acceptable": {
+        "right": 47,
+        "share": 0.5340909090909091,
+        "ci95": [
+          0.431,
+          0.635
+        ]
+      },
+      "look_alike": {
+        "right": 59,
+        "share": 0.6704545454545454,
+        "ci95": [
+          0.567,
+          0.76
+        ]
+      },
+      "broad": {
+        "right": 62,
+        "share": 0.7045454545454546,
+        "ci95": [
+          0.602,
+          0.79
+        ]
+      },
+      "missing": 0
+    }
+  },
+  "paired": {
+    "Jev vs v1": [
+      9,
+      7
+    ],
+    "Jev vs v2": [
+      7,
+      6
+    ],
+    "Jev vs v3-blend": [
+      6,
+      5
+    ],
+    "Jev vs gpt-6-luna:api": [
+      7,
+      8
+    ],
+    "v1 vs v2": [
+      3,
+      4
+    ],
+    "v1 vs v3-blend": [
+      4,
+      5
+    ],
+    "v1 vs gpt-6-luna:api": [
+      8,
+      11
+    ],
+    "v2 vs v3-blend": [
+      3,
+      3
+    ],
+    "v2 vs gpt-6-luna:api": [
+      8,
+      10
+    ],
+    "v3-blend vs gpt-6-luna:api": [
+      8,
+      10
+    ]
+  },
+  "answers": {
+    "at://did:plc:k2yifpnnure2dmfkrjln7wof/app.bsky.feed.post/3mwknrfaxlc2a": {
+      "gold": [
+        "personal_life/greetings"
+      ],
+      "Jev": "personal_life/greetings",
+      "v1": "unclear",
+      "v2": "personal_life/greetings",
+      "v3-blend": "personal_life/greetings",
+      "gpt-6-luna:api": "personal_life/greetings",
+      "text": "... skip ... skip ... skip ... gud mornin werld ..."
+    },
+    "at://did:plc:bu3qvbmhtfhz2zgbnxym34lm/app.bsky.feed.post/3mwknkxkkuc2m": {
+      "gold": [
+        "entertainment/tv_shows"
+      ],
+      "Jev": "entertainment/tv_shows",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "art/comics",
+      "text": "Lovely article about Saucer Country!  screenrant.com/best-sci-fi-...\n[link] screenrant.com | X-Files Meets The Diplomat In This 21-Part Sci-"
+    },
+    "at://did:plc:oaijdqozcipil2yrhrs5vrar/app.bsky.feed.post/3mwk4q7e5222i": {
+      "gold": [
+        "adult_content/thirst_posts"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "Fresh Bubba Blubber"
+    },
+    "at://did:plc:4aozdvfkmesmwi6qpdl5swvt/app.bsky.feed.post/3mwk52wnbhc2z": {
+      "gold": [
+        "us_politics/other"
+      ],
+      "Jev": "society/crime_justice",
+      "v1": "society/crime_justice",
+      "v2": "society/crime_justice",
+      "v3-blend": "society/crime_justice",
+      "gpt-6-luna:api": "society/crime_justice",
+      "text": "(🧵1/30) On this date (Sept. 27) in 2012, a 36-yr-old man – a concealed-carry permittee – who was just fired from his job shot 8 people at hi"
+    },
+    "at://did:plc:vvoxhbnxdndzbbhaa43orcdq/app.bsky.feed.post/3mwk4kdthkk2m": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "us_politics/other",
+      "v1": "humor/shitposts",
+      "v2": "humor/shitposts",
+      "v3-blend": "humor/shitposts",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "I hope whoever thought of those young homeowner Progressive commercials has chronic diarrhea for for the next few years."
+    },
+    "at://did:plc:6kkewbkmu34p5j5tcnl2slyw/app.bsky.feed.post/3mwkfbnqcos2x": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "humor/jokes_puns",
+      "text": "they don't call him bo \"twelve downs\" nix for nothing"
+    },
+    "at://did:plc:mhqnbglrgmwiuz3kgexbi7uf/app.bsky.feed.post/3mwknwcgg7a2z": {
+      "gold": [
+        "animals_nature/wildlife"
+      ],
+      "Jev": "animals_nature/wildlife",
+      "v1": "world_news/other",
+      "v2": "world_news/uk_ireland",
+      "v3-blend": "world_news/other",
+      "gpt-6-luna:api": "animals_nature/wildlife",
+      "text": "#critically endangered   #population   #Scotland\n🌐 www.newsmart.ch\n[tags] #critically endangered #population #Scotland\n[link] theguardian.co"
+    },
+    "at://did:plc:yh34nwgg4r3j42d5flv6urub/app.bsky.feed.post/3mwknm4p5222y": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "personal_life/feelings",
+      "v1": "personal_life/feelings",
+      "v2": "personal_life/feelings",
+      "v3-blend": "personal_life/feelings",
+      "gpt-6-luna:api": "personal_life/feelings",
+      "text": "Everything feels like a sham"
+    },
+    "at://did:plc:4qz245vzimsqtch736gyva3m/app.bsky.feed.post/3mwk4fekb7c2n": {
+      "gold": [
+        "us_politics/elections"
+      ],
+      "Jev": "us_politics/other",
+      "v1": "us_politics/other",
+      "v2": "us_politics/other",
+      "v3-blend": "us_politics/other",
+      "gpt-6-luna:api": "us_politics/other",
+      "text": "Wow 😬😳\n[quote] Stay safe out there! #USDemocracy"
+    },
+    "at://did:plc:ufdxtybevmoha2jtrgcytwuv/app.bsky.feed.post/3mwknnvoctk2t": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "no"
+    },
+    "at://did:plc:3rv733hgt4v7hv6xcpdunh5f/app.bsky.feed.post/3mwkfcujras26": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "sports/american_football",
+      "v2": "sports/american_football",
+      "v3-blend": "sports/american_football",
+      "gpt-6-luna:api": "sports/american_football",
+      "text": "BO NIX TOUCHDOWN!!!"
+    },
+    "at://did:plc:65tbtpkmdyk4xzw5a5karlqm/app.bsky.feed.post/3mwkf6ugv6s26": {
+      "gold": [
+        "online_culture/quote_prompts"
+      ],
+      "Jev": "books_writing/books_reading",
+      "v1": "unclear",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "humor/jokes_puns",
+      "text": "Brighton Rocker\n[quote] The Spy Who Came in From the Colder"
+    },
+    "at://did:plc:qfonthe5nz4poaajmkjy7373/app.bsky.feed.post/3mwk4jkhpxs27": {
+      "gold": [
+        "sports/baseball"
+      ],
+      "Jev": "sports/baseball",
+      "v1": "sports/baseball",
+      "v2": "sports/baseball",
+      "v3-blend": "sports/baseball",
+      "gpt-6-luna:api": "sports/baseball",
+      "text": "I am humbly appealing to a higher power to ask, please, let this be the Milwaukee Brewers' year. Please."
+    },
+    "at://did:plc:pg2luecf7ej6y2q34gkfj727/app.bsky.feed.post/3mwkn5r3lm52e": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "music/song_shares",
+      "v2": "music/song_shares",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "🎵 DONG DONG DONG DONG DONG DONG DONG DONG"
+    },
+    "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknavf5qr2d": {
+      "gold": [
+        "automated_feeds/transit_traffic"
+      ],
+      "Jev": "automated_feeds/transit_traffic",
+      "v1": "automated_feeds/transit_traffic",
+      "v2": "automated_feeds/transit_traffic",
+      "v3-blend": "automated_feeds/transit_traffic",
+      "gpt-6-luna:api": "automated_feeds/transit_traffic",
+      "text": "Roadworks report for #MiltonKeynes, Mon 28 Sep, 2026:\n\nCLOSED: Chesney Wold, Newport Road, Old Wolverton Road, Great Brickhill Lane, Grovewa"
+    },
+    "at://did:plc:6ej6uq7ai4pgxju3wh5aclya/app.bsky.feed.post/3mwknnxd4c22t": {
+      "gold": [
+        "adult_content/thirst_posts"
+      ],
+      "Jev": "adult_content/thirst_posts",
+      "v1": "adult_content/explicit_posts",
+      "v2": "adult_content/thirst_posts",
+      "v3-blend": "adult_content/explicit_posts",
+      "gpt-6-luna:api": "adult_content/thirst_posts",
+      "text": "🤤fuckkkk\n[quote] on my knees ready for your cock😈"
+    },
+    "at://did:plc:wsja4eshb3sy2o3dooobtrtp/app.bsky.feed.post/3mwk53zj5hk25": {
+      "gold": [
+        "online_culture/quote_prompts"
+      ],
+      "Jev": "entertainment/movies",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "online_culture/quote_prompts",
+      "text": "White Material\n[alt] White Material 2009\n[quote] Name a film with a Woman Director."
+    },
+    "at://did:plc:psfwwzwnlbharglyqvb2afmy/app.bsky.feed.post/3mwknxnhbjs26": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "bsky.app/profile/thxc..."
+    },
+    "at://did:plc:4srmnwr3sbw4ofubtw46p52t/app.bsky.feed.post/3mwk4lwoxn22l": {
+      "gold": [
+        "unclear",
+        "personal_life/daily_updates"
+      ],
+      "Jev": "food_drink/other",
+      "v1": "personal_life/daily_updates",
+      "v2": "personal_life/daily_updates",
+      "v3-blend": "personal_life/daily_updates",
+      "gpt-6-luna:api": "food_drink/other",
+      "text": "Replenishing the tasty supply. Should last me until Thanksgiving… maybe Halloween."
+    },
+    "at://did:plc:xkp7ju335gfjeobfjpl5ojf2/app.bsky.feed.post/3mwkf5tawrc2p": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "www.facebook.com/reel/2532743...\n[link] facebook.com"
+    },
+    "at://did:plc:ad3lwukfk6xgl2c4pzgddipp/app.bsky.feed.post/3mwkf3lfpl22p": {
+      "gold": [
+        "music/artists_albums"
+      ],
+      "Jev": "music/concerts",
+      "v1": "music/concerts",
+      "v2": "music/concerts",
+      "v3-blend": "music/concerts",
+      "gpt-6-luna:api": "music/concerts",
+      "text": "The only music story we should be talking about right now is how Eric Andre showed up to a fabulous and weird-ass avant contemporary classic"
+    },
+    "at://did:plc:fox6jxl3gryhey6ba2pf4ulu/app.bsky.feed.post/3mwk554s2hk2v": {
+      "gold": [
+        "world_news/israel_palestine"
+      ],
+      "Jev": "world_news/israel_palestine",
+      "v1": "world_news/israel_palestine",
+      "v2": "world_news/israel_palestine",
+      "v3-blend": "world_news/israel_palestine",
+      "gpt-6-luna:api": "world_news/israel_palestine",
+      "text": "youtube.com/post/Ugkx64p...\n[link] youtube.com | Post from Middle East Monitor - YouTube | Two Palestinians were killed, and seven others in"
+    },
+    "at://did:plc:yhtk7eedx6gikjs6bil5kybs/app.bsky.feed.post/3mwknejudys2s": {
+      "gold": [
+        "gaming/video_games",
+        "art/fan_art"
+      ],
+      "Jev": "art/fan_art",
+      "v1": "art/fan_art",
+      "v2": "art/fan_art",
+      "v3-blend": "art/fan_art",
+      "gpt-6-luna:api": "gaming/video_games",
+      "text": "Day 8: Free Day\n\nIt's a calm morning in Shaaloani and nothing whatsoever is going to ruin their day.\n\n#gpose #gposers #gposecomic #erenweek "
+    },
+    "at://did:plc:4xsvycd5patuukhmgzs3o4gr/app.bsky.feed.post/3mwk53bvwhs2t": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "personal_life/other",
+      "v1": "personal_life/other",
+      "v2": "personal_life/other",
+      "v3-blend": "personal_life/other",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "www.fraps.com tattoo on my collarbone"
+    },
+    "at://did:plc:y435iv635b52twusagaoxktx/app.bsky.feed.post/3mwkf6ypszk2k": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/soccer",
+      "v1": "gaming/video_games",
+      "v2": "gaming/video_games",
+      "v3-blend": "gaming/video_games",
+      "gpt-6-luna:api": "sports/american_football",
+      "text": "What the fuck is Replay Assist for if not to look at that and go “lol there is no penalty there”"
+    },
+    "at://did:plc:ynzytmp4nsb6intt6mjbsvgi/app.bsky.feed.post/3mwkf2hy2a22s": {
+      "gold": [
+        "health/mental_health"
+      ],
+      "Jev": "society/crime_justice",
+      "v1": "society/crime_justice",
+      "v2": "society/crime_justice",
+      "v3-blend": "society/crime_justice",
+      "gpt-6-luna:api": "society/crime_justice",
+      "text": "Thank you for this info\n[quote] Don't go to the police alone bring an advocate with you! Step 1 contact Rainn.org. Step 2 go to a medical fa"
+    },
+    "at://did:plc:odza3ulbckesdtrvj7xmwa2u/app.bsky.feed.post/3mwk4p4jwqk2y": {
+      "gold": [
+        "personal_life/daily_updates"
+      ],
+      "Jev": "personal_life/feelings",
+      "v1": "personal_life/daily_updates",
+      "v2": "personal_life/daily_updates",
+      "v3-blend": "personal_life/daily_updates",
+      "gpt-6-luna:api": "personal_life/daily_updates",
+      "text": "Time for a chill out hehe"
+    },
+    "at://did:plc:4cmvk2puxj62qeqxximgr44b/app.bsky.feed.post/3mwk4f2vyx22b": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "sports/american_football",
+      "v2": "sports/other",
+      "v3-blend": "sports/other",
+      "gpt-6-luna:api": "sports/american_football",
+      "text": "Broncos look like shit tonight."
+    },
+    "at://did:plc:fly75rxvjquaz2g2sssxhalk/app.bsky.feed.post/3mwk4jqqon22w": {
+      "gold": [
+        "us_politics/courts_legal"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "joycevance.substack.com/p/the-week-a...\n[link] joycevance.substack.com | The Week Ahead | September 27, 2026"
+    },
+    "at://did:plc:45wv6lyd2qlmitd63npb7ilm/app.bsky.feed.post/3mwkn5g4lyk2s": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "humor/shitposts",
+      "v1": "humor/shitposts",
+      "v2": "humor/shitposts",
+      "v3-blend": "humor/shitposts",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "farts that give you status effects"
+    },
+    "at://did:plc:x43ejfwg4kybn6ijz5orayey/app.bsky.feed.post/3mwknjpl5hc2n": {
+      "gold": [
+        "personal_life/feelings"
+      ],
+      "Jev": "personal_life/relationships_family",
+      "v1": "personal_life/feelings",
+      "v2": "personal_life/feelings",
+      "v3-blend": "personal_life/relationships_family",
+      "gpt-6-luna:api": "personal_life/other",
+      "text": "I do read the words of my friends and mutuals on here. I consider what they are saying, especially when they're being serious on various top"
+    },
+    "at://did:plc:atubeoqgot7vu6y6pnuyt4kn/app.bsky.feed.post/3mwk52mx4n322": {
+      "gold": [
+        "lifestyle/travel"
+      ],
+      "Jev": "lifestyle/travel",
+      "v1": "lifestyle/travel",
+      "v2": "lifestyle/travel",
+      "v3-blend": "lifestyle/travel",
+      "gpt-6-luna:api": "lifestyle/travel",
+      "text": "Best palaces and castles in Egypt\n11 places, ranked by travellers\n[link] triprankings.com | Best palaces and castles in Egypt"
+    },
+    "at://did:plc:idmwo3ui5yfevmhueg454rzh/app.bsky.feed.post/3mwk57edswc2o": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "plug it into my veins"
+    },
+    "at://did:plc:pigl3pnhiiq5cguea7u2fhis/app.bsky.feed.post/3mwkndoqmm42o": {
+      "gold": [
+        "automated_feeds/weather_alerts"
+      ],
+      "Jev": "automated_feeds/weather_alerts",
+      "v1": "automated_feeds/weather_alerts",
+      "v2": "automated_feeds/weather_alerts",
+      "v3-blend": "automated_feeds/weather_alerts",
+      "gpt-6-luna:api": "automated_feeds/weather_alerts",
+      "text": "A 5.2 magnitude earthquake occurred 67 km ENE of Tadine, New Caledonia!\n🗺️ Coordinates: -21.224700, 168.427400\n[link] osm.org | View on Open"
+    },
+    "at://did:plc:bhyo6qnbgtz3u5ggui7ovvro/app.bsky.feed.post/3mwkfbdfeku24": {
+      "gold": [
+        "adult_content/thirst_posts"
+      ],
+      "Jev": "adult_content/nsfw_art",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "adult_content/explicit_posts",
+      "text": "Gloria Sol 🔥 \nMetart"
+    },
+    "at://did:plc:w7m7vo3dvoen3yqijjuzijjh/app.bsky.feed.post/3mwkevawz7k2w": {
+      "gold": [
+        "books_writing/books_reading",
+        "books_writing/author_promo"
+      ],
+      "Jev": "books_writing/books_reading",
+      "v1": "books_writing/books_reading",
+      "v2": "books_writing/books_reading",
+      "v3-blend": "books_writing/books_reading",
+      "gpt-6-luna:api": "books_writing/books_reading",
+      "text": "Just finished “The Isle in the Silver Sea” by Tasha Suri @tashasuri.bsky.social   It is about immigration, assimilation, how stories create "
+    },
+    "at://did:plc:xslzkilxfu7dspyqw5c7a7qt/app.bsky.feed.post/3mwkfetysg22j": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/other",
+      "v1": "sports/american_football",
+      "v2": "gaming/video_games",
+      "v3-blend": "sports/other",
+      "gpt-6-luna:api": "sports/other",
+      "text": "Slo mo replay was a mistake"
+    },
+    "at://did:plc:jewyelezgu6fvfa6vnnb7oxy/app.bsky.feed.post/3mwkf6hc5d22e": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "promotion/creator_promo",
+      "v1": "unclear",
+      "v2": "promotion/creator_promo",
+      "v3-blend": "promotion/creator_promo",
+      "gpt-6-luna:api": "promotion/creator_promo",
+      "text": "Tonight from my Insta:  www.instagram.com/p/Dd0O6-djRZ....\n\nFollow at:  www.instagram.com/ajiwings/.\n[link] instagram.com | Instagram | Crea"
+    },
+    "at://did:plc:xbind3kwdosxb2wsfzvvvkt2/app.bsky.feed.post/3mwk4ozw63c2w": {
+      "gold": [
+        "technology/ai"
+      ],
+      "Jev": "technology/ai",
+      "v1": "technology/ai",
+      "v2": "technology/ai",
+      "v3-blend": "technology/ai",
+      "gpt-6-luna:api": "technology/ai",
+      "text": "How AI Could Actually Kill Us, According to Expert\n\n'Government's not gonna save us,' is one AI journo's warning to New Yorker\n[link] newser"
+    },
+    "at://did:plc:dek2pwqpnr6vadbs5amffmnz/app.bsky.feed.post/3mwkf2b445c2v": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "sports/american_football",
+      "v2": "sports/american_football",
+      "v3-blend": "sports/american_football",
+      "gpt-6-luna:api": "sports/american_football",
+      "text": "That was a terrible call on the Rams DB. Was great defense on the replay."
+    },
+    "at://did:plc:6zw6te6wiebgavwplbot74nu/app.bsky.feed.post/3mwknizjfi62x": {
+      "gold": [
+        "animals_nature/wildlife"
+      ],
+      "Jev": "animals_nature/wildlife",
+      "v1": "animals_nature/wildlife",
+      "v2": "animals_nature/wildlife",
+      "v3-blend": "animals_nature/wildlife",
+      "gpt-6-luna:api": "animals_nature/wildlife",
+      "text": "🐦🐦🐦\n[quote] Penduline tits tiny 8-10cm parts of Eurasia, Africa, SW US, Mexico constructs intricate, pouch-shaped hanging nest from plant fi"
+    },
+    "at://did:plc:yebxs4sod4h4awpvltz44s7a/app.bsky.feed.post/3mwk4ox7eqc2q": {
+      "gold": [
+        "music/song_shares"
+      ],
+      "Jev": "music/song_shares",
+      "v1": "music/song_shares",
+      "v2": "music/song_shares",
+      "v3-blend": "music/song_shares",
+      "gpt-6-luna:api": "music/song_shares",
+      "text": "Every once in a while I remember this song exists and am reminded why it used to have me a chokehold\nmusic.youtube.com/watch?v=nY-V...\n[link"
+    },
+    "at://did:plc:xsvsexuduhwosggdtgr5lq7m/app.bsky.feed.post/3mwk4vh2css2k": {
+      "gold": [
+        "society/gender_lgbtq"
+      ],
+      "Jev": "society/gender_lgbtq",
+      "v1": "society/gender_lgbtq",
+      "v2": "society/gender_lgbtq",
+      "v3-blend": "society/gender_lgbtq",
+      "gpt-6-luna:api": "society/gender_lgbtq",
+      "text": "@papst-ny.bsky.social \n@stny-trans.bsky.social\n[quote] If you are bitching about the 8 trans athletes in the NCAA, but are staying silent ab"
+    },
+    "at://did:plc:drfxtbvlkhlxbqetdj5kg6xp/app.bsky.feed.post/3mwkeqf3uds2x": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "sports/american_football",
+      "v2": "sports/american_football",
+      "v3-blend": "sports/american_football",
+      "gpt-6-luna:api": "sports/basketball",
+      "text": "Denver been wide open two plays in a row. I mean WIDE OPEN"
+    },
+    "at://did:plc:muyf2lk52rsh6go6hzqglu3s/app.bsky.feed.post/3mwk4fdlcyw2f": {
+      "gold": [
+        "science/physical_sciences"
+      ],
+      "Jev": "science/physical_sciences",
+      "v1": "science/physical_sciences",
+      "v2": "science/physical_sciences",
+      "v3-blend": "science/physical_sciences",
+      "gpt-6-luna:api": "science/physical_sciences",
+      "text": "A space rock the size of a skyscraper just zipped past us at 84,523 km/h. To put that in perspective, 1998 FF14 was cruising at 40 times the"
+    },
+    "at://did:plc:6qrmdhmt6vymdjl6x5rr4dc3/app.bsky.feed.post/3mwk53ydfhc26": {
+      "gold": [
+        "society/racial_justice"
+      ],
+      "Jev": "society/social_commentary",
+      "v1": "society/social_commentary",
+      "v2": "society/social_commentary",
+      "v3-blend": "society/social_commentary",
+      "gpt-6-luna:api": "society/racial_justice",
+      "text": "I don't comment on POC capitalism unless it's latinx or indigenous related. \n\nEveryone stays in their lane"
+    },
+    "at://did:plc:wm52bc4yxl4aayi7nw7muzzh/app.bsky.feed.post/3mwkfao75ps2x": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/basketball",
+      "v1": "sports/american_football",
+      "v2": "sports/american_football",
+      "v3-blend": "sports/american_football",
+      "gpt-6-luna:api": "sports/other",
+      "text": "Refs clearly want a Denver win here"
+    },
+    "at://did:plc:4zshebjfpzk4grqukxhevhur/app.bsky.feed.post/3mwk4sydcg222": {
+      "gold": [
+        "entertainment/movies"
+      ],
+      "Jev": "entertainment/movies",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "In the new Skywalker trilogy, a hyperspace accident sends Rey to a place she’s never been before: Roswell, New Mexico. 1947."
+    },
+    "at://did:plc:xirzune7uxmu232nqjolxjwi/app.bsky.feed.post/3mwk4oofhas22": {
+      "gold": [
+        "adult_content/nsfw_art"
+      ],
+      "Jev": "lifestyle/other",
+      "v1": "lifestyle/other",
+      "v2": "lifestyle/other",
+      "v3-blend": "lifestyle/other",
+      "gpt-6-luna:api": "lifestyle/other",
+      "text": "Anyone care to join me for a spa day?"
+    },
+    "at://did:plc:4tjjmwt6bea6ptjvgs3bws5j/app.bsky.feed.post/3mwkeq2pjlc2k": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "humor/shitposts",
+      "v1": "humor/shitposts",
+      "v2": "humor/shitposts",
+      "v3-blend": "humor/shitposts",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "When you realise there’s no toilet paper… </3 :/\n[alt] Carni on the toilet looking at he toilet roll dispenser | Carni sitting on the toilet"
+    },
+    "at://did:plc:epoyhdqonevb325i42a26out/app.bsky.feed.post/3mwkevilpc22n": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "personal_life/other",
+      "v1": "personal_life/other",
+      "v2": "personal_life/other",
+      "v3-blend": "personal_life/other",
+      "gpt-6-luna:api": "personal_life/other",
+      "text": "Do you guys actually plan this life stuff or do you just say \"fuck it we ball\" and hope it works out"
+    },
+    "at://did:plc:tsr2khzoszc4us65wybbivgd/app.bsky.feed.post/3mwkfamlifk2b": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/american_football",
+      "v1": "humor/shitposts",
+      "v2": "unclear",
+      "v3-blend": "humor/shitposts",
+      "gpt-6-luna:api": "sports/american_football",
+      "text": "the rams are so ass lmao"
+    },
+    "at://did:plc:vqrw24iuyejsep2dnwsoh7cz/app.bsky.feed.post/3mwk4fwohtn24": {
+      "gold": [
+        "lifestyle/travel"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "lifestyle/travel",
+      "text": "EPCOT is now closed.\n[alt] A test image"
+    },
+    "at://did:plc:s2ihekmr3xczk3mc3mgpgxya/app.bsky.feed.post/3mwk56oqbzc2w": {
+      "gold": [
+        "us_politics/congress",
+        "us_politics/elections"
+      ],
+      "Jev": "us_politics/other",
+      "v1": "us_politics/other",
+      "v2": "us_politics/other",
+      "v3-blend": "us_politics/other",
+      "gpt-6-luna:api": "us_politics/other",
+      "text": "The difference between the left and right should be this—nothing matters to the right other than self fortune. The left needs to be the part"
+    },
+    "at://did:plc:rheeyyoqtdxr6dgokt2se7mm/app.bsky.feed.post/3mwk4ylq3ik2n": {
+      "gold": [
+        "animals_nature/wildlife"
+      ],
+      "Jev": "science/life_sciences",
+      "v1": "science/life_sciences",
+      "v2": "science/life_sciences",
+      "v3-blend": "science/life_sciences",
+      "gpt-6-luna:api": "science/life_sciences",
+      "text": "www.fau.edu/newsdesk/art...\n[link] fau.edu | Sharks Can Hear Sounds Nearly 250 Feet Away and Find the Source | FAU research shows free-swimm"
+    },
+    "at://did:plc:mbapud2iwd44mypaxqa23iwy/app.bsky.feed.post/3mwkffopxnk26": {
+      "gold": [
+        "sports/american_football"
+      ],
+      "Jev": "sports/soccer",
+      "v1": "sports/soccer",
+      "v2": "sports/soccer",
+      "v3-blend": "sports/soccer",
+      "gpt-6-luna:api": "humor/shitposts",
+      "text": "“Now watch the shoe.” -football in 2026"
+    },
+    "at://did:plc:iuzoriplc2blxdv2namkfbtm/app.bsky.feed.post/3mwknjoolfc2i": {
+      "gold": [
+        "us_politics/trump_administration",
+        "technology/ai"
+      ],
+      "Jev": "us_politics/trump_administration",
+      "v1": "us_politics/trump_administration",
+      "v2": "us_politics/trump_administration",
+      "v3-blend": "us_politics/trump_administration",
+      "gpt-6-luna:api": "us_politics/trump_administration",
+      "text": "Mmmmm\nA McDonalds Dinner..\nw a Fat Liar Thief Rapist\nPedophile..\nBon Appetit...🤮 @anthropic.com\n[quote] Trump had previously lashed at Amode"
+    },
+    "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknlynzhk2d": {
+      "gold": [
+        "automated_feeds/market_bots"
+      ],
+      "Jev": "automated_feeds/transit_traffic",
+      "v1": "automated_feeds/transit_traffic",
+      "v2": "automated_feeds/transit_traffic",
+      "v3-blend": "automated_feeds/transit_traffic",
+      "gpt-6-luna:api": "automated_feeds/transit_traffic",
+      "text": "Roadworks report for #Havant, Mon 28 Sep, 2026:\n\nSINGLE-FILE TRAFFIC: Bellair Road, Slindon Gardens, Willow Close\nWORKS IN THE ROAD: Battens"
+    },
+    "at://did:plc:dczyqdu4vmfvbepwadf2vy4p/app.bsky.feed.post/3mwkexzvzpc2y": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "HAHAHA YES"
+    },
+    "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknfs7igo2d": {
+      "gold": [
+        "automated_feeds/market_bots"
+      ],
+      "Jev": "automated_feeds/transit_traffic",
+      "v1": "automated_feeds/transit_traffic",
+      "v2": "automated_feeds/transit_traffic",
+      "v3-blend": "automated_feeds/other",
+      "gpt-6-luna:api": "automated_feeds/transit_traffic",
+      "text": "Roadworks report for #Penrith, Mon 28 Sep, 2026:\n\nCLOSED: Back Lane, Chapel Street, Holme Street, St Michaels Lane\nTEMPORARY LIGHTS: Cowper "
+    },
+    "at://did:plc:5zuwo32zrtgezop2llxwqgsq/app.bsky.feed.post/3mwk52ier2k26": {
+      "gold": [
+        "adult_content/thirst_posts"
+      ],
+      "Jev": "personal_life/other",
+      "v1": "personal_life/other",
+      "v2": "personal_life/other",
+      "v3-blend": "personal_life/other",
+      "gpt-6-luna:api": "adult_content/thirst_posts",
+      "text": "[alt] shirtless mirror selfie"
+    },
+    "at://did:plc:ivp3fax4npthatynw3aqtwrf/app.bsky.feed.post/3mwkfbvjr4c2v": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "I mean…you gotta call it…but good lord"
+    },
+    "at://did:plc:vhaoa6dfherxyg6hmrfeacpc/app.bsky.feed.post/3mwk536allk2x": {
+      "gold": [
+        "adult_content/nsfw_art"
+      ],
+      "Jev": "gaming/video_games",
+      "v1": "gaming/video_games",
+      "v2": "gaming/video_games",
+      "v3-blend": "online_culture/other",
+      "gpt-6-luna:api": "adult_content/nsfw_art",
+      "text": "FINAL BUMP\n[quote] GG #pixellewds"
+    },
+    "at://did:plc:totk53ct5jimvopzel6kazmx/app.bsky.feed.post/3mwk4fuuf7k2d": {
+      "gold": [
+        "personal_life/feelings"
+      ],
+      "Jev": "gaming/video_games",
+      "v1": "gaming/video_games",
+      "v2": "gaming/video_games",
+      "v3-blend": "gaming/video_games",
+      "gpt-6-luna:api": "gaming/video_games",
+      "text": "There are so many games to play, but I don’t have the time 😤"
+    },
+    "at://did:plc:l7u4i2d65z3bypurgjnfqjvq/app.bsky.feed.post/3mwkn5kxkmg2s": {
+      "gold": [
+        "humor/shitposts"
+      ],
+      "Jev": "automated_feeds/other",
+      "v1": "online_culture/other",
+      "v2": "online_culture/other",
+      "v3-blend": "humor/shitposts",
+      "gpt-6-luna:api": "automated_feeds/other",
+      "text": "[Automatic announcement]:  During yesterday, the world was made better by 2090 orcs who won't ork nor replicate no more."
+    },
+    "at://did:plc:rb5uxvtc4qjfzcgawxlvst5x/app.bsky.feed.post/3mwk4rc5xmk25": {
+      "gold": [
+        "music/song_shares"
+      ],
+      "Jev": "music/artists_albums",
+      "v1": "music/artists_albums",
+      "v2": "music/artists_albums",
+      "v3-blend": "music/artists_albums",
+      "gpt-6-luna:api": "music/artists_albums",
+      "text": "Who decides who gets these awards? Madonna as artist of the year? Like, the year 2026?"
+    },
+    "at://did:plc:ia2lvy4nmxjl4jmh7cd3dscm/app.bsky.feed.post/3mwk4sng3mc2o": {
+      "gold": [
+        "us_politics/other"
+      ],
+      "Jev": "us_politics/other",
+      "v1": "society/social_commentary",
+      "v2": "society/social_commentary",
+      "v3-blend": "society/social_commentary",
+      "gpt-6-luna:api": "society/social_commentary",
+      "text": "Us Socalists and communists point out the obvious to normal folk\n\nBut dumb libs and centrists\n\nDon't have critical thinking,when the shit ha"
+    },
+    "at://did:plc:zvkef6ifttaxw2bs5lpy3tac/app.bsky.feed.post/3mwknrxzt4k2z": {
+      "gold": [
+        "online_culture/quote_prompts",
+        "music/artists_albums"
+      ],
+      "Jev": "music/artists_albums",
+      "v1": "humor/shitposts",
+      "v2": "music/artists_albums",
+      "v3-blend": "music/artists_albums",
+      "gpt-6-luna:api": "humor/jokes_puns",
+      "text": "A Perfectly Reasonable Emotional Response to Acute Stress! At The Disco\n[quote] feminize a band name"
+    },
+    "at://did:plc:5kjcqdf3gdglxiufy7cfx5hb/app.bsky.feed.post/3mwknixsdqs2m": {
+      "gold": [
+        "entertainment/movies"
+      ],
+      "Jev": "entertainment/movies",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "entertainment/movies",
+      "text": "As movies go, this one was eerily accurate at predicting future trends.\nA fantastic film with several incredible continuous long shots which"
+    },
+    "at://did:plc:7y2wumxmq3nc6l2ie6nlp74f/app.bsky.feed.post/3mwk4rsnrqq2q": {
+      "gold": [
+        "automated_feeds/weather_alerts"
+      ],
+      "Jev": "animals_nature/weather_seasons",
+      "v1": "animals_nature/weather_seasons",
+      "v2": "promotion/creator_promo",
+      "v3-blend": "animals_nature/weather_seasons",
+      "gpt-6-luna:api": "humor/funny_stories",
+      "text": "IT'S COMING DOWN FOR REAL NOW. SO IS EVERYONE ELSE'S PATIENCE FOR A DECENT BATHROOM\n\nForecast: Rain. Covered spots (transit stations, mall e"
+    },
+    "at://did:plc:pg2luecf7ej6y2q34gkfj727/app.bsky.feed.post/3mwk4fbax322j": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "music/song_shares",
+      "v2": "music/song_shares",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "🎶 DONG DONG DONG"
+    },
+    "at://did:plc:cl42iz4bc2fi36ca2aqlz6ge/app.bsky.feed.post/3mwk4jenymc2r": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "It's the Wolf that is around. :I"
+    },
+    "at://did:plc:l5cqf5skpo3gt54erly3pugk/app.bsky.feed.post/3mwkeqpozuc2a": {
+      "gold": [
+        "adult_content/kink_fetish"
+      ],
+      "Jev": "adult_content/other",
+      "v1": "health/personal_medical",
+      "v2": "adult_content/kink_fetish",
+      "v3-blend": "health/personal_medical",
+      "gpt-6-luna:api": "health/personal_medical",
+      "text": "I've taken every cock enlargement pill and treatment at the same time. I hope I die of hypoxia or something before I experience a cascade of"
+    },
+    "at://did:plc:bwbn77byzlfosdbnosuupocq/app.bsky.feed.post/3mwkf22lcis25": {
+      "gold": [
+        "adult_content/thirst_posts"
+      ],
+      "Jev": "adult_content/explicit_posts",
+      "v1": "adult_content/explicit_posts",
+      "v2": "adult_content/explicit_posts",
+      "v3-blend": "adult_content/explicit_posts",
+      "gpt-6-luna:api": "adult_content/explicit_posts",
+      "text": "OMG another sexy reason why #whitebois make the best girls!!\n\n#whiteboipride!!  #whiteboi  #transbabe #trans\n[tags] #whitebois #whiteboiprid"
+    },
+    "at://did:plc:tejiuek5ppy3cq2neoup5yxt/app.bsky.feed.post/3mwkemlh5ws22": {
+      "gold": [
+        "entertainment/tv_shows"
+      ],
+      "Jev": "entertainment/tv_shows",
+      "v1": "entertainment/tv_shows",
+      "v2": "entertainment/tv_shows",
+      "v3-blend": "entertainment/tv_shows",
+      "gpt-6-luna:api": "entertainment/tv_shows",
+      "text": "The AMAs ruined my Big Brother recording and I’m peeved"
+    },
+    "at://did:plc:5rtu6pg766v57xnc5y6zqpha/app.bsky.feed.post/3mwkexnu25c2d": {
+      "gold": [
+        "personal_life/daily_updates"
+      ],
+      "Jev": "food_drink/other",
+      "v1": "food_drink/other",
+      "v2": "unclear",
+      "v3-blend": "food_drink/other",
+      "gpt-6-luna:api": "food_drink/other",
+      "text": "god i fuckign love  cereal"
+    },
+    "at://did:plc:x6ek4uxobbtd2sdmymhto4ok/app.bsky.feed.post/3mwkf3xpn222m": {
+      "gold": [
+        "personal_life/feelings"
+      ],
+      "Jev": "online_culture/bluesky_meta",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "online_culture/other",
+      "text": "#drugsky #drugstwt & #shsky #shtwt fusion :0\n[tags] #drugsky #drugstwt #shsky #shtwt"
+    },
+    "at://did:plc:xvo7gsaojuuuxc6rlw374pls/app.bsky.feed.post/3mwknnr3dns2b": {
+      "gold": [
+        "us_politics/trump_administration",
+        "technology/ai"
+      ],
+      "Jev": "technology/ai",
+      "v1": "technology/ai",
+      "v2": "technology/ai",
+      "v3-blend": "technology/ai",
+      "gpt-6-luna:api": "us_politics/trump_administration",
+      "text": "TechCrunch reports Anthropic CEO Dario Amodei's high-stakes White House dinner with Donald Trump.\nEvidence: executive meeting, AI safety deb"
+    },
+    "at://did:plc:jlg7cgoeuepaoegcokao33eb/app.bsky.feed.post/3mwknrrag3k2b": {
+      "gold": [
+        "us_politics/congress",
+        "us_politics/elections"
+      ],
+      "Jev": "us_politics/other",
+      "v1": "us_politics/other",
+      "v2": "us_politics/other",
+      "v3-blend": "us_politics/other",
+      "gpt-6-luna:api": "us_politics/other",
+      "text": "Republicans need this Navajo Teaching. m.youtube.com/watch?v=I9ey...\n[link] m.youtube.com | Don't Be Stupid. Native American (Navajo) Teachi"
+    },
+    "at://did:plc:kzujpwpti77v6d5r2spgrm2d/app.bsky.feed.post/3mwk4ssa2ek2b": {
+      "gold": [
+        "gaming/video_games"
+      ],
+      "Jev": "gaming/video_games",
+      "v1": "gaming/video_games",
+      "v2": "gaming/video_games",
+      "v3-blend": "gaming/video_games",
+      "gpt-6-luna:api": "gaming/video_games",
+      "text": "speaking of \"me-coded\" games, I need to shout out Bubblegum Galaxy, a relaxing city-builder with Bee and Puppycat–adjacent aesthetics in whi"
+    },
+    "at://did:plc:llhia7sgq5akkv4fallebd3h/app.bsky.feed.post/3mwk4ti7g6k22": {
+      "gold": [
+        "entertainment/movies"
+      ],
+      "Jev": "entertainment/movies",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "entertainment/movies",
+      "text": "www.youtube.com/watch?v=a3uq...\n[link] youtube.com | Inglourious Basterds (3/9) Movie CLIP - The Bear Jew (2009) HD | YouTube video by Movie"
+    },
+    "at://did:plc:z4llsx425l4htoylyyx6iam3/app.bsky.feed.post/3mwk4izme7c26": {
+      "gold": [
+        "entertainment/movies"
+      ],
+      "Jev": "entertainment/movies",
+      "v1": "entertainment/movies",
+      "v2": "entertainment/movies",
+      "v3-blend": "entertainment/movies",
+      "gpt-6-luna:api": "entertainment/movies",
+      "text": "First time watch\n[alt] The Best Little Whorehouse in Texas"
+    },
+    "at://did:plc:ttf5dlltv7u4h25q47ys34k6/app.bsky.feed.post/3mwkfewgbvs2f": {
+      "gold": [
+        "unclear"
+      ],
+      "Jev": "unclear",
+      "v1": "unclear",
+      "v2": "unclear",
+      "v3-blend": "unclear",
+      "gpt-6-luna:api": "unclear",
+      "text": "🤣\n[quote] t.me/NewsInsideUk..."
+    },
+    "at://did:plc:yazb7pfql2qzpxum5wpmdyup/app.bsky.feed.post/3mwk4eucr6k2l": {
+      "gold": [
+        "music/song_shares"
+      ],
+      "Jev": "music/song_shares",
+      "v1": "music/song_shares",
+      "v2": "music/song_shares",
+      "v3-blend": "music/song_shares",
+      "gpt-6-luna:api": "music/song_shares",
+      "text": "NEW PLUG: Chioke Dmachi — 'Everytime (Crossworm Remix)' 🎶 homies, lovers, friens: musings on unrequited love.\nopen.spotify.com/track/6fwMlo."
+    },
+    "at://did:plc:rlmaerw47rbff7f7n7lmelka/app.bsky.feed.post/3mwknnps5e22h": {
+      "gold": [
+        "personal_life/daily_updates"
+      ],
+      "Jev": "books_writing/writing_process",
+      "v1": "books_writing/writing_process",
+      "v2": "books_writing/other",
+      "v3-blend": "books_writing/books_reading",
+      "gpt-6-luna:api": "books_writing/writing_process",
+      "text": "Shio you idiot. Stop thinking about another book. You are working on one plus 4 other ones and a sequel"
+    },
+    "at://did:plc:5cuu3kt6fmiwbggo46u2wpry/app.bsky.feed.post/3mwknokphu22v": {
+      "gold": [
+        "gaming/daily_puzzles"
+      ],
+      "Jev": "gaming/daily_puzzles",
+      "v1": "gaming/daily_puzzles",
+      "v2": "gaming/daily_puzzles",
+      "v3-blend": "gaming/daily_puzzles",
+      "gpt-6-luna:api": "gaming/daily_puzzles",
+      "text": "Wordle 1,927 5/6*\n\n⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜\n⬜⬜🟨🟨⬜\n⬜🟩🟩⬜⬜\n🟩🟩🟩🟩🟩\n[alt] Truffles from Chowder"
+    },
+    "at://did:plc:6ixqqn766smqdcqqfqoqo7nv/app.bsky.feed.post/3mwkeofbwkc2d": {
+      "gold": [
+        "art/fan_art"
+      ],
+      "Jev": "art/fan_art",
+      "v1": "art/fan_art",
+      "v2": "art/fan_art",
+      "v3-blend": "art/fan_art",
+      "gpt-6-luna:api": "art/other",
+      "text": "this is still the most liked piece of art i've drawn"
+    },
+    "at://did:plc:sjzgumotywgpuezmmbdghrd2/app.bsky.feed.post/3mwk4rqqvos2m": {
+      "gold": [
+        "promotion/deals"
+      ],
+      "Jev": "promotion/deals",
+      "v1": "promotion/deals",
+      "v2": "promotion/deals",
+      "v3-blend": "promotion/deals",
+      "gpt-6-luna:api": "promotion/deals",
+      "text": "❖ [TREND DEAL] PEAK\n───────────────\nPRICE  | $4.95 (38% OFF,$7.99)\nRATING | Overwhelmingly Positive\n───────────────\n\n▶ Store Page\n\n#Trending"
+    }
+  }
+}

@@ -1,0 +1,713 @@
+{
+  "gold": "v1-gold-100",
+  "taxonomy": "v1",
+  "labels": [
+    {
+      "uri": "at://did:plc:k2yifpnnure2dmfkrjln7wof/app.bsky.feed.post/3mwknrfaxlc2a",
+      "acceptable": ["personal_life/greetings"],
+      "primary": "personal_life/greetings",
+      "cant_judge": false,
+      "note": "",
+      "text": "... skip ... skip ... skip ... gud mornin werld ..."
+    },
+    {
+      "uri": "at://did:plc:bu3qvbmhtfhz2zgbnxym34lm/app.bsky.feed.post/3mwknkxkkuc2m",
+      "acceptable": ["entertainment/tv_shows"],
+      "primary": "entertainment/tv_shows",
+      "cant_judge": false,
+      "note": "",
+      "text": "Lovely article about Saucer Country!  screenrant.com/best-sci-fi-...\n[link] screenrant.com | X-Files Meets The Diplomat In This 21-Part Sci-Fi Masterpiece | The spooky UFO mythology of The X-Files meet the political intrigue of The Diplomat in a sci-fi masterwork that pays off its premise like few others."
+    },
+    {
+      "uri": "at://did:plc:oaijdqozcipil2yrhrs5vrar/app.bsky.feed.post/3mwk4q7e5222i",
+      "acceptable": ["adult_content/thirst_posts"],
+      "primary": "adult_content/thirst_posts",
+      "cant_judge": false,
+      "note": "",
+      "text": "Fresh Bubba Blubber"
+    },
+    {
+      "uri": "at://did:plc:4aozdvfkmesmwi6qpdl5swvt/app.bsky.feed.post/3mwk52wnbhc2z",
+      "acceptable": ["us_politics/other"],
+      "primary": "us_politics/other",
+      "cant_judge": false,
+      "note": "",
+      "text": "(🧵1/30) On this date (Sept. 27) in 2012, a 36-yr-old man – a concealed-carry permittee – who was just fired from his job shot 8 people at his former workplace, 6 fatally, before killing himself (Minneapolis, Minn.): 💔😡💔 #GunsDontMakeUsSafer\nen.wikipedia.org/wiki/Minneap...\n[tags] #GunsDontMakeUsSafer"
+    },
+    {
+      "uri": "at://did:plc:vvoxhbnxdndzbbhaa43orcdq/app.bsky.feed.post/3mwk4kdthkk2m",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "I hope whoever thought of those young homeowner Progressive commercials has chronic diarrhea for for the next few years."
+    },
+    {
+      "uri": "at://did:plc:6kkewbkmu34p5j5tcnl2slyw/app.bsky.feed.post/3mwkfbnqcos2x",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "they don't call him bo \"twelve downs\" nix for nothing"
+    },
+    {
+      "uri": "at://did:plc:mhqnbglrgmwiuz3kgexbi7uf/app.bsky.feed.post/3mwknwcgg7a2z",
+      "acceptable": ["animals_nature/wildlife"],
+      "primary": "animals_nature/wildlife",
+      "cant_judge": false,
+      "note": "",
+      "text": "#critically endangered   #population   #Scotland\n🌐 www.newsmart.ch\n[tags] #critically endangered #population #Scotland\n[link] theguardian.com | → zum Artikel"
+    },
+    {
+      "uri": "at://did:plc:yh34nwgg4r3j42d5flv6urub/app.bsky.feed.post/3mwknm4p5222y",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "Everything feels like a sham"
+    },
+    {
+      "uri": "at://did:plc:4qz245vzimsqtch736gyva3m/app.bsky.feed.post/3mwk4fekb7c2n",
+      "acceptable": ["us_politics/elections"],
+      "primary": "us_politics/elections",
+      "cant_judge": false,
+      "note": "",
+      "text": "Wow 😬😳\n[quote] Stay safe out there! #USDemocracy"
+    },
+    {
+      "uri": "at://did:plc:ufdxtybevmoha2jtrgcytwuv/app.bsky.feed.post/3mwknnvoctk2t",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "no"
+    },
+    {
+      "uri": "at://did:plc:3rv733hgt4v7hv6xcpdunh5f/app.bsky.feed.post/3mwkfcujras26",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "BO NIX TOUCHDOWN!!!"
+    },
+    {
+      "uri": "at://did:plc:65tbtpkmdyk4xzw5a5karlqm/app.bsky.feed.post/3mwkf6ugv6s26",
+      "acceptable": ["online_culture/quote_prompts"],
+      "primary": "online_culture/quote_prompts",
+      "cant_judge": false,
+      "note": "",
+      "text": "Brighton Rocker\n[quote] The Spy Who Came in From the Colder"
+    },
+    {
+      "uri": "at://did:plc:qfonthe5nz4poaajmkjy7373/app.bsky.feed.post/3mwk4jkhpxs27",
+      "acceptable": ["sports/baseball"],
+      "primary": "sports/baseball",
+      "cant_judge": false,
+      "note": "",
+      "text": "I am humbly appealing to a higher power to ask, please, let this be the Milwaukee Brewers' year. Please."
+    },
+    {
+      "uri": "at://did:plc:pg2luecf7ej6y2q34gkfj727/app.bsky.feed.post/3mwkn5r3lm52e",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "🎵 DONG DONG DONG DONG DONG DONG DONG DONG"
+    },
+    {
+      "uri": "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknavf5qr2d",
+      "acceptable": ["automated_feeds/transit_traffic"],
+      "primary": "automated_feeds/transit_traffic",
+      "cant_judge": false,
+      "note": "",
+      "text": "Roadworks report for #MiltonKeynes, Mon 28 Sep, 2026:\n\nCLOSED: Chesney Wold, Newport Road, Old Wolverton Road, Great Brickhill Lane, Groveway V11 To H8\nLANE CLOSED: Kingston Roundabout, Marlborough Street H7 To H8, Saxon Street H4 To H5\n\n+24 more: CheapFuelNearMe.uk/street-manager/milton-keynes/\n[tags] #MiltonKeynes"
+    },
+    {
+      "uri": "at://did:plc:6ej6uq7ai4pgxju3wh5aclya/app.bsky.feed.post/3mwknnxd4c22t",
+      "acceptable": ["adult_content/thirst_posts"],
+      "primary": "adult_content/thirst_posts",
+      "cant_judge": false,
+      "note": "",
+      "text": "🤤fuckkkk\n[quote] on my knees ready for your cock😈"
+    },
+    {
+      "uri": "at://did:plc:wsja4eshb3sy2o3dooobtrtp/app.bsky.feed.post/3mwk53zj5hk25",
+      "acceptable": ["online_culture/quote_prompts"],
+      "primary": "online_culture/quote_prompts",
+      "cant_judge": false,
+      "note": "",
+      "text": "White Material\n[alt] White Material 2009\n[quote] Name a film with a Woman Director."
+    },
+    {
+      "uri": "at://did:plc:psfwwzwnlbharglyqvb2afmy/app.bsky.feed.post/3mwknxnhbjs26",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "bsky.app/profile/thxc..."
+    },
+    {
+      "uri": "at://did:plc:4srmnwr3sbw4ofubtw46p52t/app.bsky.feed.post/3mwk4lwoxn22l",
+      "acceptable": ["unclear", "personal_life/daily_updates"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "Replenishing the tasty supply. Should last me until Thanksgiving… maybe Halloween."
+    },
+    {
+      "uri": "at://did:plc:xkp7ju335gfjeobfjpl5ojf2/app.bsky.feed.post/3mwkf5tawrc2p",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "www.facebook.com/reel/2532743...\n[link] facebook.com"
+    },
+    {
+      "uri": "at://did:plc:ad3lwukfk6xgl2c4pzgddipp/app.bsky.feed.post/3mwkf3lfpl22p",
+      "acceptable": ["music/artists_albums"],
+      "primary": "music/artists_albums",
+      "cant_judge": false,
+      "note": "",
+      "text": "The only music story we should be talking about right now is how Eric Andre showed up to a fabulous and weird-ass avant contemporary classical show tonight"
+    },
+    {
+      "uri": "at://did:plc:fox6jxl3gryhey6ba2pf4ulu/app.bsky.feed.post/3mwk554s2hk2v",
+      "acceptable": ["world_news/israel_palestine"],
+      "primary": "world_news/israel_palestine",
+      "cant_judge": false,
+      "note": "",
+      "text": "youtube.com/post/Ugkx64p...\n[link] youtube.com | Post from Middle East Monitor - YouTube | Two Palestinians were killed, and seven others injured Sunday in Israeli attacks on the Gaza Strip, amid Tel Aviv’s daily violations of a ceasefire agreement..."
+    },
+    {
+      "uri": "at://did:plc:yhtk7eedx6gikjs6bil5kybs/app.bsky.feed.post/3mwknejudys2s",
+      "acceptable": ["gaming/video_games", "art/fan_art"],
+      "primary": "gaming/video_games",
+      "cant_judge": false,
+      "note": "",
+      "text": "Day 8: Free Day\n\nIt's a calm morning in Shaaloani and nothing whatsoever is going to ruin their day.\n\n#gpose #gposers #gposecomic #erenweek #erenweek2026 #erenville #erenwol #gleenershits #ireinlore\n[tags] #gpose #gposers #gposecomic #erenweek #erenweek2026 #erenville #erenwol #gleenershits #ireinlore"
+    },
+    {
+      "uri": "at://did:plc:4xsvycd5patuukhmgzs3o4gr/app.bsky.feed.post/3mwk53bvwhs2t",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "www.fraps.com tattoo on my collarbone"
+    },
+    {
+      "uri": "at://did:plc:y435iv635b52twusagaoxktx/app.bsky.feed.post/3mwkf6ypszk2k",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "What the fuck is Replay Assist for if not to look at that and go “lol there is no penalty there”"
+    },
+    {
+      "uri": "at://did:plc:ynzytmp4nsb6intt6mjbsvgi/app.bsky.feed.post/3mwkf2hy2a22s",
+      "acceptable": ["health/mental_health"],
+      "primary": "health/mental_health",
+      "cant_judge": false,
+      "note": "",
+      "text": "Thank you for this info\n[quote] Don't go to the police alone bring an advocate with you! Step 1 contact Rainn.org. Step 2 go to a medical facility with your advocate. Step 3 go to the police officer campus with your advocate. Never let them transfer shame to you."
+    },
+    {
+      "uri": "at://did:plc:odza3ulbckesdtrvj7xmwa2u/app.bsky.feed.post/3mwk4p4jwqk2y",
+      "acceptable": ["personal_life/daily_updates"],
+      "primary": "personal_life/daily_updates",
+      "cant_judge": false,
+      "note": "",
+      "text": "Time for a chill out hehe"
+    },
+    {
+      "uri": "at://did:plc:4cmvk2puxj62qeqxximgr44b/app.bsky.feed.post/3mwk4f2vyx22b",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "Broncos look like shit tonight."
+    },
+    {
+      "uri": "at://did:plc:fly75rxvjquaz2g2sssxhalk/app.bsky.feed.post/3mwk4jqqon22w",
+      "acceptable": ["us_politics/courts_legal"],
+      "primary": "us_politics/courts_legal",
+      "cant_judge": false,
+      "note": "",
+      "text": "joycevance.substack.com/p/the-week-a...\n[link] joycevance.substack.com | The Week Ahead | September 27, 2026"
+    },
+    {
+      "uri": "at://did:plc:45wv6lyd2qlmitd63npb7ilm/app.bsky.feed.post/3mwkn5g4lyk2s",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "farts that give you status effects"
+    },
+    {
+      "uri": "at://did:plc:x43ejfwg4kybn6ijz5orayey/app.bsky.feed.post/3mwknjpl5hc2n",
+      "acceptable": ["personal_life/feelings"],
+      "primary": "personal_life/feelings",
+      "cant_judge": false,
+      "note": "",
+      "text": "I do read the words of my friends and mutuals on here. I consider what they are saying, especially when they're being serious on various topics. I do my best to just listen and learn from them. Maybe taking in some more lessons will help me become a more solid, dependable person and woman. I try."
+    },
+    {
+      "uri": "at://did:plc:atubeoqgot7vu6y6pnuyt4kn/app.bsky.feed.post/3mwk52mx4n322",
+      "acceptable": ["lifestyle/travel"],
+      "primary": "lifestyle/travel",
+      "cant_judge": false,
+      "note": "",
+      "text": "Best palaces and castles in Egypt\n11 places, ranked by travellers\n[link] triprankings.com | Best palaces and castles in Egypt"
+    },
+    {
+      "uri": "at://did:plc:idmwo3ui5yfevmhueg454rzh/app.bsky.feed.post/3mwk57edswc2o",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "plug it into my veins"
+    },
+    {
+      "uri": "at://did:plc:pigl3pnhiiq5cguea7u2fhis/app.bsky.feed.post/3mwkndoqmm42o",
+      "acceptable": ["automated_feeds/weather_alerts"],
+      "primary": "automated_feeds/weather_alerts",
+      "cant_judge": false,
+      "note": "",
+      "text": "A 5.2 magnitude earthquake occurred 67 km ENE of Tadine, New Caledonia!\n🗺️ Coordinates: -21.224700, 168.427400\n[link] osm.org | View on OpenStreetMap | 67 km ENE of Tadine, New Caledonia"
+    },
+    {
+      "uri": "at://did:plc:bhyo6qnbgtz3u5ggui7ovvro/app.bsky.feed.post/3mwkfbdfeku24",
+      "acceptable": ["adult_content/thirst_posts"],
+      "primary": "adult_content/thirst_posts",
+      "cant_judge": false,
+      "note": "",
+      "text": "Gloria Sol 🔥 \nMetart"
+    },
+    {
+      "uri": "at://did:plc:w7m7vo3dvoen3yqijjuzijjh/app.bsky.feed.post/3mwkevawz7k2w",
+      "acceptable": [
+        "books_writing/books_reading",
+        "books_writing/author_promo"
+      ],
+      "primary": "books_writing/books_reading",
+      "cant_judge": false,
+      "note": "",
+      "text": "Just finished “The Isle in the Silver Sea” by Tasha Suri @tashasuri.bsky.social   It is about immigration, assimilation, how stories create culture, and vice versa.  It is also a grumpy / gremlin reincarnation sapphic romance and it has knights and witches and The Best Cat named Maleficium."
+    },
+    {
+      "uri": "at://did:plc:xslzkilxfu7dspyqw5c7a7qt/app.bsky.feed.post/3mwkfetysg22j",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "Slo mo replay was a mistake"
+    },
+    {
+      "uri": "at://did:plc:jewyelezgu6fvfa6vnnb7oxy/app.bsky.feed.post/3mwkf6hc5d22e",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "Tonight from my Insta:  www.instagram.com/p/Dd0O6-djRZ....\n\nFollow at:  www.instagram.com/ajiwings/.\n[link] instagram.com | Instagram | Create an account or log in to Instagram - Share what you're into with the people who get you."
+    },
+    {
+      "uri": "at://did:plc:xbind3kwdosxb2wsfzvvvkt2/app.bsky.feed.post/3mwk4ozw63c2w",
+      "acceptable": ["technology/ai"],
+      "primary": "technology/ai",
+      "cant_judge": false,
+      "note": "",
+      "text": "How AI Could Actually Kill Us, According to Expert\n\n'Government's not gonna save us,' is one AI journo's warning to New Yorker\n[link] newser.com | How AI Could Actually Kill Us, According to Expert | 'Government's not gonna save us,' is one AI journo's warning to New Yorker"
+    },
+    {
+      "uri": "at://did:plc:dek2pwqpnr6vadbs5amffmnz/app.bsky.feed.post/3mwkf2b445c2v",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "That was a terrible call on the Rams DB. Was great defense on the replay."
+    },
+    {
+      "uri": "at://did:plc:6zw6te6wiebgavwplbot74nu/app.bsky.feed.post/3mwknizjfi62x",
+      "acceptable": ["animals_nature/wildlife"],
+      "primary": "animals_nature/wildlife",
+      "cant_judge": false,
+      "note": "",
+      "text": "🐦🐦🐦\n[quote] Penduline tits tiny 8-10cm parts of Eurasia, Africa, SW US, Mexico constructs intricate, pouch-shaped hanging nest from plant fibres, animal wool, and spider silk that feels like soft felt. Diet variety of insects incubation 17 days chicks are fed 26 days in the nest and 3 weeks after fledging"
+    },
+    {
+      "uri": "at://did:plc:yebxs4sod4h4awpvltz44s7a/app.bsky.feed.post/3mwk4ox7eqc2q",
+      "acceptable": ["music/song_shares"],
+      "primary": "music/song_shares",
+      "cant_judge": false,
+      "note": "",
+      "text": "Every once in a while I remember this song exists and am reminded why it used to have me a chokehold\nmusic.youtube.com/watch?v=nY-V...\n[link] music.youtube.com | Come Here | YouTube video by J Holiday - Topic"
+    },
+    {
+      "uri": "at://did:plc:xsvsexuduhwosggdtgr5lq7m/app.bsky.feed.post/3mwk4vh2css2k",
+      "acceptable": ["society/gender_lgbtq"],
+      "primary": "society/gender_lgbtq",
+      "cant_judge": false,
+      "note": "",
+      "text": "@papst-ny.bsky.social \n@stny-trans.bsky.social\n[quote] If you are bitching about the 8 trans athletes in the NCAA, but are staying silent about a woman being gang raped for 7 hours, you don’t give a shit about women. Post Anything Here: InteractInk.com"
+    },
+    {
+      "uri": "at://did:plc:drfxtbvlkhlxbqetdj5kg6xp/app.bsky.feed.post/3mwkeqf3uds2x",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "Denver been wide open two plays in a row. I mean WIDE OPEN"
+    },
+    {
+      "uri": "at://did:plc:muyf2lk52rsh6go6hzqglu3s/app.bsky.feed.post/3mwk4fdlcyw2f",
+      "acceptable": ["science/physical_sciences"],
+      "primary": "science/physical_sciences",
+      "cant_judge": false,
+      "note": "",
+      "text": "A space rock the size of a skyscraper just zipped past us at 84,523 km/h. To put that in perspective, 1998 FF14 was cruising at 40 times the distance to the Moon. It’s one of three hazardous visitors passing by our neighborhood today. Space is busy! ☄️\n\n#Asteroids #Space #Astronomy\n[tags] #Asteroids #Space #Astronomy\n[link] play.google.com | NEO - Asteroid Tracker | Track 6 near-Earth asteroids today with official NASA data. View 3D orbits, get alerts, and more."
+    },
+    {
+      "uri": "at://did:plc:6qrmdhmt6vymdjl6x5rr4dc3/app.bsky.feed.post/3mwk53ydfhc26",
+      "acceptable": ["society/racial_justice"],
+      "primary": "society/racial_justice",
+      "cant_judge": false,
+      "note": "",
+      "text": "I don't comment on POC capitalism unless it's latinx or indigenous related. \n\nEveryone stays in their lane"
+    },
+    {
+      "uri": "at://did:plc:wm52bc4yxl4aayi7nw7muzzh/app.bsky.feed.post/3mwkfao75ps2x",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "Refs clearly want a Denver win here"
+    },
+    {
+      "uri": "at://did:plc:4zshebjfpzk4grqukxhevhur/app.bsky.feed.post/3mwk4sydcg222",
+      "acceptable": ["entertainment/movies"],
+      "primary": "entertainment/movies",
+      "cant_judge": false,
+      "note": "",
+      "text": "In the new Skywalker trilogy, a hyperspace accident sends Rey to a place she’s never been before: Roswell, New Mexico. 1947."
+    },
+    {
+      "uri": "at://did:plc:xirzune7uxmu232nqjolxjwi/app.bsky.feed.post/3mwk4oofhas22",
+      "acceptable": ["adult_content/nsfw_art"],
+      "primary": "adult_content/nsfw_art",
+      "cant_judge": false,
+      "note": "",
+      "text": "Anyone care to join me for a spa day?"
+    },
+    {
+      "uri": "at://did:plc:4tjjmwt6bea6ptjvgs3bws5j/app.bsky.feed.post/3mwkeq2pjlc2k",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "When you realise there’s no toilet paper… </3 :/\n[alt] Carni on the toilet looking at he toilet roll dispenser | Carni sitting on the toilet staring at the floor smiling because what else can you do."
+    },
+    {
+      "uri": "at://did:plc:epoyhdqonevb325i42a26out/app.bsky.feed.post/3mwkevilpc22n",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "Do you guys actually plan this life stuff or do you just say \"fuck it we ball\" and hope it works out"
+    },
+    {
+      "uri": "at://did:plc:tsr2khzoszc4us65wybbivgd/app.bsky.feed.post/3mwkfamlifk2b",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "the rams are so ass lmao"
+    },
+    {
+      "uri": "at://did:plc:vqrw24iuyejsep2dnwsoh7cz/app.bsky.feed.post/3mwk4fwohtn24",
+      "acceptable": ["lifestyle/travel"],
+      "primary": "lifestyle/travel",
+      "cant_judge": false,
+      "note": "",
+      "text": "EPCOT is now closed.\n[alt] A test image"
+    },
+    {
+      "uri": "at://did:plc:s2ihekmr3xczk3mc3mgpgxya/app.bsky.feed.post/3mwk56oqbzc2w",
+      "acceptable": ["us_politics/congress", "us_politics/elections"],
+      "primary": "us_politics/congress",
+      "cant_judge": false,
+      "note": "",
+      "text": "The difference between the left and right should be this—nothing matters to the right other than self fortune. The left needs to be the party that *cares*. Too many Dems are clearly just “federal employees” and not politician.\n[quote] But above all, it’s such a perfect distillation of who these jokers are. Facts don’t matter. Civility doesn’t matter unless it’s to their advantage. Nothing matters unless they’re allowed to keep pressing a boot on all of our faces. We’re going to keep telling the truth, and we’re going to win."
+    },
+    {
+      "uri": "at://did:plc:rheeyyoqtdxr6dgokt2se7mm/app.bsky.feed.post/3mwk4ylq3ik2n",
+      "acceptable": ["animals_nature/wildlife"],
+      "primary": "animals_nature/wildlife",
+      "cant_judge": false,
+      "note": "",
+      "text": "www.fau.edu/newsdesk/art...\n[link] fau.edu | Sharks Can Hear Sounds Nearly 250 Feet Away and Find the Source | FAU research shows free-swimming sharks can detect and respond to underwater sounds from nearly 250 feet away, revealing new insights into how these ancient predators hear and navigate their environme..."
+    },
+    {
+      "uri": "at://did:plc:mbapud2iwd44mypaxqa23iwy/app.bsky.feed.post/3mwkffopxnk26",
+      "acceptable": ["sports/american_football"],
+      "primary": "sports/american_football",
+      "cant_judge": false,
+      "note": "",
+      "text": "“Now watch the shoe.” -football in 2026"
+    },
+    {
+      "uri": "at://did:plc:iuzoriplc2blxdv2namkfbtm/app.bsky.feed.post/3mwknjoolfc2i",
+      "acceptable": ["us_politics/trump_administration", "technology/ai"],
+      "primary": "us_politics/trump_administration",
+      "cant_judge": false,
+      "note": "",
+      "text": "Mmmmm\nA McDonalds Dinner..\nw a Fat Liar Thief Rapist\nPedophile..\nBon Appetit...🤮 @anthropic.com\n[quote] Trump had previously lashed at Amodei over his repeated calls to slow down the pace of development of advanced AI models over concerns of superintelligence, stressing that Washington must not lose its edge over Beijing. ➡️ https://l.euronews.com/o4vq"
+    },
+    {
+      "uri": "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknlynzhk2d",
+      "acceptable": ["automated_feeds/market_bots"],
+      "primary": "automated_feeds/market_bots",
+      "cant_judge": false,
+      "note": "",
+      "text": "Roadworks report for #Havant, Mon 28 Sep, 2026:\n\nSINGLE-FILE TRAFFIC: Bellair Road, Slindon Gardens, Willow Close\nWORKS IN THE ROAD: Battens Way, Bedhampton Way, Foxcott Grove, Great Copse Drive, High Lawn Way, Owslebury Grove, Parkhouse Farm Way\n\n+1 more: CheapFuelNearMe.uk/street-manager/havant/\n[tags] #Havant"
+    },
+    {
+      "uri": "at://did:plc:dczyqdu4vmfvbepwadf2vy4p/app.bsky.feed.post/3mwkexzvzpc2y",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "HAHAHA YES"
+    },
+    {
+      "uri": "at://did:plc:gja5ijnm7qliwmo7ajfrb2bx/app.bsky.feed.post/3mwknfs7igo2d",
+      "acceptable": ["automated_feeds/market_bots"],
+      "primary": "automated_feeds/market_bots",
+      "cant_judge": false,
+      "note": "",
+      "text": "Roadworks report for #Penrith, Mon 28 Sep, 2026:\n\nCLOSED: Back Lane, Chapel Street, Holme Street, St Michaels Lane\nTEMPORARY LIGHTS: Cowper Road, Greenside Road, High Wiend, Low Wiend\nWORKS IN THE ROAD: Cambridge Drive\n\n+12 more: CheapFuelNearMe.uk/street-manager/penrith/\n[tags] #Penrith"
+    },
+    {
+      "uri": "at://did:plc:5zuwo32zrtgezop2llxwqgsq/app.bsky.feed.post/3mwk52ier2k26",
+      "acceptable": ["adult_content/thirst_posts"],
+      "primary": "adult_content/thirst_posts",
+      "cant_judge": false,
+      "note": "",
+      "text": "[alt] shirtless mirror selfie"
+    },
+    {
+      "uri": "at://did:plc:ivp3fax4npthatynw3aqtwrf/app.bsky.feed.post/3mwkfbvjr4c2v",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "I mean…you gotta call it…but good lord"
+    },
+    {
+      "uri": "at://did:plc:vhaoa6dfherxyg6hmrfeacpc/app.bsky.feed.post/3mwk536allk2x",
+      "acceptable": ["adult_content/nsfw_art"],
+      "primary": "adult_content/nsfw_art",
+      "cant_judge": false,
+      "note": "",
+      "text": "FINAL BUMP\n[quote] GG #pixellewds"
+    },
+    {
+      "uri": "at://did:plc:totk53ct5jimvopzel6kazmx/app.bsky.feed.post/3mwk4fuuf7k2d",
+      "acceptable": ["personal_life/feelings"],
+      "primary": "personal_life/feelings",
+      "cant_judge": false,
+      "note": "",
+      "text": "There are so many games to play, but I don’t have the time 😤"
+    },
+    {
+      "uri": "at://did:plc:l7u4i2d65z3bypurgjnfqjvq/app.bsky.feed.post/3mwkn5kxkmg2s",
+      "acceptable": ["humor/shitposts"],
+      "primary": "humor/shitposts",
+      "cant_judge": false,
+      "note": "",
+      "text": "[Automatic announcement]:  During yesterday, the world was made better by 2090 orcs who won't ork nor replicate no more."
+    },
+    {
+      "uri": "at://did:plc:rb5uxvtc4qjfzcgawxlvst5x/app.bsky.feed.post/3mwk4rc5xmk25",
+      "acceptable": ["music/song_shares"],
+      "primary": "music/song_shares",
+      "cant_judge": false,
+      "note": "",
+      "text": "Who decides who gets these awards? Madonna as artist of the year? Like, the year 2026?"
+    },
+    {
+      "uri": "at://did:plc:ia2lvy4nmxjl4jmh7cd3dscm/app.bsky.feed.post/3mwk4sng3mc2o",
+      "acceptable": ["us_politics/other"],
+      "primary": "us_politics/other",
+      "cant_judge": false,
+      "note": "",
+      "text": "Us Socalists and communists point out the obvious to normal folk\n\nBut dumb libs and centrists\n\nDon't have critical thinking,when the shit happens to you.\n\nYou have no excuse to complain"
+    },
+    {
+      "uri": "at://did:plc:zvkef6ifttaxw2bs5lpy3tac/app.bsky.feed.post/3mwknrxzt4k2z",
+      "acceptable": ["online_culture/quote_prompts", "music/artists_albums"],
+      "primary": "online_culture/quote_prompts",
+      "cant_judge": false,
+      "note": "",
+      "text": "A Perfectly Reasonable Emotional Response to Acute Stress! At The Disco\n[quote] feminize a band name"
+    },
+    {
+      "uri": "at://did:plc:5kjcqdf3gdglxiufy7cfx5hb/app.bsky.feed.post/3mwknixsdqs2m",
+      "acceptable": ["entertainment/movies"],
+      "primary": "entertainment/movies",
+      "cant_judge": false,
+      "note": "",
+      "text": "As movies go, this one was eerily accurate at predicting future trends.\nA fantastic film with several incredible continuous long shots which must be seen to be believed\n[quote] Time for a rewatch! Crazy that this is set in November 2027. 😬"
+    },
+    {
+      "uri": "at://did:plc:7y2wumxmq3nc6l2ie6nlp74f/app.bsky.feed.post/3mwk4rsnrqq2q",
+      "acceptable": ["automated_feeds/weather_alerts"],
+      "primary": "automated_feeds/weather_alerts",
+      "cant_judge": false,
+      "note": "",
+      "text": "IT'S COMING DOWN FOR REAL NOW. SO IS EVERYONE ELSE'S PATIENCE FOR A DECENT BATHROOM\n\nForecast: Rain. Covered spots (transit stations, mall entrances, arcades) beat anything with an outdoor entrance today.\n\nPlan ahead: https://pissandtell1.netlify.app"
+    },
+    {
+      "uri": "at://did:plc:pg2luecf7ej6y2q34gkfj727/app.bsky.feed.post/3mwk4fbax322j",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "🎶 DONG DONG DONG"
+    },
+    {
+      "uri": "at://did:plc:cl42iz4bc2fi36ca2aqlz6ge/app.bsky.feed.post/3mwk4jenymc2r",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "It's the Wolf that is around. :I"
+    },
+    {
+      "uri": "at://did:plc:l5cqf5skpo3gt54erly3pugk/app.bsky.feed.post/3mwkeqpozuc2a",
+      "acceptable": ["adult_content/kink_fetish"],
+      "primary": "adult_content/kink_fetish",
+      "cant_judge": false,
+      "note": "",
+      "text": "I've taken every cock enlargement pill and treatment at the same time. I hope I die of hypoxia or something before I experience a cascade of organ failure so bad I end up on a Chubbyemu video."
+    },
+    {
+      "uri": "at://did:plc:bwbn77byzlfosdbnosuupocq/app.bsky.feed.post/3mwkf22lcis25",
+      "acceptable": ["adult_content/thirst_posts"],
+      "primary": "adult_content/thirst_posts",
+      "cant_judge": false,
+      "note": "",
+      "text": "OMG another sexy reason why #whitebois make the best girls!!\n\n#whiteboipride!!  #whiteboi  #transbabe #trans\n[tags] #whitebois #whiteboipride #whiteboi #transbabe #trans\n[quote] #transgender #tgirl #trans #ts #porn #nsfw #boobs #transporn"
+    },
+    {
+      "uri": "at://did:plc:tejiuek5ppy3cq2neoup5yxt/app.bsky.feed.post/3mwkemlh5ws22",
+      "acceptable": ["entertainment/tv_shows"],
+      "primary": "entertainment/tv_shows",
+      "cant_judge": false,
+      "note": "",
+      "text": "The AMAs ruined my Big Brother recording and I’m peeved"
+    },
+    {
+      "uri": "at://did:plc:5rtu6pg766v57xnc5y6zqpha/app.bsky.feed.post/3mwkexnu25c2d",
+      "acceptable": ["personal_life/daily_updates"],
+      "primary": "personal_life/daily_updates",
+      "cant_judge": false,
+      "note": "",
+      "text": "god i fuckign love  cereal"
+    },
+    {
+      "uri": "at://did:plc:x6ek4uxobbtd2sdmymhto4ok/app.bsky.feed.post/3mwkf3xpn222m",
+      "acceptable": ["personal_life/feelings"],
+      "primary": "personal_life/feelings",
+      "cant_judge": false,
+      "note": "",
+      "text": "#drugsky #drugstwt & #shsky #shtwt fusion :0\n[tags] #drugsky #drugstwt #shsky #shtwt"
+    },
+    {
+      "uri": "at://did:plc:xvo7gsaojuuuxc6rlw374pls/app.bsky.feed.post/3mwknnr3dns2b",
+      "acceptable": ["us_politics/trump_administration", "technology/ai"],
+      "primary": "us_politics/trump_administration",
+      "cant_judge": false,
+      "note": "",
+      "text": "TechCrunch reports Anthropic CEO Dario Amodei's high-stakes White House dinner with Donald Trump.\nEvidence: executive meeting, AI safety debate, regulatory friction\n#Aletheia #Tech #AI\n[tags] #Aletheia #Tech #AI\n[alt] Alethekanon Psochic Hegemony Assessment Graph for Anthropic’s CEO is about to have dinner with President Trump | Core Verdict Card for Anthropic’s CEO is about to have dinner with President Trump: Claim, Reality, and Verdict coordinates. | System Analysis Details: Context: Sub-Audits Breakdown: - TechCrunch Report: PASS (0.5, 0.4) — Accurate reporting of high-level meetings. - Corporate Diplomacy: COND (0.2, 0.1) — Navigating hostile regulatory designations. Nuance: Anthropic CEO Dario Amodei meets President Trump at the White House amid ongoing policy clashes over AI safety and defense supply-chain risks. Breakdown: The Bright Side: Direct engagement opens channels between AI safety advocates and executive policymakers. Social Physics: The Breakdown & Plane Error: Confuses corporate lobbying and regulatory negotiation (WHAT) with pure public interest altruism (Metaphysical error). Trajectory: Social Physics Analysis: Actors navigate power asymmetry through strategic dialogue, balancing self-preservation with public safety advocacy in a smart pragmatic maneuver. The Unavoidables: The Trajectory: The Path of Redemption. When you map the gap between stated intentions and ground-level results, it plots a direct trajectory toward Redemption. Pragmatic negotiation tempers regulatory hostility. Alethekanon: The Unavoidable Truth: Tech leaders must engage political power to survive regulatory crackdowns. The Unavoidable Lie: Private dinners between CEOs and presidents are purely driven by civic duty. Awwthekanon: Alethekanon: Bridging the gap between AI safety principles and executive power requires pragmatic compromise, not moral purity. 🌐 Brothekanon: Awwthekanon: It takes courage to sit across from power when your safety guardrails are on the line, hoping for a mutual understanding."
+    },
+    {
+      "uri": "at://did:plc:jlg7cgoeuepaoegcokao33eb/app.bsky.feed.post/3mwknrrag3k2b",
+      "acceptable": ["us_politics/congress", "us_politics/elections"],
+      "primary": "us_politics/congress",
+      "cant_judge": false,
+      "note": "",
+      "text": "Republicans need this Navajo Teaching. m.youtube.com/watch?v=I9ey...\n[link] m.youtube.com | Don't Be Stupid. Native American (Navajo) Teaching. | YouTube video by Navajo Traditional Teachings\n[quote] Furry fanatic Tommy Tuberville says he reads very little to preserve his own opinions. Apparently, he doesn’t want facts getting in the way of his ignorance. www.rawstory.com/raw-investig..."
+    },
+    {
+      "uri": "at://did:plc:kzujpwpti77v6d5r2spgrm2d/app.bsky.feed.post/3mwk4ssa2ek2b",
+      "acceptable": ["gaming/video_games"],
+      "primary": "gaming/video_games",
+      "cant_judge": false,
+      "note": "",
+      "text": "speaking of \"me-coded\" games, I need to shout out Bubblegum Galaxy, a relaxing city-builder with Bee and Puppycat–adjacent aesthetics in which you must rebuild the galaxy before management shuts down your office\n\nstore.steampowered.com/app/1989120/...\n[alt] A screenshot from Bubblegum Galaxy. Player character Haco (bottom right) and her coworker Magda (bottom left) sit in front of a \"blue screen of death\"-styled error screen. It reads: \"A fatal exception has occurred and the current application will be terminated to prevent damage to your computer. MEMORY_CORE_CORRUPTED NO GALAXY FOUND Technical information: *** STOP: 0x0006f 0x000068 0x000020 0x00006e 0x00006f *** bubblegum_galaxy.sys: Address 0x000WUT base at 0x000SRY location 0x000IDK Contact your system administrator daruma or technical support cat for further assistance.\" | A screenshot from Bubblegum Galaxy. Intern Haco speaks to her coworker Penti, who is having a meltdown and yelling in binary. | A screenshot from Bubblegum Galaxy. A completed planet composed of hexagon tiles. A menu on the right-hand side displays completed quests and the score. | A screenshot from Bubblegum Galaxy. Haco and her office coworkers stare in shock and disbelief.\n[quote] Looking for Fael's multidimensional plot opens up the door to delightful pastiche. Using a leaf bug (phasmid!) as a central conceit makes it extremely me-coded. store.steampowered.com/app/2521170/..."
+    },
+    {
+      "uri": "at://did:plc:llhia7sgq5akkv4fallebd3h/app.bsky.feed.post/3mwk4ti7g6k22",
+      "acceptable": ["entertainment/movies"],
+      "primary": "entertainment/movies",
+      "cant_judge": false,
+      "note": "",
+      "text": "www.youtube.com/watch?v=a3uq...\n[link] youtube.com | Inglourious Basterds (3/9) Movie CLIP - The Bear Jew (2009) HD | YouTube video by Movieclips"
+    },
+    {
+      "uri": "at://did:plc:z4llsx425l4htoylyyx6iam3/app.bsky.feed.post/3mwk4izme7c26",
+      "acceptable": ["entertainment/movies"],
+      "primary": "entertainment/movies",
+      "cant_judge": false,
+      "note": "",
+      "text": "First time watch\n[alt] The Best Little Whorehouse in Texas"
+    },
+    {
+      "uri": "at://did:plc:ttf5dlltv7u4h25q47ys34k6/app.bsky.feed.post/3mwkfewgbvs2f",
+      "acceptable": ["unclear"],
+      "primary": "unclear",
+      "cant_judge": false,
+      "note": "",
+      "text": "🤣\n[quote] t.me/NewsInsideUk..."
+    },
+    {
+      "uri": "at://did:plc:yazb7pfql2qzpxum5wpmdyup/app.bsky.feed.post/3mwk4eucr6k2l",
+      "acceptable": ["music/song_shares"],
+      "primary": "music/song_shares",
+      "cant_judge": false,
+      "note": "",
+      "text": "NEW PLUG: Chioke Dmachi — 'Everytime (Crossworm Remix)' 🎶 homies, lovers, friens: musings on unrequited love.\nopen.spotify.com/track/6fwMlo...\nmusic.apple.com/us/album/eve...\n#chiokedmachi #chioke #Dmachi #heartlessreign\n[tags] #chiokedmachi #chioke #Dmachi #heartlessreign\n[alt] Chioke Dmachi in the Everytime music video, neon 'Homies, Lovers, Friends' sign glowing behind him | Chioke Dmachi leaning toward the camera in a neon-lit scene from the Everytime music video | Chioke Dmachi artist portrait, opening a dark jacket against a black background"
+    },
+    {
+      "uri": "at://did:plc:rlmaerw47rbff7f7n7lmelka/app.bsky.feed.post/3mwknnps5e22h",
+      "acceptable": ["personal_life/daily_updates"],
+      "primary": "personal_life/daily_updates",
+      "cant_judge": false,
+      "note": "",
+      "text": "Shio you idiot. Stop thinking about another book. You are working on one plus 4 other ones and a sequel"
+    },
+    {
+      "uri": "at://did:plc:5cuu3kt6fmiwbggo46u2wpry/app.bsky.feed.post/3mwknokphu22v",
+      "acceptable": ["gaming/daily_puzzles"],
+      "primary": "gaming/daily_puzzles",
+      "cant_judge": false,
+      "note": "",
+      "text": "Wordle 1,927 5/6*\n\n⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜\n⬜⬜🟨🟨⬜\n⬜🟩🟩⬜⬜\n🟩🟩🟩🟩🟩\n[alt] Truffles from Chowder"
+    },
+    {
+      "uri": "at://did:plc:6ixqqn766smqdcqqfqoqo7nv/app.bsky.feed.post/3mwkeofbwkc2d",
+      "acceptable": ["art/fan_art"],
+      "primary": "art/fan_art",
+      "cant_judge": false,
+      "note": "",
+      "text": "this is still the most liked piece of art i've drawn"
+    },
+    {
+      "uri": "at://did:plc:sjzgumotywgpuezmmbdghrd2/app.bsky.feed.post/3mwk4rqqvos2m",
+      "acceptable": ["promotion/deals"],
+      "primary": "promotion/deals",
+      "cant_judge": false,
+      "note": "",
+      "text": "❖ [TREND DEAL] PEAK\n───────────────\nPRICE  | $4.95 (38% OFF,$7.99)\nRATING | Overwhelmingly Positive\n───────────────\n\n▶ Store Page\n\n#TrendingGame #Steam #Action #Adventure #Indie\n[tags] #TrendingGame #Steam #Action #Adventure #Indie\n[link] youtube.com | Peak - Official Launch Trailer | Peak is available now on Steam. Check out the Peak launch trailer for this online 4-player co-op climbing game where the slightest mistake can spell your doo..."
+    }
+  ]
+}
