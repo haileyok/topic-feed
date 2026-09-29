@@ -185,7 +185,7 @@ services:
       LABEL_POLICY: /config/label_policy.yaml
       PIPELINE_DELAY_SECONDS: "10"
       LLM_MODEL: gpt-6-luna:api
-      LLM_DAILY_BUDGET_USD: "10"
+      LLM_DAILY_BUDGET_USD: "25"
       METRICS_ADDR: ":9103"
     volumes:
       - ../config:/config:ro
