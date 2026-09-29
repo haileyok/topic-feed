@@ -124,11 +124,21 @@ feeds:
   - rkey: chill-tech
     display_name: Chill Tech
     description: Technology posts (AI, software, security, gadgets) without the outrage, picked by a topic classifier. No keyword lists.
-    paths: [technology]
-    min_prob: 0.6
+    # Tuned by Hailey in the feed builder (2026-09-29).
+    paths: [technology/ai, technology/software_dev, technology/consumer_tech, technology/cybersecurity, technology/other]
+    min_prob: 0.5
+    exclude: {adult_content: 0.2}
     tone:
-      max: {outraged: 0.3}
-    max_posts: 10000   # ~950 posts/hour after the cutoff
+      max: {outraged: 0.35}
+      weights: {humorous: 2}
+    signals:
+      min: {substance: 0.5}
+    ranking:
+      gravity: 1.2
+      fresh_every: 0
+      author_gap: 3
+      promo_penalty: 3
+    max_posts: 10000
 
   - rkey: funny
     display_name: Funny
