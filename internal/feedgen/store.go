@@ -3,6 +3,7 @@ package feedgen
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -46,20 +47,33 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	if f.AllowAdult {
 		policies = append(policies, labelpolicy.AdultOnly)
 	}
+	subs, broads := split(f.Paths)
+	// Exclusions, as conditions on the stored probabilities. Keys are checked against the
+	// taxonomy when the config loads, and passed as parameters.
+	exclude, args := "", []any{subs, broads, since, policies, f.MinProb}
+	for _, p := range slices.Sorted(maps.Keys(f.Exclude)) {
+		if isBroad(p) {
+			exclude += " AND broad_probs[?] <= ?"
+		} else {
+			exclude += " AND path_probs[?] <= ?"
+		}
+		args = append(args, p, f.Exclude[p])
+	}
+	args = append(args, limit)
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
 	err := s.Conn.Select(ctx, &cands, `
 		SELECT uri, did, indexed_at, feed_policy, labels,
-		       arrayMax(arrayMap(p -> path_probs[p], ?)) AS score,
+		       greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?))) AS score,
 		       signals['substance'] AS substance, signals['general_interest'] AS general_interest,
 		       signals['promo'] AS promo, top_path, top_path_p,
 		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
 		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps,
 		       tone
 		FROM post_pipeline FINAL
-		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?
+		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+exclude+`
 		ORDER BY indexed_at DESC, uri DESC
-		LIMIT ?`, f.Paths, since, policies, f.MinProb, limit)
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}

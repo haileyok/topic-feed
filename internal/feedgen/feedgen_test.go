@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -201,9 +202,17 @@ func TestRepoConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths := TaxonomyPaths(tax)
+	good := Feed{Rkey: "ok", DisplayName: "x", Paths: []string{"world_news", "technology/ai"}, MinProb: 0.5,
+		Exclude: map[string]float32{"adult_content": 0.2, "art/commissions": 0.3}}
+	if err := (&Config{Feeds: []Feed{good}}).Validate(paths); err != nil {
+		t.Errorf("broad topics and exclusions: %v", err)
+	}
 	bad := []Feed{
 		{Rkey: "Has Caps", DisplayName: "x", Paths: []string{"technology/ai"}, MinProb: 0.5},
 		{Rkey: "ok", DisplayName: "x", Paths: []string{"technology/nope"}, MinProb: 0.5},
+		{Rkey: "ok", DisplayName: "x", Paths: []string{"nope"}, MinProb: 0.5},
+		{Rkey: "ok", DisplayName: "x", Paths: []string{"technology/ai"}, MinProb: 0.5, Exclude: map[string]float32{"adult": 0.2}},
+		{Rkey: "ok", DisplayName: "x", Paths: []string{"technology/ai"}, MinProb: 0.5, Exclude: map[string]float32{"adult_content": 2}},
 		{Rkey: "ok", DisplayName: "x", Paths: []string{"technology/ai"}, MinProb: 0},
 		{Rkey: "ok", DisplayName: "", Paths: []string{"technology/ai"}, MinProb: 0.5},
 	}
@@ -413,5 +422,16 @@ func TestToneRules(t *testing.T) {
 		if err := (&Config{Feeds: []Feed{f}}).Validate(paths); err == nil {
 			t.Errorf("accepted %+v", bad)
 		}
+	}
+}
+
+func TestSplitPaths(t *testing.T) {
+	subs, broads := split([]string{"world_news", "technology/ai", "art"})
+	if !slices.Equal(subs, []string{"technology/ai"}) || !slices.Equal(broads, []string{"world_news", "art"}) {
+		t.Errorf("%v %v", subs, broads)
+	}
+	subs, broads = split([]string{"technology/ai"})
+	if !slices.Equal(broads, []string{""}) || len(subs) != 1 {
+		t.Errorf("empty side must be [\"\"]: %v %v", subs, broads)
 	}
 }

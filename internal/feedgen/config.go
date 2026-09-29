@@ -24,10 +24,15 @@ type Feed struct {
 	Rkey        string `yaml:"rkey"`
 	DisplayName string `yaml:"display_name"`
 	Description string `yaml:"description"`
-	// Paths are taxonomy subtopic paths, e.g. sports/american_football. A post is a
-	// candidate when its probability for any of them is at least MinProb.
-	Paths   []string `yaml:"paths"`
-	MinProb float32  `yaml:"min_prob"`
+	// Paths are taxonomy subtopic paths (sports/american_football) or whole broad topics
+	// (world_news). A post is a candidate when its probability for any of them is at least
+	// MinProb: the subtopic probability for a path, the broad-topic probability for a
+	// broad topic (which counts every subtopic, so posts split between siblings match).
+	Paths []string `yaml:"paths"`
+	// Exclude leaves out posts whose probability for a broad topic or subtopic is above
+	// the given value, e.g. {adult_content: 0.2, art/commissions: 0.3}.
+	Exclude map[string]float32 `yaml:"exclude"`
+	MinProb float32            `yaml:"min_prob"`
 	// AllowAdult admits posts the label policy marks adult_only. Posts it marks drop are
 	// never shown.
 	AllowAdult bool `yaml:"allow_adult"`
@@ -208,7 +213,15 @@ func (c *Config) Validate(paths map[string]bool) error {
 		}
 		for _, p := range f.Paths {
 			if !paths[p] {
-				return fmt.Errorf("feed %q: %q is not a subtopic path in the taxonomy", f.Rkey, p)
+				return fmt.Errorf("feed %q: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
+			}
+		}
+		for p, v := range f.Exclude {
+			if !paths[p] {
+				return fmt.Errorf("feed %q: exclude: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
+			}
+			if v < 0 || v > 1 {
+				return fmt.Errorf("feed %q: exclude %s: must be a probability in [0, 1]", f.Rkey, p)
 			}
 		}
 		if f.MinProb <= 0 || f.MinProb > 1 {
@@ -232,17 +245,37 @@ func (c *Config) Validate(paths map[string]bool) error {
 	return nil
 }
 
-// TaxonomyPaths returns the model's path labels: broad/sub for every subtopic, and the
-// bare broad ID for topics without subtopics (e.g. unclear).
+// TaxonomyPaths returns what a feed may name: every broad topic ID and every broad/sub
+// subtopic path.
 func TaxonomyPaths(tax *taxonomy.Taxonomy) map[string]bool {
 	out := map[string]bool{}
 	for _, b := range tax.Broad {
-		if len(b.Subtopics) == 0 {
-			out[b.ID] = true
-		}
+		out[b.ID] = true
 		for _, s := range b.Subtopics {
 			out[b.ID+"/"+s.ID] = true
 		}
 	}
 	return out
+}
+
+// isBroad reports whether a feed path names a broad topic (no "/") rather than a subtopic.
+func isBroad(p string) bool { return !strings.Contains(p, "/") }
+
+// split separates a feed's paths into subtopic paths and broad topics. Each list has at
+// least one entry ("" matches nothing), so queries never see an empty array.
+func split(paths []string) (subs, broads []string) {
+	for _, p := range paths {
+		if isBroad(p) {
+			broads = append(broads, p)
+		} else {
+			subs = append(subs, p)
+		}
+	}
+	if len(subs) == 0 {
+		subs = []string{""}
+	}
+	if len(broads) == 0 {
+		broads = []string{""}
+	}
+	return subs, broads
 }

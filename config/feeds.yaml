@@ -5,8 +5,12 @@
 #                 changing it makes a new feed and orphans the old one)
 #   display_name  shown in Bluesky (max 24 characters)
 #   description   shown in Bluesky (max 300 characters)
-#   paths         taxonomy subtopic paths (taxonomy/v1.yaml); a post matches when its
-#                 probability for any of them is at least min_prob
+#   paths         taxonomy subtopic paths (sports/american_football) or whole broad
+#                 topics (world_news), from taxonomy/v1.yaml; a post matches when its
+#                 probability for any of them is at least min_prob (for a broad topic:
+#                 the broad-topic probability, which covers all its subtopics)
+#   exclude       optional; leave out posts whose probability for a broad topic or
+#                 subtopic is above a value, e.g. {adult_content: 0.2, art/commissions: 0.3}
 #   min_prob      0-1; higher is stricter
 #   allow_adult   also show posts the label policy marks adult_only (default false)
 #   ranking       optional; any field left out keeps the default below
@@ -92,3 +96,44 @@ feeds:
     description: D&D and other tabletop RPGs, board games, card games, Warhammer, and miniature painting, picked by a topic classifier. No keyword lists.
     paths: [gaming/tabletop_games]
     min_prob: 0.5   # posts at 0.5-0.6 were mostly tabletop: TTRPG lore, board games, minis (2026-09-29)
+
+  - rkey: photography
+    display_name: Photography
+    description: Photography, picked by a topic classifier. No keyword lists, no adult content.
+    paths: [art/photography]
+    min_prob: 0.5
+    exclude: {adult_content: 0.2}   # ~2% of photography posts lean adult without labels (2026-09-29)
+
+  - rkey: art
+    display_name: Art
+    description: Fine art, illustration, fan art, comics, and photography, picked by a topic classifier. No keyword lists, no commission ads, no adult content.
+    paths: [art]
+    min_prob: 0.5
+    exclude: {art/commissions: 0.3, adult_content: 0.2}   # ~5% commission posts, ~1.4% suggestive (2026-09-29)
+    max_posts: 10000   # ~900 posts/hour
+
+  - rkey: calm-news
+    display_name: Calm World News
+    description: World news without the outrage, picked by a topic classifier. Posts the model reads as angry are left out. No keyword lists.
+    paths: [world_news]
+    min_prob: 0.6
+    tone:
+      max: {outraged: 0.3}   # ~43% of world news posts are above this (2026-09-29)
+    max_posts: 10000   # ~690 posts/hour after the cutoff
+
+  - rkey: chill-tech
+    display_name: Chill Tech
+    description: Technology posts (AI, software, security, gadgets) without the outrage, picked by a topic classifier. No keyword lists.
+    paths: [technology]
+    min_prob: 0.6
+    tone:
+      max: {outraged: 0.3}
+    max_posts: 10000   # ~950 posts/hour after the cutoff
+
+  - rkey: funny
+    display_name: Funny
+    description: Jokes, puns, funny stories, and shitposts, picked by a topic classifier and a humor score. No keyword lists.
+    paths: [humor]
+    min_prob: 0.6
+    tone:
+      min: {humorous: 0.5}
