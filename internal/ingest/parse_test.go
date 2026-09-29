@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/bluesky-social/jetstream"
+
+	"github.com/haileyok/topic-feed/internal/chdb"
 )
 
 var testLang = NewLangChecker()
@@ -194,7 +196,7 @@ func TestMediaBlobsAndSelfLabels(t *testing.T) {
 }
 
 func TestInsertColumnsFollowTags(t *testing.T) {
-	cols := columns[PostRow]()
+	cols := chdb.Columns[PostRow]()
 	if !strings.HasPrefix(cols, "uri, did, rkey, cid,") || !strings.HasSuffix(cols, "self_labels, media_kinds, media_cids, media_alt_texts") {
 		t.Errorf("columns %q", cols)
 	}

@@ -134,3 +134,31 @@ services:
       options:
         max-size: 50m
         max-file: "5"
+
+  # Bluesky moderation service label stream → ClickHouse mod_labels. First run starts
+  # live; later runs resume from the position saved in ingest_cursor.
+  modlabels:
+    build:
+      context: ..
+      dockerfile: deploy/go.Dockerfile
+      args:
+        CMD: modlabels
+    image: topic-feed/modlabels:local
+    container_name: topic-feed-modlabels
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      MODLABELS_SERVICE: https://mod.bsky.app
+      METRICS_ADDR: ":9102"
+    ports:
+      - "127.0.0.1:9102:9102"  # Prometheus metrics
+    stop_grace_period: 1m
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
