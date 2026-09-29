@@ -6,30 +6,6 @@ import (
 	"time"
 )
 
-func TestRepoPolicy(t *testing.T) {
-	p, err := LoadPolicy("../../config/label_policy.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cases := []struct {
-		labels []string
-		want   string
-	}{
-		{nil, PolicyOK},
-		{[]string{"!warn"}, PolicyOK}, // not in either list
-		{[]string{"porn"}, PolicyAdultOnly},
-		{[]string{"sexual", "nudity"}, PolicyAdultOnly},
-		{[]string{"porn", "!takedown"}, PolicyDrop}, // drop beats adult_only
-		{[]string{"spam"}, PolicyDrop},
-		{[]string{"graphic-media"}, PolicyDrop},
-	}
-	for _, c := range cases {
-		if got := p.Decide(c.labels); got != c.want {
-			t.Errorf("Decide(%v) = %s, want %s", c.labels, got, c.want)
-		}
-	}
-}
-
 func TestParseTSV(t *testing.T) {
 	tsv := "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n" +
 		"1\t1\t0\t0\t0\t0\t0\t0\t640\t480\t-1\t\n" +

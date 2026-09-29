@@ -1,3 +1,6 @@
+// Package pipeline processes live posts shortly after ingest: it applies the label
+// policy, finds text in images (tesseract first, then an LLM description), classifies
+// topics, and records the result in post_pipeline.
 package pipeline
 
 import (
@@ -16,6 +19,7 @@ import (
 
 	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/ingest"
+	"github.com/haileyok/topic-feed/internal/labelpolicy"
 	"github.com/haileyok/topic-feed/internal/postdoc"
 )
 
@@ -33,7 +37,7 @@ type Config struct {
 type Pipeline struct {
 	Cfg        Config
 	Conn       driver.Conn
-	Policy     *Policy
+	Policy     *labelpolicy.Policy
 	OCR        *OCR
 	Describer  *Describer  // nil: no LLM descriptions
 	Classifier *Classifier // nil: no topic predictions
@@ -230,27 +234,7 @@ func (p *Pipeline) labelerLabels(ctx context.Context, posts []post) (map[string]
 			}
 		}
 	}
-	var rows []struct {
-		URI string `ch:"uri"`
-		Val string `ch:"val"`
-	}
-	// The newest row per (src, uri, val) decides: a removal (neg) or an expiry clears it.
-	err := p.Conn.Select(ctx, &rows, `
-		SELECT uri, val FROM (
-			SELECT uri, val, argMax(tuple(neg, exp), cts) AS last
-			FROM mod_labels
-			WHERE src IN ? AND uri IN ?
-			GROUP BY src, uri, val
-		)
-		WHERE last.1 = 0 AND (last.2 IS NULL OR last.2 > now64(3))`, p.Policy.Labelers, subjects)
-	if err != nil {
-		return nil, fmt.Errorf("select labels: %w", err)
-	}
-	out := map[string][]string{}
-	for _, r := range rows {
-		out[r.URI] = append(out[r.URI], r.Val)
-	}
-	return out, nil
+	return p.Policy.Current(ctx, p.Conn, subjects)
 }
 
 func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]string) Row {
@@ -265,7 +249,7 @@ func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]st
 	r := Row{URI: ps.URI, DID: ps.DID, IndexedAt: ps.IndexedAt, FeedPolicy: p.Policy.Decide(labels),
 		Labels: nonNil(labels), ImageTexts: []string{}, ImageTextSources: []string{},
 		BroadProbs: map[string]float32{}, PathProbs: map[string]float32{}, Signals: map[string]float32{}, Tone: map[string]float32{}}
-	if r.FeedPolicy == PolicyOK {
+	if r.FeedPolicy == labelpolicy.OK {
 		for i := range ps.MediaCIDs {
 			if len(r.ImageTexts) >= p.Cfg.MaxMedia {
 				break
@@ -353,7 +337,7 @@ func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error
 	var idx []int
 	var texts []string
 	for i := range rows {
-		if rows[i].FeedPolicy == PolicyDrop {
+		if rows[i].FeedPolicy == labelpolicy.Drop {
 			continue
 		}
 		text, ok := ModelInput(posts[i], rows[i].ImageTexts)

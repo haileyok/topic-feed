@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/haileyok/topic-feed/internal/chdb"
+	"github.com/haileyok/topic-feed/internal/labelpolicy"
 	"github.com/haileyok/topic-feed/internal/pipeline"
 	"github.com/haileyok/topic-feed/internal/postdoc"
 )
@@ -53,7 +54,7 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	policy, err := pipeline.LoadPolicy(env("LABEL_POLICY", "config/label_policy.yaml"))
+	policy, err := labelpolicy.Load(env("LABEL_POLICY", "config/label_policy.yaml"))
 	if err != nil {
 		return err
 	}

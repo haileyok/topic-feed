@@ -1,0 +1,28 @@
+# Topic feeds served by cmd/feedgen. After adding or changing a feed, restart feedgen and
+# run `make feedgen-publish` so Bluesky shows the new name and description.
+#
+#   rkey          record key: the last part of the feed's at:// URI (max 15 characters;
+#                 changing it makes a new feed and orphans the old one)
+#   display_name  shown in Bluesky (max 24 characters)
+#   description   shown in Bluesky (max 300 characters)
+#   paths         taxonomy subtopic paths (taxonomy/v1.yaml); a post matches when its
+#                 probability for any of them is at least min_prob
+#   min_prob      0-1; higher is stricter
+#   allow_adult   also show posts the label policy marks adult_only (default false)
+#
+# Feeds are newest first and cover the last FEEDGEN_WINDOW_HOURS (48). Thresholds were
+# picked from the first hour of live predictions (2026-09-29): at 0.5, NFL matched ~40
+# posts/hour on a Monday night; at 0.6, AI matched ~90/hour.
+
+feeds:
+  - rkey: nfl
+    display_name: NFL
+    description: Posts about the NFL and American football, picked by a topic classifier. No keyword lists.
+    paths: [sports/american_football]
+    min_prob: 0.5
+
+  - rkey: ai
+    display_name: AI
+    description: Posts about artificial intelligence (models, products, research, and the arguments about them), picked by a topic classifier. No keyword lists.
+    paths: [technology/ai]
+    min_prob: 0.6

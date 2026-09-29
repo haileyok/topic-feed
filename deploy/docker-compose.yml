@@ -199,3 +199,45 @@ services:
       options:
         max-size: 20m
         max-file: "5"
+
+  # Feed generator: serves the topic feeds in ../config/feeds.yaml to Bluesky. Only starts
+  # on request (`make feeds`), since it needs FEEDGEN_HOSTNAME and FEEDGEN_OWNER_DID in
+  # ~/.config/topic-feed/env. Listens on localhost; a reverse proxy terminates HTTPS for
+  # FEEDGEN_HOSTNAME and forwards to 127.0.0.1:8710. `make feeds-publish` writes the feed
+  # records to the owner's account (needs FEEDGEN_APP_PASSWORD).
+  feedgen:
+    profiles: ["feeds"]
+    build:
+      context: ..
+      dockerfile: deploy/go.Dockerfile
+      args:
+        CMD: feedgen
+    image: topic-feed/feedgen:local
+    container_name: topic-feed-feedgen
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      FEEDGEN_HOSTNAME: ${FEEDGEN_HOSTNAME:-}
+      FEEDGEN_SERVICE_DID: ${FEEDGEN_SERVICE_DID:-}
+      FEEDGEN_OWNER_DID: ${FEEDGEN_OWNER_DID:-}
+      FEEDGEN_HANDLE: ${FEEDGEN_HANDLE:-}
+      FEEDGEN_APP_PASSWORD: ${FEEDGEN_APP_PASSWORD:-}
+      HTTP_ADDR: ":8710"
+      METRICS_ADDR: ":9104"
+    working_dir: /work
+    volumes:
+      - ../taxonomy:/work/taxonomy:ro
+      - ../config:/work/config:ro
+    ports:
+      - "127.0.0.1:8710:8710"  # feed endpoints (behind the HTTPS reverse proxy)
+      - "127.0.0.1:9104:9104"  # Prometheus metrics
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
