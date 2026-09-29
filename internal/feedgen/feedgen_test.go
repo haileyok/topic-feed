@@ -25,7 +25,8 @@ func posts(n int) []Post {
 	out := make([]Post, n)
 	for i := range out {
 		out[i] = Post{URI: fmt.Sprintf("at://did:plc:a%d/app.bsky.feed.post/%03d", i, 999-i),
-			DID: fmt.Sprintf("did:plc:a%d", i), IndexedAt: now.Add(-time.Duration(i) * time.Minute)}
+			DID: fmt.Sprintf("did:plc:a%d", i), IndexedAt: now.Add(-time.Duration(i) * time.Minute),
+			TopPath: "sports/american_football", TopPathP: 0.91234}
 	}
 	return out
 }
@@ -126,14 +127,18 @@ func TestPagingStaysOnOneBuild(t *testing.T) {
 	cfg := &Config{Feeds: []Feed{{Rkey: "f", Ranking: Ranking{Gravity: 1.8}}}}
 	fs := NewFeeds(cfg, &swapBuilder{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 48*time.Hour, time.Hour, 100)
 	fs.refresh(context.Background(), cfg.Feeds[0])
-	first, next, _, _ := fs.Page("f", "", 4)
+	firstItems, next, _, _ := fs.Page("f", "", 4)
 	fs.refresh(context.Background(), cfg.Feeds[0]) // the order changes
 	var all []string
-	all = append(all, first...)
+	for _, it := range firstItems {
+		all = append(all, it.URI)
+	}
 	for next != "" {
-		var p []string
+		var p []Item
 		p, next, _, _ = fs.Page("f", next, 4)
-		all = append(all, p...)
+		for _, it := range p {
+			all = append(all, it.URI)
+		}
 	}
 	seen := map[string]bool{}
 	for _, u := range all {
@@ -237,8 +242,18 @@ func TestSkeletonEndpoint(t *testing.T) {
 	s := testServer(t)
 	feed := url.QueryEscape("at://did:plc:owner/app.bsky.feed.generator/nfl")
 	code, body := get(t, s, "/xrpc/app.bsky.feed.getFeedSkeleton?limit=2&feed="+feed)
-	if code != 200 || len(body["feed"].([]any)) != 2 || body["cursor"] == nil {
+	if code != 200 || len(body["feed"].([]any)) != 2 || body["cursor"] == nil || len(body["reqId"].(string)) != 32 {
 		t.Fatalf("page 1: %d %v", code, body)
+	}
+	item := body["feed"].([]any)[0].(map[string]any)
+	var fc struct {
+		ID    string  `json:"id"`
+		Topic string  `json:"topic"`
+		P     float64 `json:"p"`
+	}
+	if err := json.Unmarshal([]byte(item["feedContext"].(string)), &fc); err != nil || fc.ID != item["post"] ||
+		fc.Topic != "sports/american_football" || fc.P != 0.912 {
+		t.Errorf("feedContext %v (%v)", item["feedContext"], err)
 	}
 	code, body = get(t, s, "/xrpc/app.bsky.feed.getFeedSkeleton?limit=10&feed="+feed+"&cursor="+url.QueryEscape(body["cursor"].(string)))
 	if code != 200 || len(body["feed"].([]any)) != 3 || body["cursor"] != nil {

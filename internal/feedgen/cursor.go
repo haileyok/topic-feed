@@ -1,7 +1,9 @@
 package feedgen
 
 import (
+	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,8 @@ type Post struct {
 	DID       string
 	IndexedAt time.Time
 	Match     float32 // highest probability among the feed's paths
+	TopPath   string  // the model's top subtopic path for the post
+	TopPathP  float32 // its probability
 
 	// Model signals, 0-1.
 	Substance, GeneralInterest, Promo float32
@@ -20,6 +24,24 @@ type Post struct {
 	Likes, Reposts, Replies, Quotes uint64
 
 	Score float64 // ranking score when the feed was built
+}
+
+// Item is one entry of a feed page.
+type Item struct {
+	URI string
+	// Context is the post's feedContext: JSON {"id": post URI, "topic": the model's top
+	// subtopic, "p": its probability}. Bluesky passes it through to the app and back to
+	// the feed generator with interactions.
+	Context string
+}
+
+func feedContext(p Post) string {
+	b, _ := json.Marshal(struct {
+		ID    string  `json:"id"`
+		Topic string  `json:"topic"`
+		P     float64 `json:"p"`
+	}{p.URI, p.TopPath, math.Round(float64(p.TopPathP)*1000) / 1000})
+	return string(b)
 }
 
 // A ranked feed changes on every rebuild, so a cursor names the build a reader started

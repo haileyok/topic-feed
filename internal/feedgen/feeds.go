@@ -37,7 +37,7 @@ type build struct {
 	id      int64 // unix milliseconds of the build; unique per feed
 	builtAt time.Time
 	posts   []Post // full details: current build only
-	uris    []string
+	items   []Item
 }
 
 // NewFeeds prepares the feeds from the config. Call Start before serving.
@@ -71,7 +71,7 @@ func (fs *Feeds) Posts(rkey string) (posts []Post, builtAt time.Time, ok bool) {
 // Page returns up to limit post URIs after the cursor ("" for the first page) and the
 // cursor for the next page ("" at the end). A cursor whose build has expired continues
 // at the same position in the current build. ready is false before the first build.
-func (fs *Feeds) Page(rkey, cursor string, limit int) (uris []string, next string, ready bool, err error) {
+func (fs *Feeds) Page(rkey, cursor string, limit int) (items []Item, next string, ready bool, err error) {
 	st := fs.state[rkey]
 	b, offset := (*build)(nil), 0
 	if cursor != "" {
@@ -92,14 +92,14 @@ func (fs *Feeds) Page(rkey, cursor string, limit int) (uris []string, next strin
 	if b == nil {
 		return nil, "", false, nil
 	}
-	if offset >= len(b.uris) {
-		return []string{}, "", true, nil
+	if offset >= len(b.items) {
+		return []Item{}, "", true, nil
 	}
-	end := min(offset+limit, len(b.uris))
-	if end < len(b.uris) {
+	end := min(offset+limit, len(b.items))
+	if end < len(b.items) {
 		next = encodeCursor(b.id, end)
 	}
-	return b.uris[offset:end], next, true, nil
+	return b.items[offset:end], next, true, nil
 }
 
 func (st *feedState) find(id int64) *build {
@@ -159,24 +159,27 @@ func (fs *Feeds) refresh(ctx context.Context, f Feed) {
 	st := fs.state[f.Rkey]
 	st.mu.Lock()
 	prev := st.current
-	b := &build{id: start.UnixMilli(), builtAt: start, posts: ranked, uris: make([]string, len(ranked))}
+	b := &build{id: start.UnixMilli(), builtAt: start, posts: ranked, items: make([]Item, len(ranked))}
 	if prev != nil && b.id <= prev.id {
 		b.id = prev.id + 1
 	}
-	// Share URI strings with the previous build, so kept builds cost little memory.
-	var seen map[string]string
+	// Share strings with the previous build, so kept builds cost little memory.
+	var seen map[string]Item
 	if prev != nil {
-		seen = make(map[string]string, len(prev.uris))
-		for _, u := range prev.uris {
-			seen[u] = u
+		seen = make(map[string]Item, len(prev.items))
+		for _, it := range prev.items {
+			seen[it.URI] = it
 		}
 	}
 	for i, p := range ranked {
-		if u, ok := seen[p.URI]; ok {
-			b.uris[i] = u
-		} else {
-			b.uris[i] = p.URI
+		it := Item{URI: p.URI, Context: feedContext(p)}
+		if old, ok := seen[p.URI]; ok {
+			it.URI = old.URI
+			if old.Context == it.Context {
+				it.Context = old.Context
+			}
 		}
+		b.items[i] = it
 	}
 	if prev != nil {
 		prev.posts = nil

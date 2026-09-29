@@ -2,6 +2,8 @@ package feedgen
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -109,12 +111,14 @@ type xrpcError struct {
 }
 
 type skeletonItem struct {
-	Post string `json:"post"`
+	Post        string `json:"post"`
+	FeedContext string `json:"feedContext,omitempty"`
 }
 
 type skeletonResponse struct {
 	Feed   []skeletonItem `json:"feed"`
 	Cursor string         `json:"cursor,omitempty"`
+	ReqID  string         `json:"reqId,omitempty"` // passed back alongside interactions
 }
 
 func (s *Server) handleSkeleton(c echo.Context) error {
@@ -137,7 +141,7 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 		}
 		limit = n
 	}
-	uris, next, ready, err := s.feeds.Page(rkey, c.QueryParam("cursor"), limit)
+	items, next, ready, err := s.feeds.Page(rkey, c.QueryParam("cursor"), limit)
 	if err != nil {
 		return fail(http.StatusBadRequest, rkey, "InvalidRequest", err.Error())
 	}
@@ -145,11 +149,11 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 		return fail(http.StatusServiceUnavailable, rkey, "NotReady", "feed is still loading")
 	}
 	if viewer := s.viewer(c); viewer != "" {
-		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(uris))
+		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(items))
 	}
-	resp := skeletonResponse{Feed: make([]skeletonItem, len(uris)), Cursor: next}
-	for i, u := range uris {
-		resp.Feed[i] = skeletonItem{Post: u}
+	resp := skeletonResponse{Feed: make([]skeletonItem, len(items)), Cursor: next, ReqID: newReqID()}
+	for i, it := range items {
+		resp.Feed[i] = skeletonItem{Post: it.URI, FeedContext: it.Context}
 	}
 	metricRequests.WithLabelValues(rkey, "200").Inc()
 	return c.JSON(http.StatusOK, resp)
@@ -193,6 +197,13 @@ func (s *Server) viewer(c echo.Context) string {
 	metricAuth.WithLabelValues("invalid").Inc()
 	s.log.Debug("invalid viewer credential", "err", err)
 	return ""
+}
+
+// newReqID returns a random request ID (32 hex characters).
+func newReqID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func (s *Server) handleDescribe(c echo.Context) error {
