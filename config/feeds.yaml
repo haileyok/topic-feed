@@ -55,8 +55,10 @@ feeds:
   - rkey: nfl
     display_name: NFL
     description: Posts about the NFL and American football, picked by a topic classifier. No keyword lists.
+    # Tuned by Hailey in the feed builder (2026-09-29): only clear football posts, no politics.
     paths: [sports/american_football]
-    min_prob: 0.5
+    min_prob: 0.85
+    exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
 
   - rkey: ai
     display_name: AI
