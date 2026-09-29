@@ -81,8 +81,8 @@ feeds: ## Build and start the feed generator (needs FEEDGEN_HOSTNAME and FEEDGEN
 feeds-logs:
 	$(COMPOSE) --profile feeds logs --tail=100 -f feedgen
 
-feeds-publish: ## Write every feed in config/feeds.yaml to the owner's account (DRY=1 to only print)
-	$(COMPOSE) --profile feeds run --rm --build feedgen publish $(if $(DRY),-dry-run,)
+feeds-publish: ## Write every feed in config/feeds.yaml to the owner's account (DRY=1 to only print; CODE=<emailed code> for email 2FA)
+	$(COMPOSE) --profile feeds run --rm --build feedgen publish $(if $(DRY),-dry-run,) $(if $(CODE),-code $(CODE),)
 
 backup: ## Run the backup now
 	deploy/backup.sh

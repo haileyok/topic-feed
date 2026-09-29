@@ -1,8 +1,11 @@
 // Command feedgen serves the topic feeds to Bluesky, and publishes their records.
 //
 //	feedgen [serve]            serve the feeds (default)
-//	feedgen publish [-dry-run] write an app.bsky.feed.generator record for every feed in
-//	                           the config into the owner's repo (-dry-run: print them)
+//	feedgen publish [-dry-run] [-code C]
+//	                           write an app.bsky.feed.generator record for every feed in
+//	                           the config into the owner's repo (-dry-run: print them;
+//	                           -code: the emailed sign-in code, only needed when logging
+//	                           in with the account's main password and email 2FA is on)
 //
 // Configuration comes from environment variables:
 //
@@ -71,8 +74,9 @@ func main() {
 	case "publish":
 		fs := flag.NewFlagSet("publish", flag.ExitOnError)
 		dry := fs.Bool("dry-run", false, "print the records instead of writing them")
+		code := fs.String("code", "", "emailed sign-in code (email 2FA with the main password; app passwords don't need it)")
 		fs.Parse(args)
-		err = publish(ctx, *dry)
+		err = publish(ctx, *dry, *code)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("feedgen "+cmd+" failed", "err", err)
@@ -167,7 +171,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	return srv.Shutdown(sctx)
 }
 
-func publish(ctx context.Context, dry bool) error {
+func publish(ctx context.Context, dry bool, code string) error {
 	s, err := load()
 	if err != nil {
 		return err
@@ -183,7 +187,12 @@ func publish(ctx context.Context, dry bool) error {
 		if err != nil {
 			return fmt.Errorf("FEEDGEN_HANDLE: %w", err)
 		}
-		if login, err = atclient.LoginWithPassword(ctx, dir, id, password, "", nil); err != nil {
+		if login, err = atclient.LoginWithPassword(ctx, dir, id, password, code, nil); err != nil {
+			var apiErr *atclient.APIError
+			if errors.As(err, &apiErr) && apiErr.Name == "AuthFactorTokenRequired" {
+				return errors.New("Bluesky emailed a sign-in code (email 2FA): run again with -code <code> " +
+					"(make feeds-publish CODE=<code>), or use an app password, which doesn't need one")
+			}
 			return fmt.Errorf("log in: %w", err)
 		}
 	}
