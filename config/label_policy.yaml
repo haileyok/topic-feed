@@ -1,0 +1,28 @@
+# Which labels keep a post out of feeds (agreed with Hailey, 2026-09-29).
+#
+# A post's labels are its own self-labels plus labels from the labelers below, on the
+# post itself or on its author's account. The first matching rule wins: drop beats
+# adult_only. Posts with neither are "ok".
+
+labelers:
+  - did:plc:ar7c4by46qjdydhdevvrndac # Bluesky moderation service (moderation.bsky.app)
+
+# Shown only in adult feeds, never in general ones. Their images are never sent to an
+# LLM for a description.
+adult_only:
+  - porn
+  - sexual
+  - nudity
+  - sexual-figurative
+
+# Never shown in any feed. Graphic media and gore are here rather than in adult_only,
+# since they don't belong in an adult feed either.
+drop:
+  - "!takedown"
+  - "!suspend"
+  - "!hide"
+  - spam
+  - scam
+  - impersonation
+  - graphic-media
+  - gore

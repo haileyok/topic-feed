@@ -162,3 +162,38 @@ services:
       options:
         max-size: 20m
         max-file: "5"
+
+  # Live post pipeline: ~10s after ingest, apply the label policy and find text in
+  # images (tesseract, then an LLM description within a daily budget) → post_pipeline.
+  # First run starts at the live edge. Edit ../config/label_policy.yaml and restart to
+  # change the policy.
+  pipeline:
+    build:
+      context: ..
+      dockerfile: deploy/pipeline.Dockerfile
+    image: topic-feed/pipeline:local
+    container_name: topic-feed-pipeline
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:?set TYPESAFE_API_KEY in ~/.config/topic-feed/env}
+      TYPESAFE_BASE_URL: ${TYPESAFE_BASE_URL:-https://agw.noclues.net}
+      LABEL_POLICY: /config/label_policy.yaml
+      PIPELINE_DELAY_SECONDS: "10"
+      LLM_MODEL: gpt-6-luna:api
+      LLM_DAILY_BUDGET_USD: "10"
+      METRICS_ADDR: ":9103"
+    volumes:
+      - ../config:/config:ro
+    ports:
+      - "127.0.0.1:9103:9103"  # Prometheus metrics
+    stop_grace_period: 1m
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
