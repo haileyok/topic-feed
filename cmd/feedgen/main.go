@@ -5,7 +5,9 @@
 //	                           write an app.bsky.feed.generator record for every feed in
 //	                           the config into the owner's repo (-dry-run: print them;
 //	                           -code: the emailed sign-in code, only needed when logging
-//	                           in with the account's main password and email 2FA is on)
+//	                           in with the account's main password and email 2FA is on).
+//	                           At a terminal it shows the records, asks before writing,
+//	                           and asks for the sign-in code if Bluesky sends one.
 //
 // Configuration comes from environment variables:
 //
@@ -30,6 +32,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -39,6 +42,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -177,27 +181,56 @@ func publish(ctx context.Context, dry bool, code string) error {
 		return err
 	}
 	dir := identity.DefaultDirectory()
-	var login *atclient.APIClient
-	if !dry {
-		password := os.Getenv("FEEDGEN_APP_PASSWORD")
-		if password == "" {
-			return errors.New("FEEDGEN_APP_PASSWORD must be set (or use -dry-run)")
+	p := &feedgen.Publisher{Dir: dir, OwnerDID: s.owner, ServiceDID: s.serviceDID, Out: os.Stdout}
+	if dry {
+		return p.Publish(ctx, s.cfg.Feeds, nil)
+	}
+	password := os.Getenv("FEEDGEN_APP_PASSWORD")
+	if password == "" {
+		return errors.New("FEEDGEN_APP_PASSWORD must be set (or use -dry-run)")
+	}
+	id, err := syntax.ParseAtIdentifier(env("FEEDGEN_HANDLE", s.owner.String()))
+	if err != nil {
+		return fmt.Errorf("FEEDGEN_HANDLE: %w", err)
+	}
+
+	// At a terminal: show what will be written and ask before logging in.
+	in := bufio.NewReader(os.Stdin)
+	tty := isTerminal(os.Stdin)
+	if tty {
+		if err := p.Publish(ctx, s.cfg.Feeds, nil); err != nil {
+			return err
 		}
-		id, err := syntax.ParseAtIdentifier(env("FEEDGEN_HANDLE", s.owner.String()))
-		if err != nil {
-			return fmt.Errorf("FEEDGEN_HANDLE: %w", err)
-		}
-		if login, err = atclient.LoginWithPassword(ctx, dir, id, password, code, nil); err != nil {
-			var apiErr *atclient.APIError
-			if errors.As(err, &apiErr) && apiErr.Name == "AuthFactorTokenRequired" {
-				return errors.New("Bluesky emailed a sign-in code (email 2FA): run again with -code <code> " +
-					"(make feeds-publish CODE=<code>), or use an app password, which doesn't need one")
-			}
-			return fmt.Errorf("log in: %w", err)
+		if !strings.EqualFold(prompt(in, "\nPublish these records as "+id.String()+"? [y/N] "), "y") {
+			return errors.New("not published")
 		}
 	}
-	p := &feedgen.Publisher{Dir: dir, OwnerDID: s.owner, ServiceDID: s.serviceDID, Out: os.Stdout}
+
+	login, err := atclient.LoginWithPassword(ctx, dir, id, password, code, nil)
+	var apiErr *atclient.APIError
+	if errors.As(err, &apiErr) && apiErr.Name == "AuthFactorTokenRequired" {
+		if !tty {
+			return errors.New("Bluesky emailed a sign-in code (email 2FA): run again at a terminal to be " +
+				"asked for it, or pass -code <code> (make feeds-publish CODE=<code>). App passwords don't need one")
+		}
+		code = prompt(in, "Bluesky emailed you a sign-in code. Enter it: ")
+		login, err = atclient.LoginWithPassword(ctx, dir, id, password, code, nil)
+	}
+	if err != nil {
+		return fmt.Errorf("log in: %w", err)
+	}
 	return p.Publish(ctx, s.cfg.Feeds, login)
+}
+
+func prompt(in *bufio.Reader, question string) string {
+	fmt.Print(question)
+	line, _ := in.ReadString('\n')
+	return strings.TrimSpace(line)
+}
+
+func isTerminal(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
 }
 
 func env(key, def string) string {
