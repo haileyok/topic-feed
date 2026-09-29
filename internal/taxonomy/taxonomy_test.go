@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +13,10 @@ func TestRepoTaxonomiesValid(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range files {
+		// <version>-equivalences.yaml files hold scoring rules for a taxonomy, not a taxonomy.
+		if strings.HasSuffix(f, "-equivalences.yaml") {
+			continue
+		}
 		tax, err := Load(f)
 		if err != nil {
 			t.Errorf("%s: %v", f, err)

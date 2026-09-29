@@ -167,23 +167,28 @@ func (p *Parser) handlePost(did string, c *jetstream.Commit, uri string, at time
 	}
 
 	row := PostRow{
-		URI:          uri,
-		DID:          did,
-		Rkey:         c.Rkey,
-		CID:          c.CID,
-		CreatedAt:    parseTime(str(rec, "createdAt"), at),
-		IndexedAt:    at,
-		Text:         text,
-		Langs:        langs,
-		DetectedLang: verdict.Detected,
-		EmbedType:    "none",
-		MediaAlts:    []string{},
-		Tags:         []string{},
-		LinkDomains:  []string{},
+		URI:           uri,
+		DID:           did,
+		Rkey:          c.Rkey,
+		CID:           c.CID,
+		CreatedAt:     parseTime(str(rec, "createdAt"), at),
+		IndexedAt:     at,
+		Text:          text,
+		Langs:         langs,
+		DetectedLang:  verdict.Detected,
+		EmbedType:     "none",
+		MediaAlts:     []string{},
+		Tags:          []string{},
+		LinkDomains:   []string{},
+		SelfLabels:    []string{},
+		MediaKinds:    []string{},
+		MediaCIDs:     []string{},
+		MediaAltTexts: []string{},
 	}
 	extractEmbed(mapv(rec, "embed"), &row)
 	extractFacets(rec, &row)
-	if labels := mapv(rec, "labels"); labels != nil && len(slice(labels, "values")) > 0 {
+	row.SelfLabels = selfLabels(rec)
+	if len(row.SelfLabels) > 0 {
 		row.HasLabels = 1
 	}
 	rows.Posts = append(rows.Posts, row)
@@ -202,7 +207,7 @@ func extractEmbed(embed map[string]any, row *PostRow) {
 		addImageAlts(embed, row)
 	case "app.bsky.embed.video":
 		row.EmbedType = "video"
-		addAlt(str(embed, "alt"), row)
+		addVideo(embed, row)
 	case "app.bsky.embed.external":
 		row.EmbedType = "external"
 		addExternal(mapv(embed, "external"), row)
@@ -218,7 +223,7 @@ func extractEmbed(embed map[string]any, row *PostRow) {
 		case "app.bsky.embed.images":
 			addImageAlts(media, row)
 		case "app.bsky.embed.video":
-			addAlt(str(media, "alt"), row)
+			addVideo(media, row)
 		case "app.bsky.embed.external":
 			addExternal(mapv(media, "external"), row)
 		}
@@ -233,8 +238,52 @@ func addImageAlts(embed map[string]any, row *PostRow) {
 	for _, img := range slice(embed, "images") {
 		if m, ok := img.(map[string]any); ok {
 			addAlt(str(m, "alt"), row)
+			addMedia("image", blobCID(mapv(m, "image")), str(m, "alt"), row)
 		}
 	}
+}
+
+func addVideo(embed map[string]any, row *PostRow) {
+	addAlt(str(embed, "alt"), row)
+	addMedia("video", blobCID(mapv(embed, "video")), str(embed, "alt"), row)
+}
+
+// addMedia records one attached image or video. Entries without a blob CID are
+// skipped: there is nothing to fetch.
+func addMedia(kind, cid, alt string, row *PostRow) {
+	if cid == "" {
+		return
+	}
+	row.MediaKinds = append(row.MediaKinds, kind)
+	row.MediaCIDs = append(row.MediaCIDs, cid)
+	row.MediaAltTexts = append(row.MediaAltTexts, strings.TrimSpace(alt))
+}
+
+// blobCID returns a blob's CID: {"ref": {"$link": cid}} in current records, or
+// {"cid": cid} in the legacy blob format.
+func blobCID(blob map[string]any) string {
+	if ref := mapv(blob, "ref"); ref != nil {
+		return str(ref, "$link")
+	}
+	return str(blob, "cid")
+}
+
+// selfLabels returns the post's self-label values, deduplicated, in order.
+func selfLabels(rec map[string]any) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, v := range slice(mapv(rec, "labels"), "values") {
+		if val := strings.TrimSpace(str(asMap(v), "val")); val != "" && !seen[val] {
+			seen[val] = true
+			out = append(out, val)
+		}
+	}
+	return out
+}
+
+func asMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }
 
 func addAlt(alt string, row *PostRow) {

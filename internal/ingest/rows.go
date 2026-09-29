@@ -26,6 +26,14 @@ type PostRow struct {
 	Tags            []string  `ch:"tags"`
 	LinkDomains     []string  `ch:"link_domains"`
 	HasLabels       uint8     `ch:"has_labels"`
+	// Self-label values the author set on the post (e.g. porn, sexual, nudity, graphic-media).
+	SelfLabels []string `ch:"self_labels"`
+	// One entry per attached image or video, aligned across the three columns: kind
+	// ("image" or "video"), blob CID (the CDN URL is built from the author DID and this),
+	// and its alt text ("" when the author wrote none).
+	MediaKinds    []string `ch:"media_kinds"`
+	MediaCIDs     []string `ch:"media_cids"`
+	MediaAltTexts []string `ch:"media_alt_texts"`
 }
 
 type PostTextRow struct {

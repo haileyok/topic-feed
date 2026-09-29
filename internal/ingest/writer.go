@@ -3,6 +3,8 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -58,11 +60,24 @@ func (w *Writer) LoadCursor(ctx context.Context) (seq uint64, ok bool, err error
 	return seq, true, nil
 }
 
+// columns lists a row type's `ch` tags. Inserts name their columns, so adding a
+// column to a table never breaks a running ingest built before the change.
+func columns[T any]() string {
+	t := reflect.TypeFor[T]()
+	var cols []string
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("ch"); tag != "" && tag != "-" {
+			cols = append(cols, tag)
+		}
+	}
+	return strings.Join(cols, ", ")
+}
+
 func insert[T any](ctx context.Context, conn driver.Conn, table string, rows []T) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	batch, err := conn.PrepareBatch(ctx, "INSERT INTO "+table)
+	batch, err := conn.PrepareBatch(ctx, "INSERT INTO "+table+" ("+columns[T]()+")")
 	if err != nil {
 		return fmt.Errorf("prepare %s: %w", table, err)
 	}

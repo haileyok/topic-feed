@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,63 @@ func TestQuoteWithMediaAndFacets(t *testing.T) {
 	}
 	if p.HasLabels != 1 {
 		t.Error("expected has_labels")
+	}
+}
+
+func blob(cid string) map[string]any {
+	return map[string]any{"$type": "blob", "ref": map[string]any{"$link": cid}, "mimeType": "image/jpeg", "size": 1000}
+}
+
+func TestMediaBlobsAndSelfLabels(t *testing.T) {
+	rows, _ := handle(t, post(map[string]any{
+		"text": "two pictures from the game tonight, the second one is blurry sorry",
+		"embed": map[string]any{
+			"$type": "app.bsky.embed.images",
+			"images": []any{
+				map[string]any{"alt": " Stadium lights ", "image": blob("bafyimg1")},
+				map[string]any{"alt": "", "image": map[string]any{"cid": "bafylegacy", "mimeType": "image/png"}},
+				map[string]any{"alt": "no blob, skipped"},
+			},
+		},
+		"labels": map[string]any{"$type": "com.atproto.label.defs#selfLabels",
+			"values": []any{map[string]any{"val": "nudity"}, map[string]any{"val": "sexual"}, map[string]any{"val": "nudity"}, map[string]any{"val": " "}}},
+	}))
+	p := rows.Posts[0]
+	if !reflect.DeepEqual(p.MediaKinds, []string{"image", "image"}) ||
+		!reflect.DeepEqual(p.MediaCIDs, []string{"bafyimg1", "bafylegacy"}) ||
+		!reflect.DeepEqual(p.MediaAltTexts, []string{"Stadium lights", ""}) {
+		t.Errorf("media %v %v %v", p.MediaKinds, p.MediaCIDs, p.MediaAltTexts)
+	}
+	if !reflect.DeepEqual(p.MediaAlts, []string{"Stadium lights", "no blob, skipped"}) {
+		t.Errorf("media_alts should be unchanged: %v", p.MediaAlts)
+	}
+	if !reflect.DeepEqual(p.SelfLabels, []string{"nudity", "sexual"}) || p.HasLabels != 1 {
+		t.Errorf("self labels %v has %d", p.SelfLabels, p.HasLabels)
+	}
+
+	// Video, directly and inside recordWithMedia.
+	rows, _ = handle(t, post(map[string]any{
+		"text":  "watch this clip from the second quarter, what a catch by the receiver",
+		"embed": map[string]any{"$type": "app.bsky.embed.video", "video": blob("bafyvid"), "alt": ""},
+	}))
+	if p := rows.Posts[0]; !reflect.DeepEqual(p.MediaKinds, []string{"video"}) || !reflect.DeepEqual(p.MediaCIDs, []string{"bafyvid"}) {
+		t.Errorf("video %v %v", p.MediaKinds, p.MediaCIDs)
+	}
+	rows, _ = handle(t, post(map[string]any{
+		"text": "quoting this with a screenshot of the scoreboard at halftime tonight",
+		"embed": map[string]any{"$type": "app.bsky.embed.recordWithMedia",
+			"record": map[string]any{"record": map[string]any{"uri": "at://did:plc:q/app.bsky.feed.post/3lq"}},
+			"media":  map[string]any{"$type": "app.bsky.embed.images", "images": []any{map[string]any{"alt": "", "image": blob("bafyshot")}}}},
+	}))
+	if p := rows.Posts[0]; !reflect.DeepEqual(p.MediaCIDs, []string{"bafyshot"}) || p.SelfLabels == nil || len(p.SelfLabels) != 0 || p.HasLabels != 0 {
+		t.Errorf("recordWithMedia %v, labels %v %d", p.MediaCIDs, p.SelfLabels, p.HasLabels)
+	}
+}
+
+func TestInsertColumnsFollowTags(t *testing.T) {
+	cols := columns[PostRow]()
+	if !strings.HasPrefix(cols, "uri, did, rkey, cid,") || !strings.HasSuffix(cols, "self_labels, media_kinds, media_cids, media_alt_texts") {
+		t.Errorf("columns %q", cols)
 	}
 }
 
