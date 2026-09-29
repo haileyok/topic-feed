@@ -67,6 +67,13 @@ feeds:
     paths: [sports/baseball]
     min_prob: 0.85
     exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
+    # Ranking tuned by Hailey in the feed builder (2026-09-29): strongly favors what's
+    # new (gravity 3), a brand-new post every 3rd slot, authors 3 slots apart.
+    ranking:
+      gravity: 3
+      fresh_every: 3
+      author_gap: 3
+      promo_penalty: 3.5
     max_posts: 10000   # ~2,800 posts in 48 hours at 0.85 during the playoffs
 
   - rkey: ai
