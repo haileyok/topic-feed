@@ -2,68 +2,45 @@ package feedgen
 
 import (
 	"errors"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Post is one feed entry. Feeds are newest first, ordered by (IndexedAt, URI) descending,
-// so the pair is a stable position even as new posts arrive at the top.
+// Post is one feed candidate with what ranking needs.
 type Post struct {
 	URI       string
+	DID       string
 	IndexedAt time.Time
-	Score     float32 // highest probability among the feed's paths
+	Match     float32 // highest probability among the feed's paths
+
+	// Model signals, 0-1.
+	Substance, GeneralInterest, Promo float32
+	// Engagement so far.
+	Likes, Reposts, Replies, Quotes uint64
+
+	Score float64 // ranking score when the feed was built
 }
 
-// before reports whether a sorts after b in a feed (older, or same time and smaller URI).
-func before(aT int64, aURI string, bT int64, bURI string) bool {
-	if aT != bT {
-		return aT < bT
-	}
-	return aURI < bURI
-}
+// A ranked feed changes on every rebuild, so a cursor names the build a reader started
+// on and a position in it: "<build id>:<offset>". Builds are kept for a while (see
+// Feeds.Keep), so paging through one is stable: no repeats, no gaps.
 
-// Cursors are "<indexed_at in Unix microseconds>::<post URI>": the last post of the
-// previous page. Clients treat them as opaque.
-
-func encodeCursor(p Post) string {
-	return strconv.FormatInt(p.IndexedAt.UnixMicro(), 10) + "::" + p.URI
+func encodeCursor(build int64, offset int) string {
+	return strconv.FormatInt(build, 10) + ":" + strconv.Itoa(offset)
 }
 
 var errBadCursor = errors.New("malformed cursor")
 
-func decodeCursor(s string) (int64, string, error) {
-	ts, uri, ok := strings.Cut(s, "::")
-	if !ok || !strings.HasPrefix(uri, "at://") {
-		return 0, "", errBadCursor
+func decodeCursor(s string) (build int64, offset int, err error) {
+	b, o, ok := strings.Cut(s, ":")
+	if !ok {
+		return 0, 0, errBadCursor
 	}
-	t, err := strconv.ParseInt(ts, 10, 64)
-	if err != nil || t <= 0 {
-		return 0, "", errBadCursor
+	build, err1 := strconv.ParseInt(b, 10, 64)
+	offset, err2 := strconv.Atoi(o)
+	if err1 != nil || err2 != nil || build <= 0 || offset < 0 {
+		return 0, 0, errBadCursor
 	}
-	return t, uri, nil
-}
-
-// page returns up to limit posts after the cursor ("" for the first page), and the cursor
-// for the next page ("" when there are no more posts).
-func page(posts []Post, cursor string, limit int) ([]Post, string, error) {
-	start := 0
-	if cursor != "" {
-		t, uri, err := decodeCursor(cursor)
-		if err != nil {
-			return nil, "", err
-		}
-		// posts is sorted newest first: find the first post that sorts after the cursor.
-		start = sort.Search(len(posts), func(i int) bool {
-			return before(posts[i].IndexedAt.UnixMicro(), posts[i].URI, t, uri)
-		})
-	}
-	end := min(start+limit, len(posts))
-	out := posts[start:end]
-	next := ""
-	if end < len(posts) && len(out) > 0 {
-		next = encodeCursor(out[len(out)-1])
-	}
-	return out, next, nil
+	return build, offset, nil
 }

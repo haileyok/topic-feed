@@ -4,39 +4,48 @@ import (
 	"context"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
-// Builder builds one feed's posts. *Store implements it.
+// Builder fetches one feed's candidate posts. *Store implements it.
 type Builder interface {
 	Build(ctx context.Context, f Feed, since time.Time, limit int) ([]Post, Removed, error)
 }
 
-// Feeds keeps every feed's posts in memory, rebuilt on a timer. Requests read the latest
-// snapshot and never query ClickHouse.
+// Feeds keeps every feed ranked in memory, rebuilt on a timer. Requests read the latest
+// build and never query ClickHouse. Recent builds are kept so a reader paging through one
+// keeps getting pages of the same order.
 type Feeds struct {
 	Builder  Builder
 	Log      *slog.Logger
 	Window   time.Duration // posts at most this old
 	MaxPosts int           // per feed
 	Every    time.Duration // rebuild interval
+	Keep     time.Duration // how long a build stays pageable
 
 	feeds []Feed
-	snaps map[string]*atomic.Pointer[snapshot]
+	state map[string]*feedState
 }
 
-type snapshot struct {
-	posts   []Post
+type feedState struct {
+	mu      sync.RWMutex
+	current *build
+	older   []*build // oldest first, only URIs kept
+}
+
+type build struct {
+	id      int64 // unix milliseconds of the build; unique per feed
 	builtAt time.Time
+	posts   []Post // full details: current build only
+	uris    []string
 }
 
 // NewFeeds prepares the feeds from the config. Call Start before serving.
 func NewFeeds(cfg *Config, b Builder, log *slog.Logger, window, every time.Duration, maxPosts int) *Feeds {
 	fs := &Feeds{Builder: b, Log: log, Window: window, MaxPosts: maxPosts, Every: every,
-		feeds: cfg.Feeds, snaps: map[string]*atomic.Pointer[snapshot]{}}
+		Keep: 15 * time.Minute, feeds: cfg.Feeds, state: map[string]*feedState{}}
 	for _, f := range cfg.Feeds {
-		fs.snaps[f.Rkey] = &atomic.Pointer[snapshot]{}
+		fs.state[f.Rkey] = &feedState{}
 	}
 	return fs
 }
@@ -44,17 +53,65 @@ func NewFeeds(cfg *Config, b Builder, log *slog.Logger, window, every time.Durat
 // List returns the configured feeds in config order.
 func (fs *Feeds) List() []Feed { return fs.feeds }
 
-// Posts returns a feed's current posts and when they were built. ok is false for an
-// unknown feed; posts is nil before the first successful build.
+// Posts returns a feed's current ranked posts and when they were built. ok is false for
+// an unknown feed; posts is nil before the first successful build.
 func (fs *Feeds) Posts(rkey string) (posts []Post, builtAt time.Time, ok bool) {
-	p, ok := fs.snaps[rkey]
+	st, ok := fs.state[rkey]
 	if !ok {
 		return nil, time.Time{}, false
 	}
-	if s := p.Load(); s != nil {
-		return s.posts, s.builtAt, true
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	if st.current == nil {
+		return nil, time.Time{}, true
 	}
-	return nil, time.Time{}, true
+	return st.current.posts, st.current.builtAt, true
+}
+
+// Page returns up to limit post URIs after the cursor ("" for the first page) and the
+// cursor for the next page ("" at the end). A cursor whose build has expired continues
+// at the same position in the current build. ready is false before the first build.
+func (fs *Feeds) Page(rkey, cursor string, limit int) (uris []string, next string, ready bool, err error) {
+	st := fs.state[rkey]
+	b, offset := (*build)(nil), 0
+	if cursor != "" {
+		id, off, err := decodeCursor(cursor)
+		if err != nil {
+			return nil, "", true, err
+		}
+		offset = off
+		st.mu.RLock()
+		b = st.find(id)
+		st.mu.RUnlock()
+	}
+	if b == nil {
+		st.mu.RLock()
+		b = st.current
+		st.mu.RUnlock()
+	}
+	if b == nil {
+		return nil, "", false, nil
+	}
+	if offset >= len(b.uris) {
+		return []string{}, "", true, nil
+	}
+	end := min(offset+limit, len(b.uris))
+	if end < len(b.uris) {
+		next = encodeCursor(b.id, end)
+	}
+	return b.uris[offset:end], next, true, nil
+}
+
+func (st *feedState) find(id int64) *build {
+	if st.current != nil && st.current.id == id {
+		return st.current
+	}
+	for _, b := range st.older {
+		if b.id == id {
+			return b
+		}
+	}
+	return nil
 }
 
 // Start builds every feed once, then keeps rebuilding them in the background until ctx
@@ -98,7 +155,39 @@ func (fs *Feeds) refresh(ctx context.Context, f Feed) {
 		}
 		return
 	}
-	fs.snaps[f.Rkey].Store(&snapshot{posts: posts, builtAt: start})
+	ranked := Rank(posts, f.Ranking, start)
+	st := fs.state[f.Rkey]
+	st.mu.Lock()
+	prev := st.current
+	b := &build{id: start.UnixMilli(), builtAt: start, posts: ranked, uris: make([]string, len(ranked))}
+	if prev != nil && b.id <= prev.id {
+		b.id = prev.id + 1
+	}
+	// Share URI strings with the previous build, so kept builds cost little memory.
+	var seen map[string]string
+	if prev != nil {
+		seen = make(map[string]string, len(prev.uris))
+		for _, u := range prev.uris {
+			seen[u] = u
+		}
+	}
+	for i, p := range ranked {
+		if u, ok := seen[p.URI]; ok {
+			b.uris[i] = u
+		} else {
+			b.uris[i] = p.URI
+		}
+	}
+	if prev != nil {
+		prev.posts = nil
+		st.older = append(st.older, prev)
+	}
+	for len(st.older) > 0 && start.Sub(st.older[0].builtAt) > fs.Keep {
+		st.older = st.older[1:]
+	}
+	st.current = b
+	st.mu.Unlock()
+
 	metricFeedPosts.WithLabelValues(f.Rkey).Set(float64(len(posts)))
 	metricRemoved.WithLabelValues(f.Rkey, "deleted").Set(float64(rm.Deleted))
 	metricRemoved.WithLabelValues(f.Rkey, "inactive").Set(float64(rm.Inactive))

@@ -29,6 +29,52 @@ type Feed struct {
 	// AllowAdult admits posts the label policy marks adult_only. Posts it marks drop are
 	// never shown.
 	AllowAdult bool `yaml:"allow_adult"`
+	// Ranking orders the feed; fields left out of the config keep DefaultRanking's values.
+	Ranking Ranking `yaml:"ranking"`
+}
+
+// Ranking controls a feed's order. Each post scores
+//
+//	(prior + like*likes + repost*reposts + reply*replies + quote*quotes) / (age_hours + 2)^gravity
+//
+// where prior = max(0.1, 1 + substance + general_interest - promo_penalty*promo), from the
+// model's signals, so posts without engagement yet are still ordered sensibly. Every
+// FreshEvery-th slot goes to the newest post not already placed, whatever its score, and
+// an author's posts are kept at least AuthorGap slots apart.
+type Ranking struct {
+	Weights      Weights `yaml:"weights"`
+	Gravity      float64 `yaml:"gravity"`       // higher: older posts sink faster
+	FreshEvery   int     `yaml:"fresh_every"`   // 0: no fresh slots
+	AuthorGap    int     `yaml:"author_gap"`    // 0: no limit
+	PromoPenalty float64 `yaml:"promo_penalty"` // 0: promotional posts aren't penalized
+}
+
+// Weights are engagement units per like, repost, reply, and quote.
+type Weights struct {
+	Like   float64 `yaml:"like"`
+	Repost float64 `yaml:"repost"`
+	Reply  float64 `yaml:"reply"`
+	Quote  float64 `yaml:"quote"`
+}
+
+// DefaultRanking applies to every feed unless its config overrides a field.
+var DefaultRanking = Ranking{
+	Weights:      Weights{Like: 1, Repost: 2, Reply: 2, Quote: 3},
+	Gravity:      1.8,
+	FreshEvery:   4,
+	AuthorGap:    10,
+	PromoPenalty: 1,
+}
+
+// UnmarshalYAML starts every feed from DefaultRanking, so the config only lists changes.
+func (f *Feed) UnmarshalYAML(n *yaml.Node) error {
+	type plain Feed
+	p := plain{Ranking: DefaultRanking}
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	*f = Feed(p)
+	return nil
 }
 
 // Config is config/feeds.yaml.
@@ -91,6 +137,14 @@ func (c *Config) Validate(paths map[string]bool) error {
 		}
 		if f.MinProb <= 0 || f.MinProb > 1 {
 			return fmt.Errorf("feed %q: min_prob must be in (0, 1]", f.Rkey)
+		}
+		r := f.Ranking
+		if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
+			r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
+			return fmt.Errorf("feed %q: ranking values can't be negative", f.Rkey)
+		}
+		if r.FreshEvery == 1 {
+			return fmt.Errorf("feed %q: fresh_every 1 would make every slot fresh; use 0 for none, or 2 or more", f.Rkey)
 		}
 	}
 	return nil

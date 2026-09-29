@@ -126,12 +126,8 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 	if !ok {
 		return fail(http.StatusBadRequest, "unknown", "UnknownFeed", "unknown feed")
 	}
-	posts, _, ok := s.feeds.Posts(rkey)
-	if !ok {
+	if _, _, ok := s.feeds.Posts(rkey); !ok {
 		return fail(http.StatusBadRequest, "unknown", "UnknownFeed", "unknown feed")
-	}
-	if posts == nil {
-		return fail(http.StatusServiceUnavailable, rkey, "NotReady", "feed is still loading")
 	}
 	limit := defaultLimit
 	if v := c.QueryParam("limit"); v != "" {
@@ -141,16 +137,19 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 		}
 		limit = n
 	}
-	out, next, err := page(posts, c.QueryParam("cursor"), limit)
+	uris, next, ready, err := s.feeds.Page(rkey, c.QueryParam("cursor"), limit)
 	if err != nil {
 		return fail(http.StatusBadRequest, rkey, "InvalidRequest", err.Error())
 	}
-	if viewer := s.viewer(c); viewer != "" {
-		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(out))
+	if !ready {
+		return fail(http.StatusServiceUnavailable, rkey, "NotReady", "feed is still loading")
 	}
-	resp := skeletonResponse{Feed: make([]skeletonItem, len(out)), Cursor: next}
-	for i, p := range out {
-		resp.Feed[i] = skeletonItem{Post: p.URI}
+	if viewer := s.viewer(c); viewer != "" {
+		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(uris))
+	}
+	resp := skeletonResponse{Feed: make([]skeletonItem, len(uris)), Cursor: next}
+	for i, u := range uris {
+		resp.Feed[i] = skeletonItem{Post: u}
 	}
 	metricRequests.WithLabelValues(rkey, "200").Inc()
 	return c.JSON(http.StatusOK, resp)

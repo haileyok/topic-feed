@@ -24,6 +24,9 @@ type candidate struct {
 	FeedPolicy string    `ch:"feed_policy"`
 	Labels     []string  `ch:"labels"`
 	Score      float32   `ch:"score"`
+	Substance  float32   `ch:"substance"`
+	General    float32   `ch:"general_interest"`
+	Promo      float32   `ch:"promo"`
 }
 
 // Removed counts candidates left out of a feed, by reason.
@@ -31,7 +34,8 @@ type Removed struct {
 	Deleted, Inactive, Labeled int
 }
 
-// Build returns a feed's posts since the given time, newest first, at most limit.
+// Build returns a feed's candidate posts since the given time with their engagement,
+// newest first, at most limit. Ranking happens in the caller.
 func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) ([]Post, Removed, error) {
 	policies := []string{labelpolicy.OK}
 	if f.AllowAdult {
@@ -41,7 +45,9 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
 	err := s.Conn.Select(ctx, &cands, `
 		SELECT uri, did, indexed_at, feed_policy, labels,
-		       arrayMax(arrayMap(p -> path_probs[p], ?)) AS score
+		       arrayMax(arrayMap(p -> path_probs[p], ?)) AS score,
+		       signals['substance'] AS substance, signals['general_interest'] AS general_interest,
+		       signals['promo'] AS promo
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?
 		ORDER BY indexed_at DESC, uri DESC
@@ -87,10 +93,61 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		case !allowed(s.Policy, f, c, labels):
 			rm.Labeled++
 		default:
-			out = append(out, Post{URI: c.URI, IndexedAt: c.IndexedAt, Score: c.Score})
+			out = append(out, Post{URI: c.URI, DID: c.DID, IndexedAt: c.IndexedAt, Match: c.Score,
+				Substance: c.Substance, GeneralInterest: c.General, Promo: c.Promo})
 		}
 	}
+	if err := s.engagement(ctx, out); err != nil {
+		return nil, rm, err
+	}
 	return out, rm, nil
+}
+
+// engagement fills in each post's like, repost, reply, and quote counts.
+func (s *Store) engagement(ctx context.Context, posts []Post) error {
+	if len(posts) == 0 {
+		return nil
+	}
+	idx := make(map[string]int, len(posts))
+	uris := make([]string, len(posts))
+	for i, p := range posts {
+		idx[p.URI] = i
+		uris[i] = p.URI
+	}
+	var likes []struct {
+		URI string `ch:"subject_uri"`
+		N   uint64 `ch:"n"`
+	}
+	if err := s.Conn.Select(ctx, &likes, `
+		SELECT subject_uri, sum(likes) AS n FROM like_counts_hourly
+		WHERE subject_uri IN ? GROUP BY subject_uri`, uris); err != nil {
+		return fmt.Errorf("select likes: %w", err)
+	}
+	for _, r := range likes {
+		posts[idx[r.URI]].Likes = r.N
+	}
+	var other []struct {
+		URI  string `ch:"subject_uri"`
+		Kind string `ch:"kind"`
+		N    uint64 `ch:"n"`
+	}
+	if err := s.Conn.Select(ctx, &other, `
+		SELECT subject_uri, kind, sum(n) AS n FROM engagement_hourly
+		WHERE subject_uri IN ? GROUP BY subject_uri, kind`, uris); err != nil {
+		return fmt.Errorf("select engagement: %w", err)
+	}
+	for _, r := range other {
+		p := &posts[idx[r.URI]]
+		switch r.Kind {
+		case "repost":
+			p.Reposts = r.N
+		case "reply":
+			p.Replies = r.N
+		case "quote":
+			p.Quotes = r.N
+		}
+	}
+	return nil
 }
 
 // allowed re-applies the label policy with the labels the post had when processed plus

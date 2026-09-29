@@ -14,61 +14,171 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"gopkg.in/yaml.v3"
 
 	"github.com/haileyok/topic-feed/internal/taxonomy"
 )
 
+var now = time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
 func posts(n int) []Post {
-	base := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	out := make([]Post, n)
 	for i := range out {
-		// newest first; every pair of posts shares a timestamp to exercise the URI tiebreak
-		out[i] = Post{URI: fmt.Sprintf("at://did:plc:a/app.bsky.feed.post/%03d", 999-i), IndexedAt: base.Add(-time.Duration(i/2) * time.Second)}
+		out[i] = Post{URI: fmt.Sprintf("at://did:plc:a%d/app.bsky.feed.post/%03d", i, 999-i),
+			DID: fmt.Sprintf("did:plc:a%d", i), IndexedAt: now.Add(-time.Duration(i) * time.Minute)}
 	}
 	return out
 }
 
-func TestPageWalksWholeFeed(t *testing.T) {
-	all := posts(25)
-	var got []Post
-	cursor := ""
-	for range 10 {
-		p, next, err := page(all, cursor, 7)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got = append(got, p...)
-		if next == "" {
-			break
-		}
-		cursor = next
+func uris(ps []Post) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.URI
 	}
-	if len(got) != len(all) {
-		t.Fatalf("got %d posts, want %d", len(got), len(all))
+	return out
+}
+
+func TestScoreEngagementAndDecay(t *testing.T) {
+	r := DefaultRanking
+	fresh := Post{URI: "fresh", DID: "a", IndexedAt: now}
+	liked := Post{URI: "liked", DID: "b", IndexedAt: now.Add(-time.Hour), Likes: 50}
+	old := Post{URI: "old", DID: "c", IndexedAt: now.Add(-20 * time.Hour), Likes: 50}
+	ps := []Post{fresh, liked, old}
+	Score(ps, r, now)
+	if !(ps[1].Score > ps[0].Score) {
+		t.Errorf("an hour-old post with 50 likes should beat a fresh one: %v vs %v", ps[1].Score, ps[0].Score)
 	}
-	for i := range all {
-		if got[i].URI != all[i].URI {
-			t.Fatalf("post %d: %s, want %s", i, got[i].URI, all[i].URI)
-		}
+	if !(ps[0].Score > ps[2].Score) {
+		t.Errorf("a fresh post should beat a 20-hour-old one with 50 likes: %v vs %v", ps[0].Score, ps[2].Score)
+	}
+	promo := []Post{{URI: "p", IndexedAt: now, Promo: 1}, {URI: "q", IndexedAt: now, Substance: 1}}
+	Score(promo, r, now)
+	if !(promo[1].Score > promo[0].Score) {
+		t.Error("with no engagement, a substantive post should beat a promotional one")
 	}
 }
 
-func TestPageCursorSurvivesNewPosts(t *testing.T) {
-	all := posts(10)
-	_, next, _ := page(all, "", 4)
-	// new posts arrive at the top; the next page still starts after the 4th original post
-	newer := append([]Post{{URI: "at://did:plc:a/app.bsky.feed.post/zzz", IndexedAt: all[0].IndexedAt.Add(time.Minute)}}, all...)
-	p, _, _ := page(newer, next, 4)
-	if p[0].URI != all[4].URI {
-		t.Errorf("first post of page 2 is %s, want %s", p[0].URI, all[4].URI)
+func TestRankFreshSlotsAndEveryPostOnce(t *testing.T) {
+	ps := posts(20)
+	// the oldest posts have the most likes, so score order is oldest first
+	for i := range ps {
+		ps[i].Likes = uint64(i * 100)
+	}
+	r := DefaultRanking
+	r.AuthorGap = 0
+	out := Rank(ps, r, now)
+	if len(out) != 20 {
+		t.Fatalf("%d posts", len(out))
+	}
+	seen := map[string]bool{}
+	for _, p := range out {
+		if seen[p.URI] {
+			t.Fatalf("%s twice", p.URI)
+		}
+		seen[p.URI] = true
+	}
+	if out[0].URI != ps[19].URI {
+		t.Errorf("slot 1 should be the highest score, got %s", out[0].URI)
+	}
+	if out[3].URI != ps[0].URI || out[7].URI != ps[1].URI {
+		t.Errorf("slots 4 and 8 should be the two newest posts, got %s, %s", out[3].URI, out[7].URI)
 	}
 }
 
-func TestBadCursor(t *testing.T) {
-	for _, c := range []string{"x", "12::nope", "abc::at://x", "::at://x"} {
-		if _, _, err := page(posts(3), c, 2); err == nil {
+func TestRankAuthorGap(t *testing.T) {
+	ps := posts(12)
+	for i := 0; i < 3; i++ { // one author has the three best posts
+		ps[i].DID = "did:plc:loud"
+		ps[i].Likes = 1000
+	}
+	r := DefaultRanking
+	r.FreshEvery = 0
+	r.AuthorGap = 5
+	out := Rank(ps, r, now)
+	var slots []int
+	for i, p := range out {
+		if p.DID == "did:plc:loud" {
+			slots = append(slots, i)
+		}
+	}
+	if len(slots) != 3 || slots[0] != 0 || slots[1] < 5 || slots[2]-slots[1] < 5 {
+		t.Errorf("author slots %v, want at least 5 apart", slots)
+	}
+}
+
+type swapBuilder struct{ n int }
+
+// Each build reverses the order the previous one had, like engagement shifting.
+func (b *swapBuilder) Build(context.Context, Feed, time.Time, int) ([]Post, Removed, error) {
+	b.n++
+	ps := posts(10)
+	for i := range ps {
+		if b.n%2 == 0 {
+			ps[i].Likes = uint64(i * 1000)
+		} else {
+			ps[i].Likes = uint64((10 - i) * 1000)
+		}
+	}
+	return ps, Removed{}, nil
+}
+
+func TestPagingStaysOnOneBuild(t *testing.T) {
+	cfg := &Config{Feeds: []Feed{{Rkey: "f", Ranking: Ranking{Gravity: 1.8}}}}
+	fs := NewFeeds(cfg, &swapBuilder{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 48*time.Hour, time.Hour, 100)
+	fs.refresh(context.Background(), cfg.Feeds[0])
+	first, next, _, _ := fs.Page("f", "", 4)
+	fs.refresh(context.Background(), cfg.Feeds[0]) // the order changes
+	var all []string
+	all = append(all, first...)
+	for next != "" {
+		var p []string
+		p, next, _, _ = fs.Page("f", next, 4)
+		all = append(all, p...)
+	}
+	seen := map[string]bool{}
+	for _, u := range all {
+		if seen[u] {
+			t.Fatalf("%s repeated across pages", u)
+		}
+		seen[u] = true
+	}
+	if len(all) != 10 {
+		t.Errorf("paged %d posts, want 10", len(all))
+	}
+	// A cursor from an expired build continues at the same position in the current one.
+	p, _, _, err := fs.Page("f", "12345:8", 4)
+	if err != nil || len(p) != 2 {
+		t.Errorf("expired cursor: %v %v", p, err)
+	}
+	for _, c := range []string{"x", "12:", ":3", "-1:2", "5:-1"} {
+		if _, _, _, err := fs.Page("f", c, 4); err == nil {
 			t.Errorf("cursor %q accepted", c)
 		}
+	}
+}
+
+func TestRankingDefaultsAndOverrides(t *testing.T) {
+	var c Config
+	err := yaml.Unmarshal([]byte(`feeds:
+  - rkey: a
+    display_name: A
+    paths: [technology/ai]
+    min_prob: 0.5
+  - rkey: b
+    display_name: B
+    paths: [technology/ai]
+    min_prob: 0.5
+    ranking: {gravity: 1.2, fresh_every: 0, weights: {like: 3}}
+`), &c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Feeds[0].Ranking != DefaultRanking {
+		t.Errorf("feed a: %+v", c.Feeds[0].Ranking)
+	}
+	b := c.Feeds[1].Ranking
+	if b.Gravity != 1.2 || b.FreshEvery != 0 || b.Weights.Like != 3 || b.Weights.Quote != DefaultRanking.Weights.Quote || b.AuthorGap != DefaultRanking.AuthorGap {
+		t.Errorf("feed b: %+v", b)
 	}
 }
 
@@ -101,7 +211,7 @@ func (b fakeBuilder) Build(context.Context, Feed, time.Time, int) ([]Post, Remov
 }
 
 func testServer(t *testing.T) *Server {
-	cfg := &Config{Feeds: []Feed{{Rkey: "nfl", DisplayName: "NFL", Paths: []string{"sports/american_football"}, MinProb: 0.5}}}
+	cfg := &Config{Feeds: []Feed{{Rkey: "nfl", DisplayName: "NFL", Paths: []string{"sports/american_football"}, MinProb: 0.5, Ranking: DefaultRanking}}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fs := NewFeeds(cfg, fakeBuilder{posts(5)}, log, 48*time.Hour, time.Hour, 100)
 	ctx, cancel := context.WithCancel(context.Background())
