@@ -54,6 +54,27 @@ func TestThumbnailURL(t *testing.T) {
 	}
 }
 
+func TestModelInputAddsImageTextAsAlt(t *testing.T) {
+	ps := post{Text: "Denver been wide open two plays in a row", MediaAlts: []string{"Author's own alt"}, Tags: []string{"Broncos"}}
+	got, ok := ModelInput(ps, []string{"", "A Broncos receiver catches a pass"})
+	want := "Denver been wide open two plays in a row\n[tags] #Broncos\n[alt] Author's own alt | A Broncos receiver catches a pass"
+	if !ok || got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if _, ok := ModelInput(post{}, []string{""}); ok {
+		t.Error("a post with no content should not be classified")
+	}
+}
+
+func TestTop(t *testing.T) {
+	if k, p := top(map[string]float32{"a": 0.2, "b": 0.7, "c": 0.1}); k != "b" || p != 0.7 {
+		t.Errorf("top %s %v", k, p)
+	}
+	if k, _ := top(map[string]float32{}); k != "" {
+		t.Error("empty map")
+	}
+}
+
 func TestBudget(t *testing.T) {
 	b := NewBudget(1.0, 0.9)
 	if !b.Allow() {

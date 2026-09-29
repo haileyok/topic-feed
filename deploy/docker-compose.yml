@@ -186,7 +186,10 @@ services:
       PIPELINE_DELAY_SECONDS: "10"
       LLM_MODEL: gpt-6-luna:api
       LLM_DAILY_BUDGET_USD: "25"
+      CLASSIFIER_URL: http://host.docker.internal:8700  # host systemd unit topic-feed-classifier (make install-classifier)
       METRICS_ADDR: ":9103"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../config:/config:ro
     ports:

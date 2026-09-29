@@ -16,6 +16,7 @@ import (
 
 	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/ingest"
+	"github.com/haileyok/topic-feed/internal/postdoc"
 )
 
 // Config controls the pipeline loop.
@@ -30,23 +31,31 @@ type Config struct {
 
 // Pipeline processes live posts into post_pipeline.
 type Pipeline struct {
-	Cfg       Config
-	Conn      driver.Conn
-	Policy    *Policy
-	OCR       *OCR
-	Describer *Describer // nil: no LLM descriptions
-	HTTP      *http.Client
-	Log       *slog.Logger
+	Cfg        Config
+	Conn       driver.Conn
+	Policy     *Policy
+	OCR        *OCR
+	Describer  *Describer  // nil: no LLM descriptions
+	Classifier *Classifier // nil: no topic predictions
+	HTTP       *http.Client
+	Log        *slog.Logger
 }
 
 type post struct {
-	URI           string    `ch:"uri"`
-	DID           string    `ch:"did"`
-	IndexedAt     time.Time `ch:"indexed_at"`
-	SelfLabels    []string  `ch:"self_labels"`
-	MediaKinds    []string  `ch:"media_kinds"`
-	MediaCIDs     []string  `ch:"media_cids"`
-	MediaAltTexts []string  `ch:"media_alt_texts"`
+	URI             string    `ch:"uri"`
+	DID             string    `ch:"did"`
+	IndexedAt       time.Time `ch:"indexed_at"`
+	Text            string    `ch:"text"`
+	MediaAlts       []string  `ch:"media_alts"`
+	LinkDomain      string    `ch:"link_domain"`
+	LinkTitle       string    `ch:"link_title"`
+	LinkDescription string    `ch:"link_description"`
+	QuoteText       string    `ch:"quote_text"`
+	Tags            []string  `ch:"tags"`
+	SelfLabels      []string  `ch:"self_labels"`
+	MediaKinds      []string  `ch:"media_kinds"`
+	MediaCIDs       []string  `ch:"media_cids"`
+	MediaAltTexts   []string  `ch:"media_alt_texts"`
 }
 
 // Row mirrors the post_pipeline table.
@@ -60,6 +69,16 @@ type Row struct {
 	ImageTexts       []string  `ch:"image_texts"`
 	ImageTextSources []string  `ch:"image_text_sources"`
 	LLMCostUSD       float64   `ch:"luna_cost_usd"`
+	// Topic predictions; empty for dropped posts and posts with no content.
+	Model      string             `ch:"model"`
+	ModelInput string             `ch:"model_input"`
+	BroadProbs map[string]float32 `ch:"broad_probs"`
+	PathProbs  map[string]float32 `ch:"path_probs"`
+	Signals    map[string]float32 `ch:"signals"`
+	Tone       map[string]float32 `ch:"tone"`
+	TopBroad   string             `ch:"top_broad"`
+	TopPath    string             `ch:"top_path"`
+	TopPathP   float32            `ch:"top_path_p"`
 }
 
 // Run processes posts until ctx is cancelled. The first run starts at the live edge;
@@ -142,7 +161,8 @@ func (p *Pipeline) batch(ctx context.Context, from, to time.Time) (time.Time, in
 	start := time.Now()
 	var posts []post
 	err := p.Conn.Select(ctx, &posts, `
-		SELECT uri, did, indexed_at, self_labels, media_kinds, media_cids, media_alt_texts
+		SELECT uri, did, indexed_at, text, media_alts, link_domain, link_title, link_description, quote_text, tags,
+		       self_labels, media_kinds, media_cids, media_alt_texts
 		FROM posts FINAL
 		WHERE indexed_at > fromUnixTimestamp64Micro(toInt64(?)) AND indexed_at <= fromUnixTimestamp64Micro(toInt64(?))
 		ORDER BY indexed_at, uri
@@ -171,6 +191,9 @@ func (p *Pipeline) batch(ctx context.Context, from, to time.Time) (time.Time, in
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {
+		return from, 0, err
+	}
+	if err := p.classify(ctx, posts, rows); err != nil {
 		return from, 0, err
 	}
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
@@ -240,7 +263,8 @@ func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]st
 		}
 	}
 	r := Row{URI: ps.URI, DID: ps.DID, IndexedAt: ps.IndexedAt, FeedPolicy: p.Policy.Decide(labels),
-		Labels: nonNil(labels), ImageTexts: []string{}, ImageTextSources: []string{}}
+		Labels: nonNil(labels), ImageTexts: []string{}, ImageTextSources: []string{},
+		BroadProbs: map[string]float32{}, PathProbs: map[string]float32{}, Signals: map[string]float32{}, Tone: map[string]float32{}}
 	if r.FeedPolicy == PolicyOK {
 		for i := range ps.MediaCIDs {
 			if len(r.ImageTexts) >= p.Cfg.MaxMedia {
@@ -301,6 +325,78 @@ func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string
 		return "", SourceNone, cost
 	}
 	return desc, SourceLLM, cost
+}
+
+// ModelInput renders the post document the classifier sees: the same rendering used for
+// training data, with text found in images added as alt text after the author's own.
+func ModelInput(ps post, imageTexts []string) (string, bool) {
+	alts := append([]string{}, ps.MediaAlts...)
+	for _, t := range imageTexts {
+		if strings.TrimSpace(t) != "" {
+			alts = append(alts, t)
+		}
+	}
+	doc := postdoc.New(postdoc.Input{Text: ps.Text, MediaAlts: alts, LinkDomain: ps.LinkDomain, LinkTitle: ps.LinkTitle,
+		LinkDescription: ps.LinkDescription, QuoteText: ps.QuoteText, Tags: ps.Tags})
+	if doc.Empty() {
+		return "", false
+	}
+	return doc.Student(), true
+}
+
+// classify fills in predictions for every post not dropped by the label policy. A failed
+// classifier call is retried; if it keeps failing the batch fails and is retried.
+func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error {
+	if p.Classifier == nil {
+		return nil
+	}
+	var idx []int
+	var texts []string
+	for i := range rows {
+		if rows[i].FeedPolicy == PolicyDrop {
+			continue
+		}
+		text, ok := ModelInput(posts[i], rows[i].ImageTexts)
+		if !ok {
+			continue
+		}
+		rows[i].ModelInput = text
+		idx = append(idx, i)
+		texts = append(texts, text)
+	}
+	const chunk = 1024
+	for s := 0; s < len(texts); s += chunk {
+		e := min(s+chunk, len(texts))
+		var (
+			model string
+			preds []Prediction
+			err   error
+		)
+		t0 := time.Now()
+		for attempt := 0; attempt < 6; attempt++ {
+			cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			model, preds, err = p.Classifier.Classify(cctx, texts[s:e])
+			cancel()
+			if err == nil || ctx.Err() != nil {
+				break
+			}
+			metricErrors.WithLabelValues("classify").Inc()
+			p.Log.Warn("classifier call failed; retrying", "err", err, "attempt", attempt+1)
+			p.sleep(ctx, time.Duration(1<<attempt)*time.Second)
+		}
+		if err != nil {
+			return fmt.Errorf("classify: %w", err)
+		}
+		metricClassifySeconds.Observe(time.Since(t0).Seconds())
+		for k, pr := range preds {
+			r := &rows[idx[s+k]]
+			r.Model, r.BroadProbs, r.PathProbs, r.Signals, r.Tone = model, pr.Broad, pr.Paths, pr.Signals, pr.Tone
+			r.TopBroad, _ = top(pr.Broad)
+			r.TopPath, r.TopPathP = top(pr.Paths)
+			metricClassified.WithLabelValues(r.TopBroad).Inc()
+		}
+	}
+	return nil
 }
 
 func nonNil(s []string) []string {

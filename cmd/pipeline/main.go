@@ -15,6 +15,7 @@
 //	LLM_DAILY_BUDGET_USD     list-price cap per UTC day, default 10
 //	TYPESAFE_API_KEY         AI gateway key (required when LLM_MODEL is set)
 //	TYPESAFE_BASE_URL        AI gateway, default https://agw.noclues.net
+//	CLASSIFIER_URL           classifier service, default http://host.docker.internal:8700 ("none" disables)
 //	CLICKHOUSE_*             see internal/chdb
 //	METRICS_ADDR             default :9103
 package main
@@ -22,6 +23,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -35,6 +37,7 @@ import (
 
 	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/pipeline"
+	"github.com/haileyok/topic-feed/internal/postdoc"
 )
 
 func main() {
@@ -104,7 +107,39 @@ func run(log *slog.Logger) error {
 		}
 		log.Info("image descriptions on", "model", model, "budget_usd_per_day", budget, "spent_today_usd", spent)
 	}
+	if u := env("CLASSIFIER_URL", "http://host.docker.internal:8700"); u != "" && u != "none" {
+		p.Classifier = &pipeline.Classifier{URL: u, Client: httpClient}
+		h, err := waitForClassifier(ctx, p.Classifier, log)
+		if err != nil {
+			return err
+		}
+		if h.PostdocVersion != postdoc.Version {
+			return fmt.Errorf("classifier model %s expects post documents %s, this build renders %s", h.Model, h.PostdocVersion, postdoc.Version)
+		}
+		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "device", h.Device)
+	}
 	return p.Run(ctx)
+}
+
+// waitForClassifier waits for the classifier service to answer, since it may start
+// after the pipeline (it runs on the host under systemd).
+func waitForClassifier(ctx context.Context, c *pipeline.Classifier, log *slog.Logger) (pipeline.Health, error) {
+	for attempt := 0; ; attempt++ {
+		hctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		h, err := c.Health(hctx)
+		cancel()
+		if err == nil {
+			return h, nil
+		}
+		if attempt%6 == 0 {
+			log.Warn("waiting for the classifier service", "url", c.URL, "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return h, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
 }
 
 // spentToday is the list-price LLM spending already recorded today (UTC), so a restart

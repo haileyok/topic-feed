@@ -43,6 +43,15 @@ var (
 		Name: "pipeline_lag_seconds", Help: "Seconds between now and the newest processed post's ingest time.",
 	})
 
+	metricClassifySeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "pipeline_classify_seconds", Help: "Time for one classifier service call (up to 1024 posts), including retries.",
+		Buckets: prometheus.ExponentialBuckets(0.01, 2, 12),
+	})
+
+	metricClassified = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_classified_total", Help: "Posts classified, by top broad topic.",
+	}, []string{"broad"})
+
 	metricErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "pipeline_errors_total", Help: "Errors, by stage.",
 	}, []string{"stage"})

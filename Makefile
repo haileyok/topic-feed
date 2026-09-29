@@ -21,7 +21,7 @@ CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicf
 RELABEL  ?= v1-luna-le05
 MAX_CONF ?= 0.5
 
-.PHONY: up down ps logs schema ch test backup install-backup label label-logs export baseline train relabel relabel-load
+.PHONY: up down ps logs schema ch test backup install-backup label label-logs export baseline train relabel relabel-load install-classifier classifier-logs
 
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
@@ -77,6 +77,16 @@ label-logs:
 
 backup: ## Run the backup now
 	deploy/backup.sh
+
+install-classifier: ## Install and start the GPU classifier service (systemd user unit; model in the unit's MODEL_DIR)
+	mkdir -p $(HOME)/.config/systemd/user
+	cp deploy/systemd/topic-feed-classifier.service $(HOME)/.config/systemd/user/
+	systemctl --user daemon-reload
+	systemctl --user enable --now topic-feed-classifier.service
+	systemctl --user restart topic-feed-classifier.service
+
+classifier-logs:
+	journalctl --user -u topic-feed-classifier.service -n 50 -f
 
 install-backup: ## Install and start the nightly backup timer (systemd user units)
 	mkdir -p $(HOME)/.config/systemd/user
