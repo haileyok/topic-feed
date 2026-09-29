@@ -14,6 +14,16 @@
 #                 ask Bluesky to send interactions with the feed's posts (seen, like,
 #                 show more/less, ...) to table feed_interactions (default true;
 #                 takes effect after `make feeds-publish`)
+#   tone          optional; filter or nudge posts by the model's tone probabilities
+#                 (0-1, summing to 1): informative, humorous, personal, outraged,
+#                 supportive, other
+#
+#                   tone:
+#                     max: {outraged: 0.5}      # hard cutoff: drop posts above this
+#                     min: {humorous: 0.5}      # hard cutoff: drop posts below this
+#                     weights: {outraged: -2, supportive: 1}
+#                                               # nudge: weight * probability is added
+#                                               # to the ranking prior; nothing removed
 #
 # Ranking (internal/feedgen/config.go, DefaultRanking). Each post scores
 #
@@ -47,3 +57,5 @@ feeds:
     description: Posts about artificial intelligence (models, products, research, and the arguments about them), picked by a topic classifier. No keyword lists.
     paths: [technology/ai]
     min_prob: 0.6
+    tone:
+      max: {outraged: 0.5}   # no angry posts (about 7% of AI posts on 2026-09-29)

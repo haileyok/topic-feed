@@ -29,7 +29,7 @@ var (
 
 	metricRemoved = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "feedgen_feed_removed_posts",
-		Help: "Candidates left out of each feed in the latest refresh, by reason (deleted, inactive, labeled).",
+		Help: "Candidates left out of each feed in the latest refresh, by reason (deleted, inactive, labeled, tone).",
 	}, []string{"feed", "reason"})
 
 	metricRefreshSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{

@@ -18,24 +18,25 @@ type Store struct {
 }
 
 type candidate struct {
-	URI        string    `ch:"uri"`
-	DID        string    `ch:"did"`
-	IndexedAt  time.Time `ch:"indexed_at"`
-	FeedPolicy string    `ch:"feed_policy"`
-	Labels     []string  `ch:"labels"`
-	Score      float32   `ch:"score"`
-	Substance  float32   `ch:"substance"`
-	General    float32   `ch:"general_interest"`
-	Promo      float32   `ch:"promo"`
-	TopPath    string    `ch:"top_path"`
-	TopPathP   float32   `ch:"top_path_p"`
-	TopPaths   []string  `ch:"top_paths"`
-	TopPs      []float32 `ch:"top_ps"`
+	URI        string             `ch:"uri"`
+	DID        string             `ch:"did"`
+	IndexedAt  time.Time          `ch:"indexed_at"`
+	FeedPolicy string             `ch:"feed_policy"`
+	Labels     []string           `ch:"labels"`
+	Score      float32            `ch:"score"`
+	Substance  float32            `ch:"substance"`
+	General    float32            `ch:"general_interest"`
+	Promo      float32            `ch:"promo"`
+	TopPath    string             `ch:"top_path"`
+	TopPathP   float32            `ch:"top_path_p"`
+	TopPaths   []string           `ch:"top_paths"`
+	TopPs      []float32          `ch:"top_ps"`
+	Tone       map[string]float32 `ch:"tone"`
 }
 
 // Removed counts candidates left out of a feed, by reason.
 type Removed struct {
-	Deleted, Inactive, Labeled int
+	Deleted, Inactive, Labeled, Tone int
 }
 
 // Build returns a feed's candidate posts since the given time with their engagement,
@@ -53,7 +54,8 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		       signals['substance'] AS substance, signals['general_interest'] AS general_interest,
 		       signals['promo'] AS promo, top_path, top_path_p,
 		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
-		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps
+		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps,
+		       tone
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?
 		ORDER BY indexed_at DESC, uri DESC
@@ -62,6 +64,16 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
 	var rm Removed
+	// Tone cutoffs first: no need to look up posts that won't be shown.
+	kept := cands[:0]
+	for _, c := range cands {
+		if f.Tone.Allows(c.Tone) {
+			kept = append(kept, c)
+		} else {
+			rm.Tone++
+		}
+	}
+	cands = kept
 	if len(cands) == 0 {
 		return []Post{}, rm, nil
 	}
@@ -101,7 +113,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		default:
 			out = append(out, Post{URI: c.URI, DID: c.DID, IndexedAt: c.IndexedAt, Match: c.Score,
 				Substance: c.Substance, GeneralInterest: c.General, Promo: c.Promo,
-				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs})
+				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs, Tone: c.Tone})
 		}
 	}
 	if err := s.engagement(ctx, out); err != nil {

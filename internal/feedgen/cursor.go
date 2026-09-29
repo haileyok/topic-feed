@@ -1,9 +1,11 @@
 package feedgen
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ type Post struct {
 	TopPathP  float32   // its probability
 	TopPaths  []string  // the model's three most likely subtopic paths, best first
 	TopPs     []float32 // their probabilities
+	Tone      map[string]float32
 
 	// Model signals, 0-1.
 	Substance, GeneralInterest, Promo float32
@@ -33,8 +36,9 @@ type Item struct {
 	URI string
 	// Context is the post's feedContext: JSON {"id": post URI, "topic": the model's top
 	// subtopic, "p": its probability, "top": [[subtopic, probability], ...] for the three
-	// most likely}. Bluesky passes it through to the app and back to the feed generator
-	// with interactions.
+	// most likely, "tone": [[tone, probability], ...] for all six, most likely first}.
+	// Bluesky passes it through to the app and back to the feed generator with
+	// interactions.
 	Context string
 }
 
@@ -45,12 +49,20 @@ func feedContext(p Post) string {
 			top = append(top, [2]any{path, round3(p.TopPs[i])})
 		}
 	}
+	tone := make([][2]any, 0, len(p.Tone))
+	for _, name := range Tones {
+		if v, ok := p.Tone[name]; ok {
+			tone = append(tone, [2]any{name, round3(v)})
+		}
+	}
+	slices.SortStableFunc(tone, func(a, b [2]any) int { return cmp.Compare(b[1].(float64), a[1].(float64)) })
 	b, _ := json.Marshal(struct {
 		ID    string   `json:"id"`
 		Topic string   `json:"topic"`
 		P     float64  `json:"p"`
 		Top   [][2]any `json:"top"`
-	}{p.URI, p.TopPath, round3(p.TopPathP), top})
+		Tone  [][2]any `json:"tone"`
+	}{p.URI, p.TopPath, round3(p.TopPathP), top, tone})
 	return string(b)
 }
 

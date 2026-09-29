@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
+	"strings"
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
@@ -34,6 +36,74 @@ type Feed struct {
 	// AcceptsInteractions asks Bluesky to send interactions with the feed's posts
 	// (default true). Takes effect after `feedgen publish`.
 	AcceptsInteractions bool `yaml:"accepts_interactions"`
+	// Tone filters and nudges posts by the model's tone probabilities.
+	Tone ToneRules `yaml:"tone"`
+}
+
+// Tones are the model's tone labels; a post's tone probabilities sum to 1.
+var Tones = []string{"informative", "humorous", "personal", "outraged", "supportive", "other"}
+
+// ToneRules use the model's tone probabilities (0-1) in two ways:
+//
+//   - Max and Min are hard cutoffs: a post is left out when a tone's probability is above
+//     its Max or below its Min. E.g. max {outraged: 0.5} drops angry posts;
+//     min {humorous: 0.5} keeps only funny ones.
+//   - Weights nudge the ranking: weight*probability is added to each post's prior, so
+//     e.g. {outraged: -2, supportive: 1} sinks angry posts and lifts warm ones without
+//     removing anything. A nudge matters most before a post has engagement.
+type ToneRules struct {
+	Max     map[string]float32 `yaml:"max"`
+	Min     map[string]float32 `yaml:"min"`
+	Weights map[string]float64 `yaml:"weights"`
+}
+
+// Allows reports whether a post with these tone probabilities passes the cutoffs.
+func (t ToneRules) Allows(tone map[string]float32) bool {
+	for name, max := range t.Max {
+		if tone[name] > max {
+			return false
+		}
+	}
+	for name, min := range t.Min {
+		if tone[name] < min {
+			return false
+		}
+	}
+	return true
+}
+
+// Nudge is the ranking adjustment for a post with these tone probabilities.
+func (t ToneRules) Nudge(tone map[string]float32) float64 {
+	n := 0.0
+	for name, w := range t.Weights {
+		n += w * float64(tone[name])
+	}
+	return n
+}
+
+func (t ToneRules) validate() error {
+	known := func(name string) error {
+		if !slices.Contains(Tones, name) {
+			return fmt.Errorf("unknown tone %q (tones: %s)", name, strings.Join(Tones, ", "))
+		}
+		return nil
+	}
+	for _, m := range []map[string]float32{t.Max, t.Min} {
+		for name, v := range m {
+			if err := known(name); err != nil {
+				return err
+			}
+			if v < 0 || v > 1 {
+				return fmt.Errorf("tone %s: cutoffs are probabilities in [0, 1]", name)
+			}
+		}
+	}
+	for name := range t.Weights {
+		if err := known(name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Ranking controls a feed's order. Each post scores
@@ -145,6 +215,9 @@ func (c *Config) Validate(paths map[string]bool) error {
 		if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
 			r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
 			return fmt.Errorf("feed %q: ranking values can't be negative", f.Rkey)
+		}
+		if err := f.Tone.validate(); err != nil {
+			return fmt.Errorf("feed %q: %w", f.Rkey, err)
 		}
 		if r.FreshEvery == 1 {
 			return fmt.Errorf("feed %q: fresh_every 1 would make every slot fresh; use 0 for none, or 2 or more", f.Rkey)

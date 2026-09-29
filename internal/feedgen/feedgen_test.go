@@ -30,7 +30,8 @@ func posts(n int) []Post {
 		out[i] = Post{URI: fmt.Sprintf("at://did:plc:a%d/app.bsky.feed.post/%03d", i, 999-i),
 			DID: fmt.Sprintf("did:plc:a%d", i), IndexedAt: now.Add(-time.Duration(i) * time.Minute),
 			TopPath: "sports/american_football", TopPathP: 0.91234,
-			TopPaths: []string{"sports/american_football", "sports/other", "sports/soccer"}, TopPs: []float32{0.91234, 0.05, 0.01}}
+			TopPaths: []string{"sports/american_football", "sports/other", "sports/soccer"}, TopPs: []float32{0.91234, 0.05, 0.01},
+			Tone: map[string]float32{"informative": 0.2, "outraged": 0.7, "humorous": 0.1}}
 	}
 	return out
 }
@@ -49,7 +50,7 @@ func TestScoreEngagementAndDecay(t *testing.T) {
 	liked := Post{URI: "liked", DID: "b", IndexedAt: now.Add(-time.Hour), Likes: 50}
 	old := Post{URI: "old", DID: "c", IndexedAt: now.Add(-20 * time.Hour), Likes: 50}
 	ps := []Post{fresh, liked, old}
-	Score(ps, r, now)
+	Score(ps, r, ToneRules{}, now)
 	if !(ps[1].Score > ps[0].Score) {
 		t.Errorf("an hour-old post with 50 likes should beat a fresh one: %v vs %v", ps[1].Score, ps[0].Score)
 	}
@@ -57,7 +58,7 @@ func TestScoreEngagementAndDecay(t *testing.T) {
 		t.Errorf("a fresh post should beat a 20-hour-old one with 50 likes: %v vs %v", ps[0].Score, ps[2].Score)
 	}
 	promo := []Post{{URI: "p", IndexedAt: now, Promo: 1}, {URI: "q", IndexedAt: now, Substance: 1}}
-	Score(promo, r, now)
+	Score(promo, r, ToneRules{}, now)
 	if !(promo[1].Score > promo[0].Score) {
 		t.Error("with no engagement, a substantive post should beat a promotional one")
 	}
@@ -71,7 +72,7 @@ func TestRankFreshSlotsAndEveryPostOnce(t *testing.T) {
 	}
 	r := DefaultRanking
 	r.AuthorGap = 0
-	out := Rank(ps, r, now)
+	out := Rank(ps, r, ToneRules{}, now)
 	if len(out) != 20 {
 		t.Fatalf("%d posts", len(out))
 	}
@@ -99,7 +100,7 @@ func TestRankAuthorGap(t *testing.T) {
 	r := DefaultRanking
 	r.FreshEvery = 0
 	r.AuthorGap = 5
-	out := Rank(ps, r, now)
+	out := Rank(ps, r, ToneRules{}, now)
 	var slots []int
 	for i, p := range out {
 		if p.DID == "did:plc:loud" {
@@ -257,10 +258,11 @@ func TestSkeletonEndpoint(t *testing.T) {
 		Topic string  `json:"topic"`
 		P     float64 `json:"p"`
 		Top   [][]any `json:"top"`
+		Tone  [][]any `json:"tone"`
 	}
 	if err := json.Unmarshal([]byte(item["feedContext"].(string)), &fc); err != nil || fc.ID != item["post"] ||
 		fc.Topic != "sports/american_football" || fc.P != 0.912 || len(fc.Top) != 3 ||
-		fc.Top[1][0] != "sports/other" || fc.Top[1][1] != 0.05 {
+		fc.Top[1][0] != "sports/other" || fc.Top[1][1] != 0.05 || len(fc.Tone) != 3 || fc.Tone[0][0] != "outraged" || fc.Tone[0][1] != 0.7 {
 		t.Errorf("feedContext %v (%v)", item["feedContext"], err)
 	}
 	code, body = get(t, s, "/xrpc/app.bsky.feed.getFeedSkeleton?limit=10&feed="+feed+"&cursor="+url.QueryEscape(body["cursor"].(string)))
@@ -381,5 +383,35 @@ func TestAcceptsInteractionsDefault(t *testing.T) {
 	}
 	if !c.Feeds[0].AcceptsInteractions || c.Feeds[1].AcceptsInteractions {
 		t.Errorf("%v %v", c.Feeds[0].AcceptsInteractions, c.Feeds[1].AcceptsInteractions)
+	}
+}
+
+func TestToneRules(t *testing.T) {
+	angry := map[string]float32{"outraged": 0.9, "informative": 0.1}
+	calm := map[string]float32{"informative": 0.8, "supportive": 0.2}
+	cut := ToneRules{Max: map[string]float32{"outraged": 0.5}}
+	if cut.Allows(angry) || !cut.Allows(calm) {
+		t.Error("max cutoff")
+	}
+	funny := ToneRules{Min: map[string]float32{"humorous": 0.5}}
+	if funny.Allows(calm) || !funny.Allows(map[string]float32{"humorous": 0.6}) {
+		t.Error("min cutoff")
+	}
+	nudge := ToneRules{Weights: map[string]float64{"outraged": -2, "supportive": 1}}
+	ps := []Post{{URI: "a", IndexedAt: now, Tone: angry}, {URI: "b", IndexedAt: now, Tone: calm}}
+	Score(ps, DefaultRanking, nudge, now)
+	if !(ps[1].Score > ps[0].Score) {
+		t.Errorf("nudge: calm %v should beat angry %v", ps[1].Score, ps[0].Score)
+	}
+	paths := map[string]bool{"technology/ai": true}
+	for _, bad := range []ToneRules{
+		{Max: map[string]float32{"angry": 0.5}},
+		{Min: map[string]float32{"humorous": 1.5}},
+		{Weights: map[string]float64{"sad": 1}},
+	} {
+		f := Feed{Rkey: "x", DisplayName: "X", Paths: []string{"technology/ai"}, MinProb: 0.5, Ranking: DefaultRanking, Tone: bad}
+		if err := (&Config{Feeds: []Feed{f}}).Validate(paths); err == nil {
+			t.Errorf("accepted %+v", bad)
+		}
 	}
 }
