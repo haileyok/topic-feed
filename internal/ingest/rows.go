@@ -51,6 +51,15 @@ type LikeRow struct {
 	IndexedAt  time.Time `ch:"indexed_at"`
 }
 
+// PostRefRow is a post replying to or quoting another post (table post_refs).
+type PostRefRow struct {
+	SubjectURI string    `ch:"subject_uri"` // the post replied to or quoted
+	Kind       string    `ch:"kind"`        // reply | quote
+	URI        string    `ch:"uri"`         // the replying or quoting post
+	ActorDID   string    `ch:"actor_did"`
+	IndexedAt  time.Time `ch:"indexed_at"`
+}
+
 type DeletionRow struct {
 	DID        string    `ch:"did"`
 	Collection string    `ch:"collection"`
@@ -72,12 +81,13 @@ type Rows struct {
 	PostTexts []PostTextRow
 	Likes     []LikeRow
 	Reposts   []LikeRow
+	PostRefs  []PostRefRow
 	Deletions []DeletionRow
 	Accounts  []AccountRow
 }
 
 func (r *Rows) Len() int {
-	return len(r.Posts) + len(r.PostTexts) + len(r.Likes) + len(r.Reposts) + len(r.Deletions) + len(r.Accounts)
+	return len(r.Posts) + len(r.PostTexts) + len(r.Likes) + len(r.Reposts) + len(r.PostRefs) + len(r.Deletions) + len(r.Accounts)
 }
 
 func (r *Rows) Reset() {
@@ -85,6 +95,7 @@ func (r *Rows) Reset() {
 	r.PostTexts = r.PostTexts[:0]
 	r.Likes = r.Likes[:0]
 	r.Reposts = r.Reposts[:0]
+	r.PostRefs = r.PostRefs[:0]
 	r.Deletions = r.Deletions[:0]
 	r.Accounts = r.Accounts[:0]
 }

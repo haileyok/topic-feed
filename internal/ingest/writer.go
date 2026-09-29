@@ -31,6 +31,9 @@ func (w *Writer) Write(ctx context.Context, rows *Rows) error {
 	if err := insert(ctx, w.Conn, "reposts", rows.Reposts); err != nil {
 		return err
 	}
+	if err := insert(ctx, w.Conn, "post_refs", rows.PostRefs); err != nil {
+		return err
+	}
 	if err := insert(ctx, w.Conn, "deletions", rows.Deletions); err != nil {
 		return err
 	}

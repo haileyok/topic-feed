@@ -157,6 +157,7 @@ func (p *Parser) handlePost(did string, c *jetstream.Commit, uri string, at time
 	if stale(c.Rkey, str(rec, "createdAt"), at) {
 		return PostStale
 	}
+	addRefs(did, uri, at, rec, rows)
 	if rec["reply"] != nil {
 		return PostReply
 	}
@@ -300,6 +301,35 @@ func addExternal(ext map[string]any, row *PostRow) {
 	row.LinkDomain = domainOf(row.LinkURI)
 	row.LinkTitle = str(ext, "title")
 	row.LinkDescription = str(ext, "description")
+}
+
+// addRefs records what a post (any language, replies included) replies to and quotes,
+// for engagement counts. Replies are counted for their direct parent. Replies and
+// quotes of the author's own posts (threads, self-quotes) are left out.
+func addRefs(did, uri string, at time.Time, rec map[string]any, rows *Rows) {
+	add := func(kind, subject string) {
+		if !strings.Contains(subject, "/"+collPost+"/") || authorOf(subject) == did {
+			return
+		}
+		rows.PostRefs = append(rows.PostRefs, PostRefRow{SubjectURI: subject, Kind: kind, URI: uri, ActorDID: did, IndexedAt: at})
+	}
+	if reply := mapv(rec, "reply"); reply != nil {
+		add("reply", str(mapv(reply, "parent"), "uri"))
+	}
+	embed := mapv(rec, "embed")
+	switch str(embed, "$type") {
+	case "app.bsky.embed.record":
+		add("quote", str(mapv(embed, "record"), "uri"))
+	case "app.bsky.embed.recordWithMedia":
+		add("quote", str(mapv(mapv(embed, "record"), "record"), "uri"))
+	}
+}
+
+// authorOf returns the DID in an at:// URI.
+func authorOf(uri string) string {
+	rest, _ := strings.CutPrefix(uri, "at://")
+	did, _, _ := strings.Cut(rest, "/")
+	return did
 }
 
 // setQuote records the quoted post's URI. Quotes of other record types (feeds,

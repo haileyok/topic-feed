@@ -84,6 +84,38 @@ func TestRepliesAreRejectedButTextKept(t *testing.T) {
 	}
 }
 
+func TestRepliesAndQuotesAreCounted(t *testing.T) {
+	other := "at://did:plc:other/app.bsky.feed.post/3lorig"
+	own := "at://" + did + "/app.bsky.feed.post/3lmine"
+	// A non-English reply that also quotes a post: both count, whatever the language.
+	rows, _ := handle(t, post(map[string]any{
+		"text":  "¡totalmente de acuerdo!",
+		"langs": []any{"es"},
+		"reply": map[string]any{"root": map[string]any{"uri": own}, "parent": map[string]any{"uri": other}},
+		"embed": map[string]any{"$type": "app.bsky.embed.recordWithMedia",
+			"record": map[string]any{"record": map[string]any{"uri": "at://did:plc:third/app.bsky.feed.post/3lq"}}},
+	}))
+	want := []PostRefRow{
+		{SubjectURI: other, Kind: "reply", URI: "at://" + did + "/app.bsky.feed.post/3lpost", ActorDID: did},
+		{SubjectURI: "at://did:plc:third/app.bsky.feed.post/3lq", Kind: "quote", URI: "at://" + did + "/app.bsky.feed.post/3lpost", ActorDID: did},
+	}
+	for i := range rows.PostRefs {
+		rows.PostRefs[i].IndexedAt = time.Time{}
+	}
+	if !reflect.DeepEqual(rows.PostRefs, want) {
+		t.Errorf("refs %+v", rows.PostRefs)
+	}
+	// Threads and self-quotes don't count, nor do quotes of non-posts.
+	rows, _ = handle(t, post(map[string]any{
+		"text":  "2/ and another thing",
+		"reply": map[string]any{"root": map[string]any{"uri": own}, "parent": map[string]any{"uri": own}},
+		"embed": map[string]any{"$type": "app.bsky.embed.record", "record": map[string]any{"uri": "at://did:plc:x/app.bsky.feed.generator/cats"}},
+	}))
+	if len(rows.PostRefs) != 0 {
+		t.Errorf("self-reply / non-post quote counted: %+v", rows.PostRefs)
+	}
+}
+
 func TestLanguageFilter(t *testing.T) {
 	cases := []struct {
 		name  string
