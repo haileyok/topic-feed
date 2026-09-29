@@ -1,6 +1,7 @@
 package feedgen
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
 	"net/http"
@@ -21,15 +22,18 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"connect-src 'self' https://public.api.bsky.app; " +
 	"frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 
-func addWebRoutes(e *echo.Echo) {
+// addWebRoutes serves the page. origin (https://<hostname>) replaces __ORIGIN__ in it,
+// for the absolute URLs link previews need.
+func addWebRoutes(e *echo.Echo, origin string) {
 	static, err := fs.Sub(webFS, "web/static")
 	if err != nil {
 		panic(err)
 	}
-	index, err := webFS.ReadFile("web/index.html")
+	raw, err := webFS.ReadFile("web/index.html")
 	if err != nil {
 		panic(err)
 	}
+	index := bytes.ReplaceAll(raw, []byte("__ORIGIN__"), []byte(origin))
 	files := http.StripPrefix("/static/", http.FileServer(http.FS(static)))
 	e.GET("/static/*", func(c echo.Context) error {
 		c.Response().Header().Set("Cache-Control", "public, max-age=300")

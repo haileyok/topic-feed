@@ -88,7 +88,7 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog
 		}
 		return s.Preview.Handle(c)
 	})
-	addWebRoutes(e)
+	addWebRoutes(e, "https://"+cfg.Hostname)
 	s.echo = e
 	return s
 }

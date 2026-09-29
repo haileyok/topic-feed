@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    font-family: ui-sans-serif, system-ui, "DejaVu Sans", sans-serif;
+    background: #0b0f18;
+    color: #e8ecf5;
+    overflow: hidden;
+    position: relative;
+  }
+  .glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; }
+  .g1 { width: 620px; height: 620px; background: #3b6cf6; left: -160px; top: -220px; }
+  .g2 { width: 560px; height: 560px; background: #8b5cf6; right: -120px; bottom: -260px; }
+  .wrap { position: relative; display: grid; grid-template-columns: 1fr 470px; gap: 40px; padding: 64px 70px; height: 100%; }
+  .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; font-weight: 700; letter-spacing: -.01em; }
+  .logo { width: 56px; height: 56px; }
+  h1 { font-size: 66px; line-height: 1.04; letter-spacing: -.035em; font-weight: 800; margin-top: 54px; }
+  h1 span { background: linear-gradient(135deg, #8fb0ff, #c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { font-size: 26px; line-height: 1.4; color: #aab3c7; margin-top: 24px; max-width: 560px; }
+  .url { position: absolute; left: 70px; bottom: 58px; font-size: 24px; font-weight: 700; color: #8fb0ff; letter-spacing: .01em; }
+
+  .card { align-self: center; background: rgba(19, 26, 39, .92); border: 1px solid #2f3a4f; border-radius: 24px; padding: 26px 26px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .label { font-size: 14px; font-weight: 800; letter-spacing: .08em; color: #7a849a; text-transform: uppercase; margin-bottom: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .chip { font-size: 17px; font-weight: 650; padding: 7px 14px; border-radius: 999px; border: 1.5px solid #2f3a4f; color: #e8ecf5; }
+  .chip.in { background: #1b2644; border-color: #5b87ff; color: #8fb0ff; }
+  .chip.out { background: #3a1a1d; border-color: #ff6369; color: #ff6369; text-decoration: line-through; }
+  .row { display: grid; grid-template-columns: 118px 1fr 58px; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .row .n { font-size: 17px; font-weight: 700; }
+  .row .v { font-size: 15px; font-weight: 700; color: #aab3c7; text-align: right; }
+  .track { position: relative; height: 8px; border-radius: 99px; background: #232c3d; }
+  .fill { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: #5b87ff; }
+  .fill.red { background: #ff6369; }
+  .thumb { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #fff; border: 3px solid #5b87ff; }
+  .thumb.red { border-color: #ff6369; }
+  .post { display: grid; grid-template-columns: 40px 1fr; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #232c3d; }
+  .av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #f59e0b, #ec4899); }
+  .line { height: 11px; border-radius: 6px; background: #2f3a4f; margin-top: 7px; }
+  .line.s { width: 45%; background: #3b4760; margin-top: 4px; }
+  .tags { display: flex; gap: 6px; margin-top: 11px; }
+  .tags span { font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: #1b2644; color: #8fb0ff; }
+  .tags span.g { background: #10321f; color: #34d399; }
+</style>
+</head>
+<body>
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div class="wrap">
+    <div>
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><rect x="14" y="16" width="36" height="8" rx="4" fill="#fff"/><rect x="14" y="28" width="26" height="8" rx="4" fill="#fff" opacity=".85"/><rect x="14" y="40" width="16" height="8" rx="4" fill="#fff" opacity=".7"/><circle cx="44" cy="44" r="6" fill="#fff"/></svg>
+        Topic Feeds
+      </div>
+      <h1>Build your own<br><span>Bluesky feed</span></h1>
+      <p>Pick topics and dial in the vibe. A classifier reads every post, so there are no keyword lists.</p>
+      <div class="url">feeds.hailey.at</div>
+    </div>
+    <div class="card">
+      <div class="label">Topics</div>
+      <div class="chips">
+        <span class="chip in">Cats</span><span class="chip in">Tabletop games</span><span class="chip in">Photography</span>
+        <span class="chip out">US politics</span><span class="chip">Anime &amp; manga</span>
+      </div>
+      <div class="label">Vibe</div>
+      <div class="row"><span class="n">Supportive</span><div class="track"><div class="fill" style="left:50%;right:17%"></div><div class="thumb" style="left:83%"></div></div><span class="v">+2</span></div>
+      <div class="row"><span class="n">Funny</span><div class="track"><div class="fill" style="left:50%;right:33%"></div><div class="thumb" style="left:67%"></div></div><span class="v">+1</span></div>
+      <div class="row"><span class="n">Outraged</span><div class="track"><div class="fill red" style="left:17%;right:50%"></div><div class="thumb red" style="left:17%"></div></div><span class="v">−2</span></div>
+      <div class="post">
+        <div class="av"></div>
+        <div>
+          <div class="line s"></div>
+          <div class="line"></div>
+          <div class="line" style="width:78%"></div>
+          <div class="tags"><span>Cats 97%</span><span class="g">fresh slot</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

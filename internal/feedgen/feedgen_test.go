@@ -459,3 +459,28 @@ func TestSignalRulesAndAnyTopic(t *testing.T) {
 		t.Error("signal nudge")
 	}
 }
+
+func TestHomepageLinkPreview(t *testing.T) {
+	s := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<meta property="og:image" content="https://feeds.example.com/static/og.png">`,
+		`<meta property="og:url" content="https://feeds.example.com/">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(body, "__ORIGIN__") {
+		t.Error("placeholder left in the page")
+	}
+	img := httptest.NewRecorder()
+	s.Handler().ServeHTTP(img, httptest.NewRequest(http.MethodGet, "/static/og.png", nil))
+	if img.Code != 200 || img.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("og.png: %d %s", img.Code, img.Header().Get("Content-Type"))
+	}
+}
