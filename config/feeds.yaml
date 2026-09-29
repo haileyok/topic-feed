@@ -68,3 +68,27 @@ feeds:
     paths: [gaming/video_games]
     min_prob: 0.5
     max_posts: 10000   # ~800 posts/hour at 0.5 (2026-09-29): about 12 hours of candidates
+
+  - rkey: pets
+    display_name: Cats & Pets
+    description: Cats, dogs, and every other pet, picked by a topic classifier. No keyword lists.
+    paths: [animals_nature/cats, animals_nature/dogs, animals_nature/other_pets]
+    min_prob: 0.5   # posts at 0.5-0.6 were real pets (2026-09-29)
+
+  - rkey: anime
+    display_name: Anime & Manga
+    description: Posts about anime and manga, picked by a topic classifier. No keyword lists.
+    paths: [entertainment/anime_manga]
+    min_prob: 0.65  # at 0.5-0.6 about half were K-pop, comics, or games; at 0.65-0.75 nearly all anime (2026-09-29)
+
+  - rkey: software-dev
+    display_name: Software Dev
+    description: Posts about programming and building software, picked by a topic classifier. No keyword lists.
+    paths: [technology/software_dev]
+    min_prob: 0.6   # 0.5-0.6 was mostly conference hashtags and engagement bait (2026-09-29)
+
+  - rkey: tabletop
+    display_name: Tabletop Games
+    description: D&D and other tabletop RPGs, board games, card games, Warhammer, and miniature painting, picked by a topic classifier. No keyword lists.
+    paths: [gaming/tabletop_games]
+    min_prob: 0.5   # posts at 0.5-0.6 were mostly tabletop: TTRPG lore, board games, minis (2026-09-29)
