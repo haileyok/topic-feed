@@ -6,7 +6,6 @@
 //
 //	PIPELINE_DELAY_SECONDS   process posts once they are this old, default 10
 //	PIPELINE_CONSUMER        ingest_cursor row for the pipeline's position, default pipeline
-//	INGEST_CONSUMER          ingest's row (never pass what it has written), default ingest
 //	LABEL_POLICY             default config/label_policy.yaml
 //	TESSERACT                tesseract executable, default tesseract
 //	OCR_WORKERS              tesseract processes at once, default 4
@@ -73,13 +72,12 @@ func run(log *slog.Logger) error {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	p := &pipeline.Pipeline{
 		Cfg: pipeline.Config{
-			Delay:          time.Duration(envInt("PIPELINE_DELAY_SECONDS", 10)) * time.Second,
-			Consumer:       env("PIPELINE_CONSUMER", "pipeline"),
-			IngestConsumer: env("INGEST_CONSUMER", "ingest"),
-			BatchLimit:     2000,
-			MinOCRWords:    envInt("OCR_MIN_WORDS", 7),
-			MaxMedia:       4,
-			Poll:           time.Second,
+			Delay:       time.Duration(envInt("PIPELINE_DELAY_SECONDS", 10)) * time.Second,
+			Consumer:    env("PIPELINE_CONSUMER", "pipeline"),
+			BatchLimit:  2000,
+			MinOCRWords: envInt("OCR_MIN_WORDS", 7),
+			MaxMedia:    4,
+			Poll:        time.Second,
 		},
 		Conn:   conn,
 		Policy: policy,

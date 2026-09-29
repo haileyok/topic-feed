@@ -20,13 +20,12 @@ import (
 
 // Config controls the pipeline loop.
 type Config struct {
-	Delay          time.Duration // process posts once they are at least this old (labels arrive within seconds)
-	Consumer       string        // ingest_cursor row holding the pipeline's position (unix micros of indexed_at)
-	IngestConsumer string        // ingest's row: never go past what ingest has fully written
-	BatchLimit     int           // posts per batch
-	MinOCRWords    int           // tesseract text is used when it has at least this many confident words
-	MaxMedia       int           // attachments per post to find text for
-	Poll           time.Duration // wait between batches when caught up
+	Delay       time.Duration // process posts once they are at least this old (labels arrive within seconds)
+	Consumer    string        // ingest_cursor row holding the pipeline's position (unix micros of indexed_at)
+	BatchLimit  int           // posts per batch
+	MinOCRWords int           // tesseract text is used when it has at least this many confident words
+	MaxMedia    int           // attachments per post to find text for
+	Poll        time.Duration // wait between batches when caught up
 }
 
 // Pipeline processes live posts into post_pipeline.
@@ -120,18 +119,19 @@ func (p *Pipeline) sleep(ctx context.Context, d time.Duration) {
 }
 
 // upperBound is the newest ingest time the next batch may include: Delay ago, and never
-// past what ingest has fully written (its cursor is a Jetstream time in unix micros).
+// past what ingest has written. Ingest writes events in order, one flush after another,
+// so every post up to the newest stored indexed_at is already in the table.
 func (p *Pipeline) upperBound(ctx context.Context) (time.Time, error) {
 	upper := time.Now().UTC().Add(-p.Cfg.Delay)
-	ing := &ingest.Writer{Conn: p.Conn, Consumer: p.Cfg.IngestConsumer}
-	pos, ok, err := ing.LoadCursor(ctx)
-	if err != nil {
+	var written time.Time
+	if err := p.Conn.QueryRow(ctx, "SELECT max(indexed_at) FROM posts WHERE indexed_at > now() - INTERVAL 1 DAY").Scan(&written); err != nil {
 		return time.Time{}, err
 	}
-	if ok {
-		if written := time.UnixMicro(int64(pos)).UTC(); written.Before(upper) {
-			upper = written
-		}
+	if written.IsZero() {
+		return time.Time{}, errors.New("no posts ingested in the last day")
+	}
+	if written.Before(upper) {
+		upper = written.UTC()
 	}
 	return upper, nil
 }
