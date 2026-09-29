@@ -29,6 +29,8 @@ type candidate struct {
 	Promo      float32   `ch:"promo"`
 	TopPath    string    `ch:"top_path"`
 	TopPathP   float32   `ch:"top_path_p"`
+	TopPaths   []string  `ch:"top_paths"`
+	TopPs      []float32 `ch:"top_ps"`
 }
 
 // Removed counts candidates left out of a feed, by reason.
@@ -49,7 +51,9 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		SELECT uri, did, indexed_at, feed_policy, labels,
 		       arrayMax(arrayMap(p -> path_probs[p], ?)) AS score,
 		       signals['substance'] AS substance, signals['general_interest'] AS general_interest,
-		       signals['promo'] AS promo, top_path, top_path_p
+		       signals['promo'] AS promo, top_path, top_path_p,
+		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
+		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?
 		ORDER BY indexed_at DESC, uri DESC
@@ -97,7 +101,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		default:
 			out = append(out, Post{URI: c.URI, DID: c.DID, IndexedAt: c.IndexedAt, Match: c.Score,
 				Substance: c.Substance, GeneralInterest: c.General, Promo: c.Promo,
-				TopPath: c.TopPath, TopPathP: c.TopPathP})
+				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs})
 		}
 	}
 	if err := s.engagement(ctx, out); err != nil {

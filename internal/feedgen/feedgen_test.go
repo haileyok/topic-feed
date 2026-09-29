@@ -29,7 +29,8 @@ func posts(n int) []Post {
 	for i := range out {
 		out[i] = Post{URI: fmt.Sprintf("at://did:plc:a%d/app.bsky.feed.post/%03d", i, 999-i),
 			DID: fmt.Sprintf("did:plc:a%d", i), IndexedAt: now.Add(-time.Duration(i) * time.Minute),
-			TopPath: "sports/american_football", TopPathP: 0.91234}
+			TopPath: "sports/american_football", TopPathP: 0.91234,
+			TopPaths: []string{"sports/american_football", "sports/other", "sports/soccer"}, TopPs: []float32{0.91234, 0.05, 0.01}}
 	}
 	return out
 }
@@ -255,9 +256,11 @@ func TestSkeletonEndpoint(t *testing.T) {
 		ID    string  `json:"id"`
 		Topic string  `json:"topic"`
 		P     float64 `json:"p"`
+		Top   [][]any `json:"top"`
 	}
 	if err := json.Unmarshal([]byte(item["feedContext"].(string)), &fc); err != nil || fc.ID != item["post"] ||
-		fc.Topic != "sports/american_football" || fc.P != 0.912 {
+		fc.Topic != "sports/american_football" || fc.P != 0.912 || len(fc.Top) != 3 ||
+		fc.Top[1][0] != "sports/other" || fc.Top[1][1] != 0.05 {
 		t.Errorf("feedContext %v (%v)", item["feedContext"], err)
 	}
 	code, body = get(t, s, "/xrpc/app.bsky.feed.getFeedSkeleton?limit=10&feed="+feed+"&cursor="+url.QueryEscape(body["cursor"].(string)))

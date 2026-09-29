@@ -14,9 +14,11 @@ type Post struct {
 	URI       string
 	DID       string
 	IndexedAt time.Time
-	Match     float32 // highest probability among the feed's paths
-	TopPath   string  // the model's top subtopic path for the post
-	TopPathP  float32 // its probability
+	Match     float32   // highest probability among the feed's paths
+	TopPath   string    // the model's top subtopic path for the post
+	TopPathP  float32   // its probability
+	TopPaths  []string  // the model's three most likely subtopic paths, best first
+	TopPs     []float32 // their probabilities
 
 	// Model signals, 0-1.
 	Substance, GeneralInterest, Promo float32
@@ -30,19 +32,29 @@ type Post struct {
 type Item struct {
 	URI string
 	// Context is the post's feedContext: JSON {"id": post URI, "topic": the model's top
-	// subtopic, "p": its probability}. Bluesky passes it through to the app and back to
-	// the feed generator with interactions.
+	// subtopic, "p": its probability, "top": [[subtopic, probability], ...] for the three
+	// most likely}. Bluesky passes it through to the app and back to the feed generator
+	// with interactions.
 	Context string
 }
 
 func feedContext(p Post) string {
+	top := make([][2]any, 0, len(p.TopPaths))
+	for i, path := range p.TopPaths {
+		if i < len(p.TopPs) {
+			top = append(top, [2]any{path, round3(p.TopPs[i])})
+		}
+	}
 	b, _ := json.Marshal(struct {
-		ID    string  `json:"id"`
-		Topic string  `json:"topic"`
-		P     float64 `json:"p"`
-	}{p.URI, p.TopPath, math.Round(float64(p.TopPathP)*1000) / 1000})
+		ID    string   `json:"id"`
+		Topic string   `json:"topic"`
+		P     float64  `json:"p"`
+		Top   [][2]any `json:"top"`
+	}{p.URI, p.TopPath, round3(p.TopPathP), top})
 	return string(b)
 }
+
+func round3(x float32) float64 { return math.Round(float64(x)*1000) / 1000 }
 
 // A ranked feed changes on every rebuild, so a cursor names the build a reader started
 // on and a position in it: "<build id>:<offset>". Builds are kept for a while (see
