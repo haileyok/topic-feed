@@ -10,6 +10,10 @@
 #   min_prob      0-1; higher is stricter
 #   allow_adult   also show posts the label policy marks adult_only (default false)
 #   ranking       optional; any field left out keeps the default below
+#   accepts_interactions
+#                 ask Bluesky to send interactions with the feed's posts (seen, like,
+#                 show more/less, ...) to table feed_interactions (default true;
+#                 takes effect after `make feeds-publish`)
 #
 # Ranking (internal/feedgen/config.go, DefaultRanking). Each post scores
 #

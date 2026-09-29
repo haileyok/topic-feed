@@ -43,6 +43,31 @@ var (
 		Help: "Failed feed rebuilds (the previous posts keep being served).",
 	}, []string{"feed"})
 
+	metricInteractions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_interactions_total",
+		Help: "Interactions received from Bluesky, by feed and event (interactionSeen, requestLess, ...).",
+	}, []string{"feed", "event"})
+
+	metricInteractionRequests = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_interaction_requests_total",
+		Help: "sendInteractions calls, by HTTP status.",
+	}, []string{"status"})
+
+	metricInteractionsWritten = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_interactions_written_total",
+		Help: "Interaction rows written to ClickHouse.",
+	})
+
+	metricInteractionsDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_interactions_dropped_total",
+		Help: "Interactions dropped: the write queue was full, or ClickHouse was down too long.",
+	})
+
+	metricInteractionWriteErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_interaction_write_errors_total",
+		Help: "Failed interaction writes (retried on the next flush).",
+	})
+
 	metricLastRefresh = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "feedgen_last_refresh_timestamp_seconds",
 		Help: "Unix time of each feed's latest successful rebuild.",

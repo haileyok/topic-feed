@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -25,7 +27,15 @@ const (
 	maxLimit            = 100
 )
 
-var skeletonMethod = syntax.NSID("app.bsky.feed.getFeedSkeleton")
+var (
+	skeletonMethod     = syntax.NSID("app.bsky.feed.getFeedSkeleton")
+	interactionsMethod = syntax.NSID("app.bsky.feed.sendInteractions")
+)
+
+const (
+	maxInteractionsBody = 1 << 20 // bytes per sendInteractions call
+	maxInteractions     = 1000    // interactions per call
+)
 
 // ServerConfig identifies the service on the network.
 type ServerConfig struct {
@@ -44,6 +54,9 @@ type Server struct {
 	// Viewer credentials may name the service DID with or without the #bsky_fg fragment.
 	validators []*auth.ServiceAuthValidator
 	echo       *echo.Echo
+
+	// Interactions stores what sendInteractions receives; nil answers 501.
+	Interactions InteractionSink
 }
 
 // NewServer builds the HTTP server. dir resolves viewers' DIDs to check their credentials.
@@ -57,6 +70,7 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog
 	e.Use(middleware.Recover(), s.observe)
 	e.GET("/xrpc/app.bsky.feed.getFeedSkeleton", s.handleSkeleton)
 	e.GET("/xrpc/app.bsky.feed.describeFeedGenerator", s.handleDescribe)
+	e.POST("/xrpc/app.bsky.feed.sendInteractions", s.handleInteractions)
 	e.GET("/.well-known/did.json", s.handleDIDDoc)
 	e.GET("/healthz", s.handleHealth)
 	e.GET("/", s.handleRoot)
@@ -151,7 +165,7 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 	if viewer := s.viewer(c); viewer != "" {
 		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(items))
 	}
-	resp := skeletonResponse{Feed: make([]skeletonItem, len(items)), Cursor: next, ReqID: newReqID()}
+	resp := skeletonResponse{Feed: make([]skeletonItem, len(items)), Cursor: next, ReqID: newReqID(rkey)}
 	for i, it := range items {
 		resp.Feed[i] = skeletonItem{Post: it.URI, FeedContext: it.Context}
 	}
@@ -172,38 +186,132 @@ func (s *Server) feedRkey(feed string) (string, bool) {
 	return u.RecordKey().String(), true
 }
 
-// viewer returns the DID from a valid viewer credential, or "". Feeds aren't personalized,
-// so a missing or invalid credential still gets the feed; the outcome is only counted.
-func (s *Server) viewer(c echo.Context) string {
+var errNoCredential = errors.New("no credential")
+
+// authenticate returns the DID from the request's service credential for method.
+func (s *Server) authenticate(c echo.Context, method syntax.NSID) (string, error) {
 	token, ok := strings.CutPrefix(c.Request().Header.Get("Authorization"), "Bearer ")
 	if !ok || token == "" {
-		metricAuth.WithLabelValues("none").Inc()
-		return ""
+		return "", errNoCredential
 	}
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
 	var err error
 	for _, v := range s.validators {
 		var did syntax.DID
-		did, err = v.Validate(ctx, token, &skeletonMethod)
+		did, err = v.Validate(ctx, token, &method)
 		if err == nil {
-			metricAuth.WithLabelValues("ok").Inc()
-			return did.String()
+			return did.String(), nil
 		}
 		if !errors.Is(err, jwt.ErrTokenInvalidAudience) {
 			break
 		}
 	}
-	metricAuth.WithLabelValues("invalid").Inc()
-	s.log.Debug("invalid viewer credential", "err", err)
-	return ""
+	return "", err
 }
 
-// newReqID returns a random request ID (32 hex characters).
-func newReqID() string {
+// viewer returns the DID from a valid viewer credential, or "". Feeds aren't personalized,
+// so a missing or invalid credential still gets the feed; the outcome is only counted.
+func (s *Server) viewer(c echo.Context) string {
+	did, err := s.authenticate(c, skeletonMethod)
+	switch {
+	case err == nil:
+		metricAuth.WithLabelValues("ok").Inc()
+	case errors.Is(err, errNoCredential):
+		metricAuth.WithLabelValues("none").Inc()
+	default:
+		metricAuth.WithLabelValues("invalid").Inc()
+		s.log.Debug("invalid viewer credential", "err", err)
+	}
+	return did
+}
+
+type interactionsRequest struct {
+	Feed         string `json:"feed"`
+	Interactions []struct {
+		Item        string `json:"item"`
+		Event       string `json:"event"`
+		FeedContext string `json:"feedContext"`
+		ReqID       string `json:"reqId"`
+	} `json:"interactions"`
+}
+
+// handleInteractions stores interactions with our feeds' posts, with the viewer's DID.
+// Unlike feed requests, these need a valid credential: without one there is no viewer.
+func (s *Server) handleInteractions(c echo.Context) error {
+	fail := func(status int, name, msg string) error {
+		metricInteractionRequests.WithLabelValues(strconv.Itoa(status)).Inc()
+		return c.JSON(status, xrpcError{Error: name, Message: msg})
+	}
+	if s.Interactions == nil {
+		return fail(http.StatusNotImplemented, "MethodNotImplemented", "interactions are not recorded")
+	}
+	viewer, err := s.authenticate(c, interactionsMethod)
+	if err != nil {
+		return fail(http.StatusUnauthorized, "AuthRequired", "a valid service credential is required")
+	}
+	var in interactionsRequest
+	if err := json.NewDecoder(http.MaxBytesReader(c.Response(), c.Request().Body, maxInteractionsBody)).Decode(&in); err != nil {
+		return fail(http.StatusBadRequest, "InvalidRequest", "body must be JSON {interactions: [...]}")
+	}
+	if len(in.Interactions) > maxInteractions {
+		return fail(http.StatusBadRequest, "InvalidRequest", fmt.Sprintf("at most %d interactions per call", maxInteractions))
+	}
+	feed, _ := s.feedRkey(in.Feed)
+	now := time.Now().UTC()
+	rows := make([]InteractionRow, 0, len(in.Interactions))
+	for _, it := range in.Interactions {
+		if it.Item == "" || it.Event == "" {
+			continue
+		}
+		f := feed
+		if f == "" { // older clients don't send feed: our reqIds start with the feed's rkey
+			if rk, _, ok := strings.Cut(it.ReqID, "-"); ok {
+				if _, _, known := s.feeds.Posts(rk); known {
+					f = rk
+				}
+			}
+		}
+		ev := strings.TrimPrefix(it.Event, "app.bsky.feed.defs#")
+		rows = append(rows, InteractionRow{ReceivedAt: now, ViewerDID: viewer, Feed: f,
+			Item: clip(it.Item, 512), Event: clip(ev, 100), FeedContext: clip(it.FeedContext, 2000), ReqID: clip(it.ReqID, 100)})
+		metricInteractions.WithLabelValues(orUnknown(f), knownEvent(ev)).Inc()
+	}
+	s.Interactions.Add(rows)
+	metricInteractionRequests.WithLabelValues("200").Inc()
+	return c.JSON(http.StatusOK, map[string]any{})
+}
+
+func clip(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+func orUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
+
+// knownEvent keeps metric labels bounded: unrecognized event names count as "other".
+func knownEvent(ev string) string {
+	switch ev {
+	case "requestLess", "requestMore", "clickthroughItem", "clickthroughAuthor", "clickthroughReposter",
+		"clickthroughEmbed", "interactionSeen", "interactionLike", "interactionRepost", "interactionReply",
+		"interactionQuote", "interactionShare":
+		return ev
+	}
+	return "other"
+}
+
+// newReqID returns a request ID: the feed's rkey, a dash, and 32 random hex characters.
+func newReqID(rkey string) string {
 	b := make([]byte, 16)
 	rand.Read(b)
-	return hex.EncodeToString(b)
+	return rkey + "-" + hex.EncodeToString(b)
 }
 
 func (s *Server) handleDescribe(c echo.Context) error {

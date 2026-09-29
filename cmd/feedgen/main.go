@@ -155,6 +155,12 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		Hostname: s.hostname, ServiceDID: s.serviceDID, OwnerDID: s.owner,
 		MaxAge: max(5*every, 2*time.Minute),
 	}, feeds, identity.DefaultDirectory(), log)
+
+	// Interactions are written in the background and flushed after the server stops.
+	iw := feedgen.NewInteractionWriter(conn, log, 200_000)
+	wctx, stopWriter := context.WithCancel(context.Background())
+	go iw.Run(wctx)
+	srv.Interactions = iw
 	for _, f := range s.cfg.Feeds {
 		log.Info("serving feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey), "paths", f.Paths, "min_prob", f.MinProb)
 	}
@@ -166,13 +172,18 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	select {
 	case err := <-errc:
+		stopWriter()
+		iw.Wait()
 		return err
 	case <-ctx.Done():
 	}
 	log.Info("shutting down")
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(sctx)
+	err = srv.Shutdown(sctx)
+	stopWriter()
+	iw.Wait()
+	return err
 }
 
 func publish(ctx context.Context, dry bool, code string) error {

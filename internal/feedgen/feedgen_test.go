@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/bluesky-social/indigo/atproto/atcrypto"
+	"github.com/bluesky-social/indigo/atproto/auth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"gopkg.in/yaml.v3"
@@ -215,7 +218,9 @@ func (b fakeBuilder) Build(context.Context, Feed, time.Time, int) ([]Post, Remov
 	return b.posts, Removed{}, nil
 }
 
-func testServer(t *testing.T) *Server {
+func testServer(t *testing.T) *Server { return testServerWith(t, identity.NewMockDirectory()) }
+
+func testServerWith(t *testing.T, dir identity.Directory) *Server {
 	cfg := &Config{Feeds: []Feed{{Rkey: "nfl", DisplayName: "NFL", Paths: []string{"sports/american_football"}, MinProb: 0.5, Ranking: DefaultRanking}}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fs := NewFeeds(cfg, fakeBuilder{posts(5)}, log, 48*time.Hour, time.Hour, 100)
@@ -223,7 +228,7 @@ func testServer(t *testing.T) *Server {
 	t.Cleanup(cancel)
 	fs.Start(ctx)
 	return NewServer(ServerConfig{Hostname: "feeds.example.com", ServiceDID: "did:web:feeds.example.com",
-		OwnerDID: syntax.DID("did:plc:owner"), MaxAge: time.Minute}, fs, identity.NewMockDirectory(), log)
+		OwnerDID: syntax.DID("did:plc:owner"), MaxAge: time.Minute}, fs, dir, log)
 }
 
 func get(t *testing.T, s *Server, path string, hdr ...string) (int, map[string]any) {
@@ -242,7 +247,7 @@ func TestSkeletonEndpoint(t *testing.T) {
 	s := testServer(t)
 	feed := url.QueryEscape("at://did:plc:owner/app.bsky.feed.generator/nfl")
 	code, body := get(t, s, "/xrpc/app.bsky.feed.getFeedSkeleton?limit=2&feed="+feed)
-	if code != 200 || len(body["feed"].([]any)) != 2 || body["cursor"] == nil || len(body["reqId"].(string)) != 32 {
+	if code != 200 || len(body["feed"].([]any)) != 2 || body["cursor"] == nil || !strings.HasPrefix(body["reqId"].(string), "nfl-") {
 		t.Fatalf("page 1: %d %v", code, body)
 	}
 	item := body["feed"].([]any)[0].(map[string]any)
@@ -292,5 +297,86 @@ func TestDescribeAndDIDDoc(t *testing.T) {
 	}
 	if code, body := get(t, s, "/healthz"); code != 200 || body["ok"] != true {
 		t.Errorf("healthz: %d %v", code, body)
+	}
+}
+
+type fakeSink struct{ rows []InteractionRow }
+
+func (f *fakeSink) Add(r []InteractionRow) int { f.rows = append(f.rows, r...); return 0 }
+
+func TestSendInteractions(t *testing.T) {
+	priv, err := atcrypto.GeneratePrivateKeyK256()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _ := priv.PublicKey()
+	viewer := syntax.DID("did:plc:viewer")
+	dir := identity.NewMockDirectory()
+	dir.Insert(identity.Identity{DID: viewer, Handle: "viewer.test",
+		Keys: map[string]identity.VerificationMethod{"atproto": {Type: "Multikey", PublicKeyMultibase: pub.Multibase()}}})
+	s := testServerWith(t, dir)
+	sink := &fakeSink{}
+	s.Interactions = sink
+
+	post := func(aud string, method syntax.NSID, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/xrpc/app.bsky.feed.sendInteractions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if aud != "" {
+			tok, err := auth.SignServiceAuth(viewer, aud, time.Minute, &method, priv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	withFeed := `{"feed":"at://did:plc:owner/app.bsky.feed.generator/nfl","interactions":[
+		{"item":"at://did:plc:a/app.bsky.feed.post/1","event":"app.bsky.feed.defs#interactionSeen","feedContext":"{\"id\":\"at://did:plc:a/app.bsky.feed.post/1\"}","reqId":"nfl-abc"}]}`
+	if code := post("did:web:feeds.example.com", interactionsMethod, withFeed); code != 200 {
+		t.Fatalf("valid credential: %d", code)
+	}
+	// Bluesky may address the service with its #bsky_fg fragment; older clients omit feed.
+	noFeed := `{"interactions":[{"item":"at://did:plc:a/app.bsky.feed.post/2","event":"app.bsky.feed.defs#requestLess","reqId":"nfl-def"}]}`
+	if code := post("did:web:feeds.example.com#bsky_fg", interactionsMethod, noFeed); code != 200 {
+		t.Fatalf("fragment audience: %d", code)
+	}
+	if len(sink.rows) != 2 {
+		t.Fatalf("rows %+v", sink.rows)
+	}
+	r := sink.rows[0]
+	if r.ViewerDID != "did:plc:viewer" || r.Feed != "nfl" || r.Event != "interactionSeen" ||
+		r.Item != "at://did:plc:a/app.bsky.feed.post/1" || r.ReqID != "nfl-abc" || !strings.Contains(r.FeedContext, "post/1") {
+		t.Errorf("row %+v", r)
+	}
+	if sink.rows[1].Feed != "nfl" || sink.rows[1].Event != "requestLess" {
+		t.Errorf("feed from reqId: %+v", sink.rows[1])
+	}
+	// No credential, a credential for another method, or for another service: rejected.
+	for name, code := range map[string]int{
+		"none":          post("", interactionsMethod, withFeed),
+		"wrong method":  post("did:web:feeds.example.com", skeletonMethod, withFeed),
+		"wrong service": post("did:web:elsewhere.example.com", interactionsMethod, withFeed),
+	} {
+		if code != 401 {
+			t.Errorf("%s: %d, want 401", name, code)
+		}
+	}
+	if code := post("did:web:feeds.example.com", interactionsMethod, "not json"); code != 400 {
+		t.Errorf("bad body: %d", code)
+	}
+	if len(sink.rows) != 2 {
+		t.Errorf("rejected calls stored rows: %d", len(sink.rows))
+	}
+}
+
+func TestAcceptsInteractionsDefault(t *testing.T) {
+	var c Config
+	if err := yaml.Unmarshal([]byte("feeds:\n  - rkey: a\n  - rkey: b\n    accepts_interactions: false\n"), &c); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Feeds[0].AcceptsInteractions || c.Feeds[1].AcceptsInteractions {
+		t.Errorf("%v %v", c.Feeds[0].AcceptsInteractions, c.Feeds[1].AcceptsInteractions)
 	}
 }

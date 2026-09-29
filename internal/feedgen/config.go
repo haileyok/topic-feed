@@ -31,6 +31,9 @@ type Feed struct {
 	AllowAdult bool `yaml:"allow_adult"`
 	// Ranking orders the feed; fields left out of the config keep DefaultRanking's values.
 	Ranking Ranking `yaml:"ranking"`
+	// AcceptsInteractions asks Bluesky to send interactions with the feed's posts
+	// (default true). Takes effect after `feedgen publish`.
+	AcceptsInteractions bool `yaml:"accepts_interactions"`
 }
 
 // Ranking controls a feed's order. Each post scores
@@ -69,7 +72,7 @@ var DefaultRanking = Ranking{
 // UnmarshalYAML starts every feed from DefaultRanking, so the config only lists changes.
 func (f *Feed) UnmarshalYAML(n *yaml.Node) error {
 	type plain Feed
-	p := plain{Ranking: DefaultRanking}
+	p := plain{Ranking: DefaultRanking, AcceptsInteractions: true}
 	if err := n.Decode(&p); err != nil {
 		return err
 	}

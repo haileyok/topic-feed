@@ -54,6 +54,11 @@ func (p *Publisher) Publish(ctx context.Context, feeds []Feed, login *atclient.A
 		rec["did"] = p.ServiceDID
 		rec["displayName"] = f.DisplayName
 		rec["description"] = f.Description
+		if f.AcceptsInteractions {
+			rec["acceptsInteractions"] = true
+		} else {
+			delete(rec, "acceptsInteractions")
+		}
 		if _, ok := rec["createdAt"].(string); !ok {
 			rec["createdAt"] = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 		}
