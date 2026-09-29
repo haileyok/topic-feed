@@ -75,8 +75,8 @@ label: ## Start (or resume) the Jev labeling run over the labeling windows
 label-logs:
 	$(COMPOSE) --profile labeling logs --tail=50 -f labeler
 
-feeds: ## Build and start the feed generator (needs FEEDGEN_HOSTNAME and FEEDGEN_OWNER_DID in the env file)
-	$(COMPOSE) --profile feeds up -d --build --wait feedgen
+feeds: ## Build and (re)start the feed generator, picking up config/feeds.yaml (needs FEEDGEN_HOSTNAME and FEEDGEN_OWNER_DID in the env file)
+	$(COMPOSE) --profile feeds up -d --build --force-recreate --wait feedgen
 
 feeds-logs:
 	$(COMPOSE) --profile feeds logs --tail=100 -f feedgen
