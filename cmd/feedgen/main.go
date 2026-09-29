@@ -93,6 +93,7 @@ type settings struct {
 	serviceDID string
 	owner      syntax.DID
 	cfg        *feedgen.Config
+	tax        *taxonomy.Taxonomy
 }
 
 func load() (*settings, error) {
@@ -116,6 +117,7 @@ func load() (*settings, error) {
 	if s.cfg, err = feedgen.LoadConfig(env("FEEDGEN_CONFIG", "config/feeds.yaml"), tax); err != nil {
 		return nil, err
 	}
+	s.tax = tax
 	return s, nil
 }
 
@@ -157,6 +159,11 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	}, feeds, identity.DefaultDirectory(), log)
 
 	// Interactions are written in the background and flushed after the server stops.
+	// The feed builder page at "/" previews feeds with the same store.
+	pv := feedgen.NewPreviewer(&feedgen.Store{Conn: conn, Policy: policy}, s.tax, log)
+	go pv.Run(ctx)
+	srv.Preview = pv
+
 	iw := feedgen.NewInteractionWriter(conn, log, 200_000)
 	wctx, stopWriter := context.WithCancel(context.Background())
 	go iw.Run(wctx)

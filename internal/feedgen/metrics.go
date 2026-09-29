@@ -29,7 +29,7 @@ var (
 
 	metricRemoved = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "feedgen_feed_removed_posts",
-		Help: "Candidates left out of each feed in the latest refresh, by reason (deleted, inactive, labeled, tone).",
+		Help: "Candidates left out of each feed in the latest refresh, by reason (deleted, inactive, labeled).",
 	}, []string{"feed", "reason"})
 
 	metricRefreshSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -66,6 +66,17 @@ var (
 	metricInteractionWriteErrors = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "feedgen_interaction_write_errors_total",
 		Help: "Failed interaction writes (retried on the next flush).",
+	})
+
+	metricPreviews = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_previews_total",
+		Help: "Feed builder previews, by outcome (OK, Too Many Requests, Bad Request, ...).",
+	}, []string{"result"})
+
+	metricPreviewSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "feedgen_preview_build_seconds",
+		Help:    "Time to build and rank a feed builder preview (cache misses).",
+		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
 
 	metricLastRefresh = promauto.NewGaugeVec(prometheus.GaugeOpts{

@@ -51,15 +51,16 @@ func TestScoreEngagementAndDecay(t *testing.T) {
 	liked := Post{URI: "liked", DID: "b", IndexedAt: now.Add(-time.Hour), Likes: 50}
 	old := Post{URI: "old", DID: "c", IndexedAt: now.Add(-20 * time.Hour), Likes: 50}
 	ps := []Post{fresh, liked, old}
-	Score(ps, r, ToneRules{}, now)
+	Score(ps, Feed{Ranking: r}, now)
 	if !(ps[1].Score > ps[0].Score) {
 		t.Errorf("an hour-old post with 50 likes should beat a fresh one: %v vs %v", ps[1].Score, ps[0].Score)
 	}
 	if !(ps[0].Score > ps[2].Score) {
 		t.Errorf("a fresh post should beat a 20-hour-old one with 50 likes: %v vs %v", ps[0].Score, ps[2].Score)
 	}
-	promo := []Post{{URI: "p", IndexedAt: now, Promo: 1}, {URI: "q", IndexedAt: now, Substance: 1}}
-	Score(promo, r, ToneRules{}, now)
+	promo := []Post{{URI: "p", IndexedAt: now, Signals: map[string]float32{"promo": 1}},
+		{URI: "q", IndexedAt: now, Signals: map[string]float32{"substance": 1}}}
+	Score(promo, Feed{Ranking: r}, now)
 	if !(promo[1].Score > promo[0].Score) {
 		t.Error("with no engagement, a substantive post should beat a promotional one")
 	}
@@ -73,7 +74,7 @@ func TestRankFreshSlotsAndEveryPostOnce(t *testing.T) {
 	}
 	r := DefaultRanking
 	r.AuthorGap = 0
-	out := Rank(ps, r, ToneRules{}, now)
+	out := Rank(ps, Feed{Ranking: r}, now)
 	if len(out) != 20 {
 		t.Fatalf("%d posts", len(out))
 	}
@@ -101,7 +102,7 @@ func TestRankAuthorGap(t *testing.T) {
 	r := DefaultRanking
 	r.FreshEvery = 0
 	r.AuthorGap = 5
-	out := Rank(ps, r, ToneRules{}, now)
+	out := Rank(ps, Feed{Ranking: r}, now)
 	var slots []int
 	for i, p := range out {
 		if p.DID == "did:plc:loud" {
@@ -398,22 +399,22 @@ func TestAcceptsInteractionsDefault(t *testing.T) {
 func TestToneRules(t *testing.T) {
 	angry := map[string]float32{"outraged": 0.9, "informative": 0.1}
 	calm := map[string]float32{"informative": 0.8, "supportive": 0.2}
-	cut := ToneRules{Max: map[string]float32{"outraged": 0.5}}
+	cut := Rules{Max: map[string]float32{"outraged": 0.5}}
 	if cut.Allows(angry) || !cut.Allows(calm) {
 		t.Error("max cutoff")
 	}
-	funny := ToneRules{Min: map[string]float32{"humorous": 0.5}}
+	funny := Rules{Min: map[string]float32{"humorous": 0.5}}
 	if funny.Allows(calm) || !funny.Allows(map[string]float32{"humorous": 0.6}) {
 		t.Error("min cutoff")
 	}
-	nudge := ToneRules{Weights: map[string]float64{"outraged": -2, "supportive": 1}}
+	nudge := Rules{Weights: map[string]float64{"outraged": -2, "supportive": 1}}
 	ps := []Post{{URI: "a", IndexedAt: now, Tone: angry}, {URI: "b", IndexedAt: now, Tone: calm}}
-	Score(ps, DefaultRanking, nudge, now)
+	Score(ps, Feed{Ranking: DefaultRanking, Tone: nudge}, now)
 	if !(ps[1].Score > ps[0].Score) {
 		t.Errorf("nudge: calm %v should beat angry %v", ps[1].Score, ps[0].Score)
 	}
 	paths := map[string]bool{"technology/ai": true}
-	for _, bad := range []ToneRules{
+	for _, bad := range []Rules{
 		{Max: map[string]float32{"angry": 0.5}},
 		{Min: map[string]float32{"humorous": 1.5}},
 		{Weights: map[string]float64{"sad": 1}},
@@ -433,5 +434,28 @@ func TestSplitPaths(t *testing.T) {
 	subs, broads = split([]string{"technology/ai"})
 	if !slices.Equal(broads, []string{""}) || len(subs) != 1 {
 		t.Errorf("empty side must be [\"\"]: %v %v", subs, broads)
+	}
+}
+
+func TestSignalRulesAndAnyTopic(t *testing.T) {
+	paths := map[string]bool{"technology/ai": true}
+	ok := Feed{Rkey: "deep", DisplayName: "Deep", Paths: []string{AnyTopic}, MinProb: 0.5, Ranking: DefaultRanking,
+		Signals: Rules{Min: map[string]float32{"substance": 0.8}, Weights: map[string]float64{"news": 1}}}
+	if err := (&Config{Feeds: []Feed{ok}}).Validate(paths); err != nil {
+		t.Errorf("any topic with signal rules: %v", err)
+	}
+	for _, bad := range []Feed{
+		{Rkey: "x", DisplayName: "X", Paths: []string{AnyTopic, "technology/ai"}, MinProb: 0.5},
+		{Rkey: "x", DisplayName: "X", Paths: []string{AnyTopic}, MinProb: 0.5, Signals: Rules{Min: map[string]float32{"vibes": 0.5}}},
+		{Rkey: "x", DisplayName: "X", Paths: []string{AnyTopic}, MinProb: 0.5, Tone: Rules{Weights: map[string]float64{"humorous": 50}}},
+	} {
+		if err := (&Config{Feeds: []Feed{bad}}).Validate(paths); err == nil {
+			t.Errorf("accepted %+v", bad)
+		}
+	}
+	news := []Post{{URI: "a", IndexedAt: now}, {URI: "b", IndexedAt: now, Signals: map[string]float32{"news": 1}}}
+	Score(news, Feed{Ranking: DefaultRanking, Signals: Rules{Weights: map[string]float64{"news": 2}}}, now)
+	if !(news[1].Score > news[0].Score) {
+		t.Error("signal nudge")
 	}
 }

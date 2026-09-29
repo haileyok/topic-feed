@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -29,9 +30,7 @@ type candidate struct {
 	FeedPolicy string             `ch:"feed_policy"`
 	Labels     []string           `ch:"labels"`
 	Score      float32            `ch:"score"`
-	Substance  float32            `ch:"substance"`
-	General    float32            `ch:"general_interest"`
-	Promo      float32            `ch:"promo"`
+	Signals    map[string]float32 `ch:"signals"`
 	TopPath    string             `ch:"top_path"`
 	TopPathP   float32            `ch:"top_path_p"`
 	TopPaths   []string           `ch:"top_paths"`
@@ -41,7 +40,7 @@ type candidate struct {
 
 // Removed counts candidates left out of a feed, by reason.
 type Removed struct {
-	Deleted, Inactive, Labeled, Tone int
+	Deleted, Inactive, Labeled int
 }
 
 // Build returns a feed's candidate posts since the given time with their engagement,
@@ -54,47 +53,60 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	if f.AllowAdult {
 		policies = append(policies, labelpolicy.AdultOnly)
 	}
-	subs, broads := split(f.Paths)
-	// Exclusions, as conditions on the stored probabilities. Keys are checked against the
-	// taxonomy when the config loads, and passed as parameters.
-	exclude, args := "", []any{subs, broads, since, policies, f.MinProb}
+	// The feed's match: the best of its subtopic and broad-topic probabilities, or 1 for
+	// any topic.
+	var scoreExpr string
+	var args []any
+	if f.anyTopic() {
+		scoreExpr = "toFloat32(1)"
+	} else {
+		subs, broads := split(f.Paths)
+		scoreExpr = "greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?)))"
+		args = append(args, subs, broads)
+	}
+	args = append(args, since, policies, f.MinProb)
+	// Exclusions and tone/signal cutoffs, as conditions on the stored scores, so the limit
+	// counts only posts that pass. Names are checked when the config loads, and passed as
+	// parameters.
+	var where strings.Builder
 	for _, p := range slices.Sorted(maps.Keys(f.Exclude)) {
 		if isBroad(p) {
-			exclude += " AND broad_probs[?] <= ?"
+			where.WriteString(" AND broad_probs[?] <= ?")
 		} else {
-			exclude += " AND path_probs[?] <= ?"
+			where.WriteString(" AND path_probs[?] <= ?")
 		}
 		args = append(args, p, f.Exclude[p])
+	}
+	for _, r := range []struct {
+		col   string
+		rules Rules
+	}{{"tone", f.Tone}, {"signals", f.Signals}} {
+		for _, name := range slices.Sorted(maps.Keys(r.rules.Max)) {
+			where.WriteString(" AND " + r.col + "[?] <= ?")
+			args = append(args, name, r.rules.Max[name])
+		}
+		for _, name := range slices.Sorted(maps.Keys(r.rules.Min)) {
+			where.WriteString(" AND " + r.col + "[?] >= ?")
+			args = append(args, name, r.rules.Min[name])
+		}
 	}
 	args = append(args, limit)
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
 	err := s.Conn.Select(ctx, &cands, `
-		SELECT uri, did, indexed_at, feed_policy, labels,
-		       greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?))) AS score,
-		       signals['substance'] AS substance, signals['general_interest'] AS general_interest,
-		       signals['promo'] AS promo, top_path, top_path_p,
+		SELECT uri, did, indexed_at, feed_policy, labels, `+scoreExpr+` AS score,
+		       signals, top_path, top_path_p,
 		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
 		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps,
 		       tone
 		FROM post_pipeline FINAL
-		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+exclude+`
+		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+where.String()+`
 		ORDER BY indexed_at DESC, uri DESC
 		LIMIT ?`, args...)
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
 	var rm Removed
-	// Tone cutoffs first: no need to look up posts that won't be shown.
-	kept := cands[:0]
-	for _, c := range cands {
-		if f.Tone.Allows(c.Tone) {
-			kept = append(kept, c)
-		} else {
-			rm.Tone++
-		}
-	}
-	cands = kept
 	if len(cands) == 0 {
 		return []Post{}, rm, nil
 	}
@@ -133,7 +145,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 			rm.Labeled++
 		default:
 			out = append(out, Post{URI: c.URI, DID: c.DID, IndexedAt: c.IndexedAt, Match: c.Score,
-				Substance: c.Substance, GeneralInterest: c.General, Promo: c.Promo,
+				Signals: c.Signals,
 				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs, Tone: c.Tone})
 		}
 	}
@@ -241,6 +253,32 @@ func (s *Store) inactive(ctx context.Context, dids []string) (map[string]bool, e
 	out := make(map[string]bool, len(rows))
 	for _, r := range rows {
 		out[r.DID] = true
+	}
+	return out, nil
+}
+
+// Volumes returns recent posts per hour for every broad topic and subtopic, counting a
+// post for each topic or subtopic it scores at least 0.5 on (over the last 3 hours).
+func (s *Store) Volumes(ctx context.Context) (map[string]float64, error) {
+	var rows []struct {
+		Key string `ch:"key"`
+		N   uint64 `ch:"n"`
+	}
+	err := s.Conn.Select(ctx, &rows, `
+		SELECT key, count() AS n FROM (
+			SELECT arrayConcat(
+				arrayFilter(k -> path_probs[k] >= 0.5, mapKeys(path_probs)),
+				arrayFilter(k -> broad_probs[k] >= 0.5, mapKeys(broad_probs))) AS keys
+			FROM post_pipeline FINAL
+			WHERE indexed_at > now() - INTERVAL 3 HOUR AND model != '' AND feed_policy = 'ok'
+		) ARRAY JOIN keys AS key
+		GROUP BY key`)
+	if err != nil {
+		return nil, fmt.Errorf("select volumes: %w", err)
+	}
+	out := make(map[string]float64, len(rows))
+	for _, r := range rows {
+		out[r.Key] = float64(r.N) / 3
 	}
 	return out, nil
 }

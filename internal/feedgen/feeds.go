@@ -159,7 +159,7 @@ func (fs *Feeds) refresh(ctx context.Context, f Feed) {
 		}
 		return
 	}
-	ranked := Rank(posts, f.Ranking, f.Tone, start)
+	ranked := Rank(posts, f, start)
 	st := fs.state[f.Rkey]
 	st.mu.Lock()
 	prev := st.current
@@ -199,7 +199,6 @@ func (fs *Feeds) refresh(ctx context.Context, f Feed) {
 	metricRemoved.WithLabelValues(f.Rkey, "deleted").Set(float64(rm.Deleted))
 	metricRemoved.WithLabelValues(f.Rkey, "inactive").Set(float64(rm.Inactive))
 	metricRemoved.WithLabelValues(f.Rkey, "labeled").Set(float64(rm.Labeled))
-	metricRemoved.WithLabelValues(f.Rkey, "tone").Set(float64(rm.Tone))
 	metricLastRefresh.WithLabelValues(f.Rkey).Set(float64(start.Unix()))
 	fs.Log.Debug("feed refreshed", "feed", f.Rkey, "posts", len(posts), "removed", rm,
 		"took", time.Since(start).Round(time.Millisecond))

@@ -23,8 +23,7 @@ type Post struct {
 	TopPs     []float32 // their probabilities
 	Tone      map[string]float32
 
-	// Model signals, 0-1.
-	Substance, GeneralInterest, Promo float32
+	Signals map[string]float32 // the model's signal scores, 0-1
 	// Engagement so far.
 	Likes, Reposts, Replies, Quotes uint64
 

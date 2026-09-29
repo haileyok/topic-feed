@@ -41,8 +41,10 @@ type Feed struct {
 	// AcceptsInteractions asks Bluesky to send interactions with the feed's posts
 	// (default true). Takes effect after `feedgen publish`.
 	AcceptsInteractions bool `yaml:"accepts_interactions"`
-	// Tone filters and nudges posts by the model's tone probabilities.
-	Tone ToneRules `yaml:"tone"`
+	// Tone and Signals filter and nudge posts by the model's tone probabilities and
+	// signal scores (see Rules).
+	Tone    Rules `yaml:"tone"`
+	Signals Rules `yaml:"signals"`
 	// MaxPosts caps the feed's candidates, newest first (0: FEEDGEN_MAX_POSTS). Busy
 	// topics need more to reach back as far as quiet ones.
 	MaxPosts int `yaml:"max_posts"`
@@ -51,48 +53,52 @@ type Feed struct {
 // Tones are the model's tone labels; a post's tone probabilities sum to 1.
 var Tones = []string{"informative", "humorous", "personal", "outraged", "supportive", "other"}
 
-// ToneRules use the model's tone probabilities (0-1) in two ways:
+// Signals are the model's independent 0-1 scores.
+var Signals = []string{"substance", "news", "promo", "general_interest"}
+
+// Rules use one of the model's score sets (tone or signals, each 0-1) in two ways:
 //
-//   - Max and Min are hard cutoffs: a post is left out when a tone's probability is above
-//     its Max or below its Min. E.g. max {outraged: 0.5} drops angry posts;
-//     min {humorous: 0.5} keeps only funny ones.
-//   - Weights nudge the ranking: weight*probability is added to each post's prior, so
-//     e.g. {outraged: -2, supportive: 1} sinks angry posts and lifts warm ones without
-//     removing anything. A nudge matters most before a post has engagement.
-type ToneRules struct {
-	Max     map[string]float32 `yaml:"max"`
-	Min     map[string]float32 `yaml:"min"`
-	Weights map[string]float64 `yaml:"weights"`
+//   - Max and Min are hard cutoffs: a post is left out when a score is above its Max or
+//     below its Min. E.g. tone max {outraged: 0.5} drops angry posts; tone min
+//     {humorous: 0.5} keeps only funny ones; signals min {substance: 0.8} keeps meaty ones.
+//   - Weights nudge the ranking: weight*score is added to each post's prior, so e.g. tone
+//     {outraged: -2, supportive: 1} sinks angry posts and lifts warm ones without removing
+//     anything. A nudge matters most before a post has engagement.
+type Rules struct {
+	Max     map[string]float32 `yaml:"max" json:"max,omitempty"`
+	Min     map[string]float32 `yaml:"min" json:"min,omitempty"`
+	Weights map[string]float64 `yaml:"weights" json:"weights,omitempty"`
 }
 
-// Allows reports whether a post with these tone probabilities passes the cutoffs.
-func (t ToneRules) Allows(tone map[string]float32) bool {
+// Allows reports whether a post with these scores passes the cutoffs.
+func (t Rules) Allows(scores map[string]float32) bool {
 	for name, max := range t.Max {
-		if tone[name] > max {
+		if scores[name] > max {
 			return false
 		}
 	}
 	for name, min := range t.Min {
-		if tone[name] < min {
+		if scores[name] < min {
 			return false
 		}
 	}
 	return true
 }
 
-// Nudge is the ranking adjustment for a post with these tone probabilities.
-func (t ToneRules) Nudge(tone map[string]float32) float64 {
+// Nudge is the ranking adjustment for a post with these scores.
+func (t Rules) Nudge(scores map[string]float32) float64 {
 	n := 0.0
 	for name, w := range t.Weights {
-		n += w * float64(tone[name])
+		n += w * float64(scores[name])
 	}
 	return n
 }
 
-func (t ToneRules) validate() error {
+// validate checks names against the score set (kind is "tone" or "signal") and ranges.
+func (t Rules) validate(kind string, names []string) error {
 	known := func(name string) error {
-		if !slices.Contains(Tones, name) {
-			return fmt.Errorf("unknown tone %q (tones: %s)", name, strings.Join(Tones, ", "))
+		if !slices.Contains(names, name) {
+			return fmt.Errorf("unknown %s %q (%ss: %s)", kind, name, kind, strings.Join(names, ", "))
 		}
 		return nil
 	}
@@ -102,17 +108,26 @@ func (t ToneRules) validate() error {
 				return err
 			}
 			if v < 0 || v > 1 {
-				return fmt.Errorf("tone %s: cutoffs are probabilities in [0, 1]", name)
+				return fmt.Errorf("%s %s: cutoffs are in [0, 1]", kind, name)
 			}
 		}
 	}
-	for name := range t.Weights {
+	for name, w := range t.Weights {
 		if err := known(name); err != nil {
 			return err
+		}
+		if w < -10 || w > 10 {
+			return fmt.Errorf("%s %s: weights are in [-10, 10]", kind, name)
 		}
 	}
 	return nil
 }
+
+// AnyTopic in a feed's paths matches every classified post; the feed then selects by its
+// exclusions, tone, and signal rules alone.
+const AnyTopic = "*"
+
+func (f Feed) anyTopic() bool { return slices.Contains(f.Paths, AnyTopic) }
 
 // Ranking controls a feed's order. Each post scores
 //
@@ -123,19 +138,19 @@ func (t ToneRules) validate() error {
 // FreshEvery-th slot goes to the newest post not already placed, whatever its score, and
 // an author's posts are kept at least AuthorGap slots apart.
 type Ranking struct {
-	Weights      Weights `yaml:"weights"`
-	Gravity      float64 `yaml:"gravity"`       // higher: older posts sink faster
-	FreshEvery   int     `yaml:"fresh_every"`   // 0: no fresh slots
-	AuthorGap    int     `yaml:"author_gap"`    // 0: no limit
-	PromoPenalty float64 `yaml:"promo_penalty"` // 0: promotional posts aren't penalized
+	Weights      Weights `yaml:"weights" json:"weights"`
+	Gravity      float64 `yaml:"gravity" json:"gravity"`             // higher: older posts sink faster
+	FreshEvery   int     `yaml:"fresh_every" json:"fresh_every"`     // 0: no fresh slots
+	AuthorGap    int     `yaml:"author_gap" json:"author_gap"`       // 0: no limit
+	PromoPenalty float64 `yaml:"promo_penalty" json:"promo_penalty"` // 0: promotional posts aren't penalized
 }
 
 // Weights are engagement units per like, repost, reply, and quote.
 type Weights struct {
-	Like   float64 `yaml:"like"`
-	Repost float64 `yaml:"repost"`
-	Reply  float64 `yaml:"reply"`
-	Quote  float64 `yaml:"quote"`
+	Like   float64 `yaml:"like" json:"like"`
+	Repost float64 `yaml:"repost" json:"repost"`
+	Reply  float64 `yaml:"reply" json:"reply"`
+	Quote  float64 `yaml:"quote" json:"quote"`
 }
 
 // DefaultRanking applies to every feed unless its config overrides a field.
@@ -211,8 +226,11 @@ func (c *Config) Validate(paths map[string]bool) error {
 		if len(f.Paths) == 0 {
 			return fmt.Errorf("feed %q: no paths", f.Rkey)
 		}
+		if f.anyTopic() && len(f.Paths) > 1 {
+			return fmt.Errorf("feed %q: %q (any topic) can't be combined with other paths", f.Rkey, AnyTopic)
+		}
 		for _, p := range f.Paths {
-			if !paths[p] {
+			if p != AnyTopic && !paths[p] {
 				return fmt.Errorf("feed %q: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
 			}
 		}
@@ -235,7 +253,10 @@ func (c *Config) Validate(paths map[string]bool) error {
 		if f.MaxPosts < 0 || f.MaxPosts > 20000 {
 			return fmt.Errorf("feed %q: max_posts must be 0-20000", f.Rkey)
 		}
-		if err := f.Tone.validate(); err != nil {
+		if err := f.Tone.validate("tone", Tones); err != nil {
+			return fmt.Errorf("feed %q: %w", f.Rkey, err)
+		}
+		if err := f.Signals.validate("signal", Signals); err != nil {
 			return fmt.Errorf("feed %q: %w", f.Rkey, err)
 		}
 		if r.FreshEvery == 1 {

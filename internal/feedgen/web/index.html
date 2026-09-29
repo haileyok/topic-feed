@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Topic Feeds · build your own Bluesky feed</title>
+  <meta name="description" content="Build a Bluesky feed from topics and vibes, picked by a topic classifier instead of keyword lists.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-view="build" aria-selected="true">Build a feed</button>
+      <button class="tab" role="tab" data-view="browse" aria-selected="false">Browse feeds</button>
+    </nav>
+    <a class="byline" href="https://bsky.app/profile/hailey.at" target="_blank" rel="noopener">by @hailey.at</a>
+  </header>
+
+  <main>
+    <section class="view view-build" id="view-build">
+      <aside class="panel" id="panel" aria-label="Feed settings">
+        <div class="panel-head">
+          <h2>Build a feed</h2>
+          <button class="icon-btn close-panel" id="close-panel" aria-label="Close settings">✕</button>
+        </div>
+        <div class="panel-body" id="controls"></div>
+        <div class="panel-foot" id="actions"></div>
+      </aside>
+
+      <section class="preview" aria-label="Feed preview">
+        <div class="preview-head">
+          <div>
+            <h1 class="preview-title" id="preview-title">Your feed</h1>
+            <p class="preview-stats" id="preview-stats">Pick some topics to start.</p>
+          </div>
+          <label class="switch" title="Show why each post is here">
+            <input type="checkbox" id="show-scores">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">Scores</span>
+          </label>
+        </div>
+        <div class="progress" id="progress" hidden><span></span></div>
+        <div class="summary" id="summary"></div>
+        <div class="posts" id="posts"></div>
+        <div class="posts-end" id="posts-end"></div>
+      </section>
+      <button class="customize-btn" id="open-panel">
+        <span aria-hidden="true">⚙︎</span> Customize
+      </button>
+    </section>
+
+    <section class="view view-browse" id="view-browse" hidden>
+      <div class="browse-head">
+        <h1>Feeds</h1>
+        <p>Every feed here is picked by a topic classifier that reads each post, not by keyword lists.
+          Open one in Bluesky, or remix it into your own.</p>
+      </div>
+      <div class="feed-grid" id="feed-grid"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -6,12 +6,16 @@ import (
 	"time"
 )
 
-// Score sets each post's ranking score (see Ranking), including the tone nudge.
-func Score(posts []Post, r Ranking, tone ToneRules, now time.Time) {
+// Score sets each post's ranking score (see Ranking), including the feed's tone and
+// signal nudges.
+func Score(posts []Post, f Feed, now time.Time) {
+	r := f.Ranking
 	w := r.Weights
 	for i := range posts {
 		p := &posts[i]
-		prior := max(0.1, 1+float64(p.Substance)+float64(p.GeneralInterest)-r.PromoPenalty*float64(p.Promo)+tone.Nudge(p.Tone))
+		s := p.Signals
+		prior := max(0.1, 1+float64(s["substance"])+float64(s["general_interest"])-r.PromoPenalty*float64(s["promo"])+
+			f.Tone.Nudge(p.Tone)+f.Signals.Nudge(s))
 		eng := w.Like*float64(p.Likes) + w.Repost*float64(p.Reposts) + w.Reply*float64(p.Replies) + w.Quote*float64(p.Quotes)
 		age := max(0, now.Sub(p.IndexedAt).Hours())
 		p.Score = (prior + eng) / math.Pow(age+2, r.Gravity)
@@ -21,8 +25,9 @@ func Score(posts []Post, r Ranking, tone ToneRules, now time.Time) {
 // Rank scores the posts and returns them in feed order: highest score first, with every
 // FreshEvery-th slot given to the newest post not yet placed, and an author's posts at
 // least AuthorGap slots apart where the candidates allow it. Every post appears once.
-func Rank(posts []Post, r Ranking, tone ToneRules, now time.Time) []Post {
-	Score(posts, r, tone, now)
+func Rank(posts []Post, f Feed, now time.Time) []Post {
+	r := f.Ranking
+	Score(posts, f, now)
 	byScore := slices.Clone(posts)
 	slices.SortStableFunc(byScore, func(a, b Post) int {
 		if a.Score != b.Score {

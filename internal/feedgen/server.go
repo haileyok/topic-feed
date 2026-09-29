@@ -57,6 +57,8 @@ type Server struct {
 
 	// Interactions stores what sendInteractions receives; nil answers 501.
 	Interactions InteractionSink
+	// Preview backs the feed builder page's API; nil answers 404.
+	Preview *Previewer
 }
 
 // NewServer builds the HTTP server. dir resolves viewers' DIDs to check their credentials.
@@ -73,7 +75,20 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog
 	e.POST("/xrpc/app.bsky.feed.sendInteractions", s.handleInteractions)
 	e.GET("/.well-known/did.json", s.handleDIDDoc)
 	e.GET("/healthz", s.handleHealth)
-	e.GET("/", s.handleRoot)
+	e.GET("/api/feeds", s.handleFeeds)
+	e.GET("/api/taxonomy", func(c echo.Context) error {
+		if s.Preview == nil {
+			return echo.ErrNotFound
+		}
+		return s.Preview.HandleTaxonomy(c)
+	})
+	e.POST("/api/preview", func(c echo.Context) error {
+		if s.Preview == nil {
+			return echo.ErrNotFound
+		}
+		return s.Preview.Handle(c)
+	})
+	addWebRoutes(e)
 	s.echo = e
 	return s
 }
@@ -366,11 +381,35 @@ func (s *Server) handleHealth(c echo.Context) error {
 	return c.JSON(code, map[string]any{"ok": healthy, "feeds": all})
 }
 
-func (s *Server) handleRoot(c echo.Context) error {
-	var b strings.Builder
-	b.WriteString("Topic feed generator " + s.cfg.ServiceDID + "\n\n")
+type publishedFeed struct {
+	Rkey        string             `json:"rkey"`
+	DisplayName string             `json:"display_name"`
+	Description string             `json:"description"`
+	URI         string             `json:"uri"`
+	URL         string             `json:"url"` // the feed in the Bluesky app
+	Posts       int                `json:"posts"`
+	Paths       []string           `json:"paths"`
+	MinProb     float32            `json:"min_prob"`
+	Exclude     map[string]float32 `json:"exclude,omitempty"`
+	Tone        Rules              `json:"tone"`
+	Signals     Rules              `json:"signals"`
+	Ranking     Ranking            `json:"ranking"`
+}
+
+// handleFeeds answers GET /api/feeds: every served feed with its settings, for the
+// directory and "remix" on the builder page.
+func (s *Server) handleFeeds(c echo.Context) error {
+	out := []publishedFeed{}
 	for _, f := range s.feeds.List() {
-		b.WriteString(f.DisplayName + "  " + s.FeedURI(f.Rkey) + "\n")
+		if f.AllowAdult {
+			continue
+		}
+		posts, _, _ := s.feeds.Posts(f.Rkey)
+		out = append(out, publishedFeed{Rkey: f.Rkey, DisplayName: f.DisplayName, Description: f.Description,
+			URI: s.FeedURI(f.Rkey), URL: "https://bsky.app/profile/" + s.cfg.OwnerDID.String() + "/feed/" + f.Rkey,
+			Posts: len(posts), Paths: f.Paths, MinProb: f.MinProb, Exclude: f.Exclude, Tone: f.Tone,
+			Signals: f.Signals, Ranking: f.Ranking})
 	}
-	return c.String(http.StatusOK, b.String())
+	c.Response().Header().Set("Cache-Control", "public, max-age=30")
+	return c.JSON(http.StatusOK, out)
 }
