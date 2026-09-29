@@ -177,8 +177,11 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+    # Host network: the classifier service runs on the host (systemd, GPU) on loopback,
+    # and containers here can't reach host services through the bridge gateway.
+    network_mode: host
     environment:
-      CLICKHOUSE_ADDR: clickhouse:9000
+      CLICKHOUSE_ADDR: 127.0.0.1:9000
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:?set TYPESAFE_API_KEY in ~/.config/topic-feed/env}
       TYPESAFE_BASE_URL: ${TYPESAFE_BASE_URL:-https://agw.noclues.net}
@@ -186,14 +189,10 @@ services:
       PIPELINE_DELAY_SECONDS: "10"
       LLM_MODEL: gpt-6-luna:api
       LLM_DAILY_BUDGET_USD: "25"
-      CLASSIFIER_URL: http://host.docker.internal:8700  # host systemd unit topic-feed-classifier (make install-classifier)
-      METRICS_ADDR: ":9103"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      CLASSIFIER_URL: http://127.0.0.1:8700  # host systemd unit topic-feed-classifier (make install-classifier)
+      METRICS_ADDR: "127.0.0.1:9103"          # Prometheus metrics
     volumes:
       - ../config:/config:ro
-    ports:
-      - "127.0.0.1:9103:9103"  # Prometheus metrics
     stop_grace_period: 1m
     logging:
       driver: json-file

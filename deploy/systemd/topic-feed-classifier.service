@@ -4,11 +4,11 @@ After=network-online.target
 
 [Service]
 # Runs on the host, not in Docker: Docker here has no NVIDIA runtime. The pipeline
-# container reaches it at host.docker.internal:8700. Internal network only.
+# container (host network) reaches it on loopback.
 # %h is the user's home directory. `make install-classifier` installs this unit.
 WorkingDirectory=%h/bluesky/topic-feed/trainer
 Environment=MODEL_DIR=/data/models/v3-blend
-Environment=SERVE_ADDR=0.0.0.0:8700
+Environment=SERVE_ADDR=127.0.0.1:8700
 Environment=HF_HUB_OFFLINE=1
 Environment=PYTHONUNBUFFERED=1
 ExecStart=%h/.nix-profile/bin/uv run --frozen python serve.py

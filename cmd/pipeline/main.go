@@ -15,7 +15,7 @@
 //	LLM_DAILY_BUDGET_USD     list-price cap per UTC day, default 10
 //	TYPESAFE_API_KEY         AI gateway key (required when LLM_MODEL is set)
 //	TYPESAFE_BASE_URL        AI gateway, default https://agw.noclues.net
-//	CLASSIFIER_URL           classifier service, default http://host.docker.internal:8700 ("none" disables)
+//	CLASSIFIER_URL           classifier service, default http://127.0.0.1:8700 ("none" disables)
 //	CLICKHOUSE_*             see internal/chdb
 //	METRICS_ADDR             default :9103
 package main
@@ -107,7 +107,7 @@ func run(log *slog.Logger) error {
 		}
 		log.Info("image descriptions on", "model", model, "budget_usd_per_day", budget, "spent_today_usd", spent)
 	}
-	if u := env("CLASSIFIER_URL", "http://host.docker.internal:8700"); u != "" && u != "none" {
+	if u := env("CLASSIFIER_URL", "http://127.0.0.1:8700"); u != "" && u != "none" {
 		p.Classifier = &pipeline.Classifier{URL: u, Client: httpClient}
 		h, err := waitForClassifier(ctx, p.Classifier, log)
 		if err != nil {
