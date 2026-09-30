@@ -91,11 +91,21 @@ feeds:
     min_prob: 0.5
     max_posts: 10000   # ~800 posts/hour at 0.5 (2026-09-29): about 12 hours of candidates
 
+  # Tuned by Hailey in the feed builder (2026-09-30): only upbeat, non-joke pet posts,
+  # strongly favoring what's new, no fresh slots.
   - rkey: pets
-    display_name: Cats & Pets
-    description: Cats, dogs, and every other pet, picked by a topic classifier. No keyword lists.
+    display_name: "Pets!"
+    description: "Pets!, picked by a topic classifier. No keyword lists."
     paths: [animals_nature/cats, animals_nature/dogs, animals_nature/other_pets]
     min_prob: 0.5   # posts at 0.5-0.6 were real pets (2026-09-29)
+    exclude: {adult_content: 0.2}
+    tone:
+      max: {humorous: 0.4}
+    signals:
+      min: {sentiment: 0.8}
+    ranking:
+      gravity: 2.5
+      fresh_every: 0
 
   - rkey: anime
     display_name: Anime & Manga
