@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -114,10 +115,11 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		if h.PostdocVersion != postdoc.Version {
-			return fmt.Errorf("classifier model %s expects post documents %s, this build renders %s", h.Model, h.PostdocVersion, postdoc.Version)
+		if !slices.Contains(postdoc.Versions, h.PostdocVersion) {
+			return fmt.Errorf("classifier model %s expects post documents %s, this build renders %v", h.Model, h.PostdocVersion, postdoc.Versions)
 		}
-		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "device", h.Device)
+		p.PostdocVersion = h.PostdocVersion
+		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "postdoc", h.PostdocVersion, "device", h.Device)
 	}
 	return p.Run(ctx)
 }

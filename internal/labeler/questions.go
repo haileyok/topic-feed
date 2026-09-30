@@ -10,7 +10,9 @@ import (
 
 // QuestionsVersion identifies the question wording below. Bump it on any change; it
 // is part of every label_config.
-const QuestionsVersion = "q1"
+//   - q1: the broad question lists text, alt text, link, quoted post, and tags.
+//   - q2: it also lists attachments, text in images, image descriptions, and labels (pd2).
+const QuestionsVersion = "q2"
 
 // Ranking signal question IDs (suffixes after "p{i}_"), plan §10.3.
 const (
@@ -57,7 +59,8 @@ func pass1Questions(t *taxonomy.Taxonomy, i int, q typesafe.Questions) {
 	p := fmt.Sprintf("`posts[%d]`", i)
 	id := func(s string) string { return fmt.Sprintf("p%d_%s", i, s) }
 	q[id("broad")] = typesafe.Choice(
-		fmt.Sprintf("Which broad topic best describes the post %s (its text, alt text, link, quoted post, and tags)?", p),
+		fmt.Sprintf("Which broad topic best describes the post %s (its text, alt text, attachments, text in images, "+
+			"image descriptions, labels, link, quoted post, and tags)?", p),
 		broadOptions(t)...)
 	q[id(sigSubstance)] = typesafe.Score(fmt.Sprintf("How substantive is the post %s?", p), substanceLevels...)
 	q[id(sigNews)] = typesafe.Noul(fmt.Sprintf("Is the post %s about a current event or breaking news?", p))

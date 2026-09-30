@@ -1,0 +1,2 @@
+[media] 1 image
+[image description] A baseball player sliding into home plate.

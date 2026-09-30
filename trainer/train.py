@@ -33,7 +33,7 @@ import tb_report
 import tbreport
 from losses import soft_ce
 
-POSTDOC_VERSION = "pd1"  # must match internal/postdoc.Version used by the export
+POSTDOC_VERSION = "pd2"  # must match internal/postdoc.Version used by the export
 
 
 class Student(nn.Module):
@@ -105,14 +105,28 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--patience", type=int, default=2, help="stop after this many epochs without a validation gain")
     ap.add_argument("--onnx", action="store_true", help="also export ONNX (not used: we serve on the GPU)")
+    ap.add_argument("--live-configs", default="", help="comma-separated label_configs of live-post labels (outside the windows)")
+    ap.add_argument("--live-test", type=int, default=10000, help="live random-sample posts held out for testing")
+    ap.add_argument("--live-val", type=int, default=3000, help="live random-sample posts added to validation")
+    ap.add_argument("--live-weight", type=float, default=1.0, help="multiply the training weight of live-post labels by this")
     a = ap.parse_args()
 
     torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
     space = common.Space.from_taxonomy(a.taxonomy)
     eq = common.Equivalence.for_taxonomy(a.taxonomy, space)
-    tr, va, te, info = common.split(common.load(a.export, space))
+    data = common.load(a.export, space)
+    live_configs = {c for c in a.live_configs.split(",") if c}
+    te_live = None
+    if live_configs:
+        data, te_live, va_live = common.live_holdout(data, live_configs, a.live_test, a.live_val)
+    tr, va, te, info = common.split(data)
+    if live_configs:
+        va = va.concat(va_live)
+        info.update({"live_configs": sorted(live_configs), "n_live_test": len(te_live), "n_live_val": len(va_live),
+                     "n_live_train": int(tr.is_live(live_configs).sum()), "live_weight": a.live_weight, "n_val": len(va)})
     print(json.dumps(info), flush=True)
+    live_w = np.where(tr.is_live(live_configs), a.live_weight, 1.0).astype(np.float32)
 
     tok = AutoTokenizer.from_pretrained(a.base)
     model = Student(a.base, len(space.broad), len(space.paths)).cuda()
@@ -124,9 +138,11 @@ def main():
     # <out>/tb (served by the tensorboard compose service on port 6006).
     os.makedirs(a.out, exist_ok=True)
     tb = SummaryWriter(f"{a.out}/tb")
-    n_relabeled = sum(s == "uncertain" for s in tr.sources)
+    n_live = int(tr.is_live(live_configs).sum())
+    n_relabeled = sum(s == "uncertain" for s in tr.sources) - sum(s == "uncertain" for s in np.array(tr.sources)[tr.is_live(live_configs)])
     tb.add_text("run", f"base `{a.base}` · export `{a.export}` · train {len(tr)} / val {len(va)} / test {len(te)} · "
-                       f"{n_relabeled} training posts relabeled · up to {a.epochs} epochs, batch {a.bs}, lr {a.lr}")
+                       f"{n_relabeled} training posts relabeled · {n_live} live training posts (weight x{a.live_weight}) · "
+                       f"up to {a.epochs} epochs, batch {a.bs}, lr {a.lr}")
     steps_per_epoch = math.ceil(len(tr) / a.bs)
     # Posts people judged (all in the test windows): their counts are logged every epoch
     # to watch, never used to pick the epoch.
@@ -146,7 +162,7 @@ def main():
             ids, mask = enc["input_ids"].cuda(), enc["attention_mask"].cuda()
             yb, yp = torch.tensor(tr.broad[j]).cuda(), torch.tensor(tr.path[j]).cuda()
             ys, yt = torch.tensor(tr.signals[j]).cuda(), torch.tensor(tr.tone[j]).cuda()
-            w = torch.tensor(np.maximum(tr.conf[j], a.conf_floor)).cuda()
+            w = torch.tensor(np.maximum(tr.conf[j], a.conf_floor) * live_w[j]).cuda()
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 lb, lp, ls, lt = model(ids, mask)
             parts = losses.parts(lb, lp, ls, lt, yb, yp, ys, yt)
@@ -202,6 +218,15 @@ def main():
     test_b, test_p, test_s, test_t = predict(model, te, tok, a.max_len)
     metrics = common.evaluate(space, F.softmax(test_b / t_broad, -1).numpy(), F.softmax(test_p / t_path, -1).numpy(), te,
                               torch.sigmoid(test_s).numpy(), F.softmax(test_t, -1).numpy(), eq)
+    if te_live is not None:
+        lb, lp, ls, lt = predict(model, te_live, tok, a.max_len)
+        metrics["live_test"] = common.evaluate(space, F.softmax(lb / t_broad, -1).numpy(), F.softmax(lp / t_path, -1).numpy(), te_live,
+                                               torch.sigmoid(ls).numpy(), F.softmax(lt, -1).numpy(), eq)
+        lm = metrics["live_test"]
+        print(f"LIVE TEST ({len(te_live)} held-out live posts): broad {lm['broad_top1']:.1%} (top-3 {lm['broad_top3']:.1%}) · "
+              f"path {lm['path_top1']:.1%} (plausible or look-alike {lm['path_plausible_equiv']:.1%})", flush=True)
+        for k in ("broad_top1", "broad_top3", "path_top1", "path_top3", "path_plausible_equiv", "broad_ece"):
+            tb.add_scalar(f"live_test/{k}", lm[k], best_epoch + 1)
     metrics.update({"split": info, "history": history, "best_epoch": best_epoch, "temperature_broad": t_broad,
                     "temperature_path": t_path, "train_seconds": train_seconds, "base": a.base, "args": vars(a)})
     # Serving runs on the GPU (Hailey, 2026-09-28): measure its throughput.

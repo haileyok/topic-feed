@@ -30,15 +30,33 @@ func TestThumbnailURL(t *testing.T) {
 	}
 }
 
-func TestModelInputAddsImageTextAsAlt(t *testing.T) {
-	ps := post{Text: "Denver been wide open two plays in a row", MediaAlts: []string{"Author's own alt"}, Tags: []string{"Broncos"}}
-	got, ok := ModelInput(ps, []string{"", "A Broncos receiver catches a pass"})
+func TestModelInputPD1AddsImageTextAsAlt(t *testing.T) {
+	ps := post{Text: "Denver been wide open two plays in a row", MediaAlts: []string{"Author's own alt"}, Tags: []string{"Broncos"},
+		MediaKinds: []string{"image", "image"}}
+	r := Row{ImageTexts: []string{"", "A Broncos receiver catches a pass"}, ImageTextSources: []string{"error", "luna"}, Labels: []string{"porn"}}
+	got, ok := ModelInput(ps, r, "pd1")
 	want := "Denver been wide open two plays in a row\n[tags] #Broncos\n[alt] Author's own alt | A Broncos receiver catches a pass"
 	if !ok || got != want {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
-	if _, ok := ModelInput(post{}, []string{""}); ok {
+	if _, ok := ModelInput(post{}, Row{ImageTexts: []string{""}, ImageTextSources: []string{"none"}}, "pd1"); ok {
 		t.Error("a post with no content should not be classified")
+	}
+}
+
+func TestModelInputPD2(t *testing.T) {
+	ps := post{Text: "Denver been wide open two plays in a row", MediaAlts: []string{"Author's own alt"}, Tags: []string{"Broncos"},
+		MediaKinds: []string{"image", "image", "image"}}
+	r := Row{ImageTexts: []string{"", "A Broncos receiver catches a pass", "BRONCOS 24 CHIEFS 21"},
+		ImageTextSources: []string{"error", "luna", "ocr"}, Labels: []string{"graphic-media", "!hide"}}
+	got, ok := ModelInput(ps, r, "pd2")
+	want := "Denver been wide open two plays in a row\n[tags] #Broncos\n[media] 3 images\n[labels] graphic-media\n" +
+		"[alt] Author's own alt\n[image text] BRONCOS 24 CHIEFS 21\n[image description] A Broncos receiver catches a pass"
+	if !ok || got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if _, ok := ModelInput(post{MediaKinds: []string{"image"}}, Row{Labels: []string{"porn"}}, "pd2"); ok {
+		t.Error("attachments and labels alone are not content to classify")
 	}
 }
 

@@ -62,11 +62,26 @@ class Data:
     tone: np.ndarray  # (n, 6) distribution
     conf: np.ndarray  # (n,) the label's broad confidence (Jev's, or the relabel's for relabeled posts)
     sources: list[str]  # label source per post: "window"/"sample" (Jev's run) or "uncertain" (a relabel)
+    configs: list[str] | None = None  # label_config per post
+
+    def __post_init__(self):
+        if self.configs is None:
+            self.configs = [""] * len(self.uris)
 
     def subset(self, idx: np.ndarray) -> "Data":
         return Data([self.uris[i] for i in idx], [self.texts[i] for i in idx], [self.windows[i] for i in idx],
                     self.broad[idx], self.path[idx], self.signals[idx], self.tone[idx], self.conf[idx],
-                    [self.sources[i] for i in idx])
+                    [self.sources[i] for i in idx], [self.configs[i] for i in idx])
+
+    def concat(self, other: "Data") -> "Data":
+        return Data(self.uris + other.uris, self.texts + other.texts, self.windows + other.windows,
+                    np.concatenate([self.broad, other.broad]), np.concatenate([self.path, other.path]),
+                    np.concatenate([self.signals, other.signals]), np.concatenate([self.tone, other.tone]),
+                    np.concatenate([self.conf, other.conf]), self.sources + other.sources, self.configs + other.configs)
+
+    def is_live(self, live_configs) -> np.ndarray:
+        """(n,) bool: labeled under one of the live label_configs (posts from the live pipeline)."""
+        return np.array([c in live_configs for c in self.configs], dtype=bool)
 
     def __len__(self) -> int:
         return len(self.uris)
@@ -76,7 +91,7 @@ def load(export_dir: str, space: Space) -> Data:
     bi = {b: i for i, b in enumerate(space.broad)}
     pi = {p: i for i, p in enumerate(space.paths)}
     has_subs = {space.broad[space.path_broad[i]] for i, p in enumerate(space.paths) if "/" in p}
-    uris, texts, wins, B, P, S, T, C, src = [], [], [], [], [], [], [], [], []
+    uris, texts, wins, B, P, S, T, C, src, cfg = [], [], [], [], [], [], [], [], [], []
     with gzip.open(f"{export_dir}/labels.jsonl.gz", "rt") as f:
         for line in f:
             r = json.loads(line)
@@ -105,8 +120,26 @@ def load(export_dir: str, space: Space) -> Data:
             t = t / t.sum() if t.sum() > 0 else np.full(len(TONES), 1 / len(TONES), np.float32)
             uris.append(r["uri"]); texts.append(r["model_input"]); wins.append(r["window_id"])
             B.append(b); P.append(p); S.append(s); T.append(t); C.append(r["broad_confidence"])
-            src.append(r.get("source") or "window")
-    return Data(uris, texts, wins, np.stack(B), np.stack(P), np.stack(S), np.stack(T), np.array(C, np.float32), src)
+            src.append(r.get("source") or "window"); cfg.append(r.get("label_config") or "")
+    return Data(uris, texts, wins, np.stack(B), np.stack(P), np.stack(S), np.stack(T), np.array(C, np.float32), src, cfg)
+
+
+def live_holdout(d: Data, live_configs, n_test: int, n_val: int) -> tuple[Data, Data, Data]:
+    """Set aside live posts from the random sample (source "sample") for testing and
+    validation, picked by a hash of the URI so every run holds out the same posts.
+    Returns (everything else, live test, live validation). Targeted live labels
+    (source "uncertain") are not a fair picture of live posts, so they always train."""
+    import hashlib
+
+    live = d.is_live(live_configs)
+    cand = [i for i in range(len(d)) if live[i] and d.sources[i] == "sample"]
+    cand.sort(key=lambda i: hashlib.sha1(d.uris[i].encode()).hexdigest())
+    if len(cand) < n_test + n_val:
+        raise SystemExit(f"only {len(cand)} live random-sample posts; need {n_test} test + {n_val} validation")
+    te, va = np.array(cand[:n_test], int), np.array(cand[n_test:n_test + n_val], int)
+    held = np.zeros(len(d), bool)
+    held[te] = held[va] = True
+    return d.subset(np.flatnonzero(~held)), d.subset(te), d.subset(va)
 
 
 def split(d: Data) -> tuple[Data, Data, Data, dict]:

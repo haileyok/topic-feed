@@ -41,8 +41,11 @@ type Pipeline struct {
 	OCR        *OCR
 	Describer  *Describer  // nil: no LLM descriptions
 	Classifier *Classifier // nil: no topic predictions
-	HTTP       *http.Client
-	Log        *slog.Logger
+	// PostdocVersion is the post document version the classifier's model expects
+	// (from its health endpoint): "pd1" or "pd2".
+	PostdocVersion string
+	HTTP           *http.Client
+	Log            *slog.Logger
 }
 
 type post struct {
@@ -311,17 +314,29 @@ func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string
 	return desc, SourceLLM, cost
 }
 
-// ModelInput renders the post document the classifier sees: the same rendering used for
-// training data, with text found in images added as alt text after the author's own.
-func ModelInput(ps post, imageTexts []string) (string, bool) {
-	alts := append([]string{}, ps.MediaAlts...)
-	for _, t := range imageTexts {
-		if strings.TrimSpace(t) != "" {
-			alts = append(alts, t)
+// ModelInput renders the post document the classifier sees, in the post document
+// version the classifier's model was trained on:
+//   - pd2: text read from images, image descriptions, attachments, and labels each get
+//     their own line, exactly as Jev saw them when labeling live posts.
+//   - pd1: text found in images is added as alt text after the author's own (how pd1
+//     models have always been served); attachments and labels are not shown.
+func ModelInput(ps post, r Row, version string) (string, bool) {
+	in := postdoc.Input{Text: ps.Text, MediaAlts: ps.MediaAlts, LinkDomain: ps.LinkDomain, LinkTitle: ps.LinkTitle,
+		LinkDescription: ps.LinkDescription, QuoteText: ps.QuoteText, Tags: ps.Tags}
+	if version == "pd1" {
+		alts := append([]string{}, ps.MediaAlts...)
+		for _, t := range r.ImageTexts {
+			if strings.TrimSpace(t) != "" {
+				alts = append(alts, t)
+			}
 		}
+		in.MediaAlts = alts
+	} else {
+		in.AddImageTexts(r.ImageTexts, r.ImageTextSources)
+		in.MediaKinds = ps.MediaKinds
+		in.Labels = r.Labels
 	}
-	doc := postdoc.New(postdoc.Input{Text: ps.Text, MediaAlts: alts, LinkDomain: ps.LinkDomain, LinkTitle: ps.LinkTitle,
-		LinkDescription: ps.LinkDescription, QuoteText: ps.QuoteText, Tags: ps.Tags})
+	doc := postdoc.New(in)
 	if doc.Empty() {
 		return "", false
 	}
@@ -340,7 +355,7 @@ func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error
 		if rows[i].FeedPolicy == labelpolicy.Drop {
 			continue
 		}
-		text, ok := ModelInput(posts[i], rows[i].ImageTexts)
+		text, ok := ModelInput(posts[i], rows[i], p.PostdocVersion)
 		if !ok {
 			continue
 		}

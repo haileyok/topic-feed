@@ -3,6 +3,7 @@
 //
 //	labeler -taxonomy taxonomy/v1.yaml -windows config/labeling_windows.yaml -report auto
 //	labeler -taxonomy taxonomy/v1.yaml -limit 2500        # a spread sample instead
+//	labeler -live random -source sample -limit 40000 -from 2026-09-29T05:00:00Z -to 2026-09-30T00:00:00Z
 //
 // With -windows it labels every not-yet-labeled post in the labeling windows. A rerun
 // (or a restart after a crash) picks up where it left off, since posts that already
@@ -46,6 +47,7 @@ func main() {
 
 type opts struct {
 	taxPath, windowsPath, report, source string
+	liveMode, liveFrom, liveTo           string
 	limit, rounds                        int
 	cfg                                  labeler.Config
 }
@@ -54,7 +56,10 @@ func run(log *slog.Logger) error {
 	var o opts
 	flag.StringVar(&o.taxPath, "taxonomy", "taxonomy/v1.yaml", "taxonomy YAML file")
 	flag.StringVar(&o.windowsPath, "windows", "", "label every post in these labeling windows (config/labeling_windows.yaml)")
-	flag.IntVar(&o.limit, "limit", 2500, "without -windows: label a spread sample of this many posts")
+	flag.IntVar(&o.limit, "limit", 2500, "without -windows: label a spread sample (or with -live, a live selection) of this many posts")
+	flag.StringVar(&o.liveMode, "live", "", `label posts the pipeline classified: "random" or "uncertain" (low confidence or weak topics); needs -from and -to`)
+	flag.StringVar(&o.liveFrom, "from", "", "with -live: start of the time range (RFC 3339)")
+	flag.StringVar(&o.liveTo, "to", "", "with -live: end of the time range (RFC 3339)")
 	flag.StringVar(&o.source, "source", "window", "jev_labels.source value")
 	flag.StringVar(&o.report, "report", "", `write the review report when done: a directory, or "auto" for /data/reports/<version>-<label_config>`)
 	flag.IntVar(&o.rounds, "rounds", 3, "passes over remaining unlabeled posts (retries failed batches)")
@@ -85,6 +90,18 @@ func run(log *slog.Logger) error {
 			return err
 		}
 	}
+	var liveFrom, liveTo time.Time
+	if o.liveMode != "" {
+		if len(ws) > 0 {
+			return errors.New("-live and -windows are exclusive")
+		}
+		if liveFrom, err = time.Parse(time.RFC3339, o.liveFrom); err != nil {
+			return fmt.Errorf("-from: %w", err)
+		}
+		if liveTo, err = time.Parse(time.RFC3339, o.liveTo); err != nil {
+			return fmt.Errorf("-to: %w", err)
+		}
+	}
 
 	client, err := typesafe.NewClient(
 		typesafe.WithAPIKey(os.Getenv("TYPESAFE_API_KEY")),
@@ -110,9 +127,12 @@ func run(log *slog.Logger) error {
 
 	for round := 1; round <= o.rounds; round++ {
 		var posts []labeler.Post
-		if len(ws) > 0 {
+		switch {
+		case o.liveMode != "":
+			posts, err = store.SelectLive(ctx, tax.Version, labelConfig, o.source, o.liveMode, liveFrom, liveTo, o.limit)
+		case len(ws) > 0:
 			posts, err = store.SelectWindows(ctx, tax.Version, labelConfig, ws)
-		} else {
+		default:
 			posts, err = store.SelectSpread(ctx, tax.Version, labelConfig, o.limit)
 		}
 		if err != nil {
@@ -128,7 +148,7 @@ func run(log *slog.Logger) error {
 			return err
 		}
 		log.Info("round done", "round", round, "failed", failed)
-		if failed == 0 || len(ws) == 0 {
+		if failed == 0 || (len(ws) == 0 && o.liveMode == "") {
 			break // the spread sample is a one-shot preview
 		}
 	}

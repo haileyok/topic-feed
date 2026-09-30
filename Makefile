@@ -7,6 +7,7 @@ ENV_FILE ?= $(HOME)/.config/topic-feed/env
 #   make train  EXPORT=/data/exports/v1-full RUN=v1 EPOCHS=8
 TAXONOMY     ?= taxonomy/v1.yaml
 LABEL_CONFIG ?= 5697660f73fc
+FULL_CONTEXT ?=
 EXPORT       ?= /data/exports/v1-latest
 RUN          ?= run-$(shell date -u +%Y%m%dT%H%MZ)
 EPOCHS       ?= 8
@@ -48,7 +49,7 @@ test:
 	go test ./...
 
 export: ## Export Jev labels to a training set (one label per post, no eval posts)
-	set -a; . $(ENV_FILE); set +a; go run ./cmd/export -taxonomy $(TAXONOMY) -label-configs $(LABEL_CONFIG) -out $(EXPORT)
+	set -a; . $(ENV_FILE); set +a; go run ./cmd/export -taxonomy $(TAXONOMY) -label-configs $(LABEL_CONFIG) -full-context-configs "$(FULL_CONTEXT)" -out $(EXPORT)
 
 baseline: ## Train and evaluate the embedding baseline on $(EXPORT)
 	mkdir -p /data/models/baseline-$(RUN)
@@ -57,7 +58,7 @@ baseline: ## Train and evaluate the embedding baseline on $(EXPORT)
 train: ## Train the student on $(EXPORT) into /data/models/$(RUN); watch at :6006 or in the terminal
 	mkdir -p /data/models/$(RUN)
 	cd trainer && uv run python train.py --export $(EXPORT) --taxonomy ../$(TAXONOMY) --out /data/models/$(RUN) \
-		--epochs $(EPOCHS) --patience $(PATIENCE) 2>&1 | tee /data/models/$(RUN)/train.log
+		--epochs $(EPOCHS) --patience $(PATIENCE) $(TRAIN_ARGS) 2>&1 | tee /data/models/$(RUN)/train.log
 
 relabel: ## Relabel posts in $(EXPORT) with Jev confidence <= $(MAX_CONF) using Luna (resumable)
 	set -a; . $(ENV_FILE); set +a; cd trainer && uv run python relabel.py --export $(EXPORT) \

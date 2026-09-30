@@ -77,6 +77,80 @@ func (s *Store) SelectWindows(ctx context.Context, taxonomyVersion, labelConfig 
 	return scanPosts(rows)
 }
 
+// Live selection modes for SelectLive.
+const (
+	LiveRandom    = "random"    // a random share of every classified post
+	LiveUncertain = "uncertain" // posts the classifier was unsure about, or in its weakest topics
+)
+
+// weakTopics are the broad topics with the lowest classifier confidence on live posts
+// (2026-09-29: humor 0.54, online_culture 0.59, lifestyle 0.61, personal_life 0.65).
+var weakTopics = []string{"humor", "online_culture", "lifestyle", "personal_life"}
+
+// SelectLive picks n posts the pipeline classified between from and to, with
+// everything Jev should see: post fields, attachments, the text the pipeline found in
+// images, and labels. Posts dropped by the label policy, deleted posts, and inactive
+// authors are skipped.
+//
+// The n posts are fixed by a hash of the URI (seeded by mode), so a rerun picks the
+// same posts and only labels the ones still missing. Posts already labeled under this
+// label_config with another source are never picked, so the modes don't overlap.
+func (s *Store) SelectLive(ctx context.Context, taxonomyVersion, labelConfig, source, mode string, from, to time.Time, n int) ([]Post, error) {
+	cond := "1"
+	switch mode {
+	case LiveRandom:
+	case LiveUncertain:
+		cond = "(arrayMax(mapValues(pp.broad_probs)) < 0.5 OR pp.top_broad IN ?)"
+	default:
+		return nil, fmt.Errorf("unknown live mode %q", mode)
+	}
+	args := []any{}
+	if mode == LiveUncertain {
+		args = append(args, weakTopics)
+	}
+	args = append(args, from, to, taxonomyVersion, labelConfig, source, mode, n, taxonomyVersion, labelConfig)
+	rows, err := s.Conn.Query(ctx, `
+		SELECT uri, text, media_alts, link_domain, link_title, link_description, quote_text, tags,
+		       media_kinds, image_texts, image_text_sources, labels
+		FROM (
+		    SELECT p.uri AS uri, p.text AS text, p.media_alts AS media_alts, p.link_domain AS link_domain,
+		           p.link_title AS link_title, p.link_description AS link_description, p.quote_text AS quote_text,
+		           p.tags AS tags, p.media_kinds AS media_kinds,
+		           pp.image_texts AS image_texts, pp.image_text_sources AS image_text_sources, pp.labels AS labels
+		    FROM post_pipeline AS pp FINAL
+		    INNER JOIN (SELECT * FROM posts FINAL WHERE indexed_at >= ? - INTERVAL 1 MINUTE) AS p ON p.uri = pp.uri
+		    WHERE pp.model != '' AND pp.feed_policy != 'drop' AND `+cond+`
+		      AND pp.indexed_at >= ? AND pp.indexed_at < ?
+		      AND pp.uri NOT IN (SELECT uri FROM jev_labels WHERE taxonomy_version = ? AND label_config = ? AND source != ?)
+		      AND pp.uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post')
+		      AND pp.did NOT IN (SELECT did FROM account_status FINAL WHERE active = 0)
+		    ORDER BY cityHash64(pp.uri, ?)
+		    LIMIT ?
+		)
+		WHERE uri NOT IN (SELECT uri FROM jev_labels WHERE taxonomy_version = ? AND label_config = ?)`,
+		append([]any{from}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Post
+	for rows.Next() {
+		var (
+			uri, text, domain, title, desc, quote string
+			alts, tags, kinds, imgTexts, imgSrcs  []string
+			labels                                []string
+		)
+		if err := rows.Scan(&uri, &text, &alts, &domain, &title, &desc, &quote, &tags, &kinds, &imgTexts, &imgSrcs, &labels); err != nil {
+			return nil, err
+		}
+		in := postdoc.Input{Text: text, MediaAlts: alts, LinkDomain: domain, LinkTitle: title,
+			LinkDescription: desc, QuoteText: quote, Tags: tags, MediaKinds: kinds, Labels: labels}
+		in.AddImageTexts(imgTexts, imgSrcs)
+		out = append(out, Post{URI: uri, Doc: postdoc.New(in)})
+	}
+	return out, rows.Err()
+}
+
 func scanPosts(rows driver.Rows) ([]Post, error) {
 	defer rows.Close()
 	var out []Post
