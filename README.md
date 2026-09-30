@@ -13,7 +13,8 @@ feeds interactively.
 The classifier is a ModernBERT-base model distilled from **Jev** (`jev-1.13.0`), a hosted
 model that answers structured questions about text. Jev labels a sample of posts; the small
 model learns to reproduce its answers and runs on one GPU at about 770 posts a second, for
-roughly 1/2,000th of Jev's cost per post.
+roughly 1/2,000th of Jev's cost per post. The model is on Hugging Face:
+[haileyok/microblog-topic-classifier-v4](https://huggingface.co/haileyok/microblog-topic-classifier-v4).
 
 - [How it works](#how-it-works)
 - [Running it](#running-it)
@@ -290,9 +291,10 @@ loaded model expects.
   unseen posts.
 - **Current model.** On 10k held-out live posts it agrees with Jev on the broad topic 83.8% of
   the time (top-3: 96.3%), on the exact subtopic 75.7%, and its subtopic is one of Jev's
-  plausible answers 90.4% of the time. The model is on Hugging Face (private) as
-  `haileyok/microblog-topic-classifier`, with a model card covering evaluation, calibration,
-  feed thresholds, signals, and cost.
+  plausible answers 90.4% of the time. It's published at
+  [haileyok/microblog-topic-classifier-v4](https://huggingface.co/haileyok/microblog-topic-classifier-v4),
+  with a model card covering evaluation, calibration, feed thresholds, signals, and cost, and a
+  standalone loader (`modeling.py`) for using it outside this repo.
 
 ## Training a new model
 
