@@ -12,6 +12,8 @@
 //	OCR_MIN_WORDS            confident words needed to use tesseract's text, default 7
 //	LLM_MODEL                vision model for descriptions, default gpt-6-luna:api ("" disables)
 //	LLM_WORKERS              descriptions at once, default 16
+//	LLM_TIMEOUT_SECONDS      per description (including the wait for a worker), default 15
+//	LLM_PAUSE_SECONDS        skip descriptions this long when most recent ones failed, default 60
 //	LLM_DAILY_BUDGET_USD     list-price cap per UTC day, default 10
 //	TYPESAFE_API_KEY         AI gateway key (required when LLM_MODEL is set)
 //	TYPESAFE_BASE_URL        AI gateway, default https://agw.noclues.net
@@ -106,6 +108,8 @@ func run(log *slog.Logger) error {
 			Prices:  pipeline.Prices{Input: 0.10, CachedInput: 0.01, Output: 0.50},
 			Budget:  pipeline.NewBudget(budget, spent),
 			Workers: envInt("LLM_WORKERS", 16),
+			Timeout: time.Duration(envInt("LLM_TIMEOUT_SECONDS", 15)) * time.Second,
+			Pause:   time.Duration(envInt("LLM_PAUSE_SECONDS", 60)) * time.Second,
 		}
 		log.Info("image descriptions on", "model", model, "budget_usd_per_day", budget, "spent_today_usd", spent)
 	}
@@ -149,7 +153,7 @@ func waitForClassifier(ctx context.Context, c *pipeline.Classifier, log *slog.Lo
 // doesn't reset the daily budget.
 func spentToday(ctx context.Context, conn driver.Conn) (float64, error) {
 	var v float64
-	err := conn.QueryRow(ctx, "SELECT sum(luna_cost_usd) FROM post_pipeline WHERE processed_at >= toStartOfDay(now64(3))").Scan(&v)
+	err := conn.QueryRow(ctx, "SELECT sum(luna_cost_usd) FROM post_pipeline FINAL WHERE processed_at >= toStartOfDay(now64(3))").Scan(&v)
 	return v, err
 }
 

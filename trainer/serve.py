@@ -9,7 +9,7 @@ so training and serving can't format posts differently. The service only tokeniz
                      broad: top 5; paths: top 8 (probabilities with the model's temperatures)
     GET  /healthz -> {"model", "taxonomy_version", "postdoc_version", "device"}
 
-    MODEL_DIR=/data/models/v3-blend uv run python serve.py   # listens on SERVE_ADDR (default 0.0.0.0:8700)
+    MODEL_DIR=/data/models/v4 uv run python serve.py   # listens on SERVE_ADDR (default 0.0.0.0:8700)
 """
 
 import json
@@ -112,7 +112,7 @@ def make_handler(clf: Classifier):
 
 
 def main():
-    model_dir = os.environ.get("MODEL_DIR", "/data/models/v3-blend")
+    model_dir = os.environ.get("MODEL_DIR", "/data/models/v4")
     host, _, port = os.environ.get("SERVE_ADDR", "0.0.0.0:8700").rpartition(":")
     clf = Classifier(model_dir, "cuda" if torch.cuda.is_available() else "cpu")
     clf.classify(["warm up"])  # first batch compiles kernels

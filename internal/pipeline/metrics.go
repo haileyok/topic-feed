@@ -30,6 +30,10 @@ var (
 		Name: "pipeline_llm_cost_usd_total", Help: "List-price cost of LLM image descriptions.",
 	})
 
+	metricLLMPauses = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pipeline_llm_pauses_total", Help: "Times image descriptions were paused because most recent calls failed.",
+	})
+
 	metricLLMSpentToday = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "pipeline_llm_spent_today_usd", Help: "List-price LLM spending so far today (UTC), counted against the daily budget.",
 	})

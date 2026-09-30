@@ -296,14 +296,16 @@ func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string
 		return "", SourceNone, 0
 	}
 	t1 := time.Now()
-	dctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	desc, cost, err := p.Describer.Describe(dctx, "data:image/jpeg;base64,"+base64.StdEncoding.EncodeToString(img))
-	cancel()
-	metricLLMSeconds.Observe(time.Since(t1).Seconds())
+	desc, cost, err := p.Describer.Describe(ctx, "data:image/jpeg;base64,"+base64.StdEncoding.EncodeToString(img))
 	metricLLMCost.Add(cost)
 	switch {
 	case errors.Is(err, ErrBudget):
 		return "", SourceBudget, 0
+	case errors.Is(err, ErrUnavailable):
+		return "", SourceUnavailable, 0
+	}
+	metricLLMSeconds.Observe(time.Since(t1).Seconds())
+	switch {
 	case err != nil:
 		metricErrors.WithLabelValues("llm").Inc()
 		p.Log.Warn("image description failed", "err", err)

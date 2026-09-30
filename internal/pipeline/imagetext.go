@@ -20,11 +20,12 @@ import (
 
 // Image text sources recorded in post_pipeline.image_text_sources.
 const (
-	SourceOCR    = "ocr"
-	SourceLLM    = "luna"
-	SourceNone   = "none"   // tesseract found too little and no description was available
-	SourceBudget = "budget" // the daily LLM budget was used up
-	SourceError  = "error"
+	SourceOCR         = "ocr"
+	SourceLLM         = "luna"
+	SourceNone        = "none"        // tesseract found too little and no description was available
+	SourceBudget      = "budget"      // the daily LLM budget was used up
+	SourceError       = "error"       // fetching, OCR, or the description failed
+	SourceUnavailable = "unavailable" // descriptions were paused after too many failures
 )
 
 // ThumbnailURL returns a small JPEG of an attachment: the CDN feed thumbnail for images,
@@ -111,6 +112,11 @@ func ParseTSV(tsv []byte, minConf float64) []string {
 }
 
 // Describer asks a vision LLM for a short description of an image.
+//
+// A slow or failing gateway must not stall classification (2026-09-30: timeouts held
+// posts ~16 minutes), so each call is capped at Timeout, a 5xx answer is retried once,
+// and when most recent calls failed the Describer pauses: for Pause it returns
+// ErrUnavailable at once, then tries again.
 type Describer struct {
 	Endpoint string // OpenAI-compatible base URL (the AI gateway)
 	APIKey   string
@@ -118,9 +124,68 @@ type Describer struct {
 	Client   *http.Client
 	Prices   Prices
 	Budget   *Budget
-	sem      chan struct{}
-	once     sync.Once
 	Workers  int
+	Timeout  time.Duration // per call, including the wait for a worker; default 15s
+	Pause    time.Duration // how long to skip descriptions after too many failures; default 60s
+
+	sem  chan struct{}
+	once sync.Once
+
+	mu          sync.Mutex
+	outcomes    []bool // recent calls, true = failed (ring of breakerWindow)
+	next        int
+	pausedUntil time.Time
+}
+
+// ErrUnavailable means descriptions are paused because most recent calls failed.
+var ErrUnavailable = errors.New("image descriptions paused: too many recent failures")
+
+const (
+	breakerWindow   = 50  // recent calls considered
+	breakerMinCalls = 20  // don't pause on fewer than this many calls
+	breakerFailRate = 0.6 // pause when at least this share failed
+)
+
+// paused reports whether descriptions are currently paused.
+func (d *Describer) paused() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return time.Now().Before(d.pausedUntil)
+}
+
+// record notes a call's outcome and starts a pause when too many recent calls failed.
+func (d *Describer) record(failed bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.outcomes) < breakerWindow {
+		d.outcomes = append(d.outcomes, failed)
+	} else {
+		d.outcomes[d.next] = failed
+		d.next = (d.next + 1) % breakerWindow
+	}
+	n := 0
+	for _, f := range d.outcomes {
+		if f {
+			n++
+		}
+	}
+	if len(d.outcomes) >= breakerMinCalls && float64(n) >= breakerFailRate*float64(len(d.outcomes)) {
+		pause := d.Pause
+		if pause <= 0 {
+			pause = time.Minute
+		}
+		d.pausedUntil = time.Now().Add(pause)
+		d.outcomes, d.next = d.outcomes[:0], 0 // start fresh after the pause
+		metricLLMPauses.Inc()
+	}
+}
+
+// timeout is the per-call limit.
+func (d *Describer) timeout() time.Duration {
+	if d.Timeout > 0 {
+		return d.Timeout
+	}
+	return 15 * time.Second
 }
 
 // Prices are list prices in USD per million tokens.
@@ -140,13 +205,38 @@ func (d *Describer) Describe(ctx context.Context, imageURL string) (string, floa
 	if !d.Budget.Allow() {
 		return "", 0, ErrBudget
 	}
+	if d.paused() {
+		return "", 0, ErrUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, d.timeout())
+	defer cancel()
 	select {
 	case d.sem <- struct{}{}:
 	case <-ctx.Done():
+		d.record(true)
 		return "", 0, ctx.Err()
 	}
 	defer func() { <-d.sem }()
 
+	var (
+		desc string
+		cost float64
+		err  error
+	)
+	for attempt := 0; attempt < 2; attempt++ {
+		var retry bool
+		desc, cost, retry, err = d.describeOnce(ctx, imageURL)
+		if err == nil || !retry || ctx.Err() != nil {
+			break
+		}
+	}
+	d.record(err != nil)
+	return desc, cost, err
+}
+
+// describeOnce makes one request. retry reports whether the error was a server error
+// worth one more try (not a timeout: the gateway is slow, so retrying makes it worse).
+func (d *Describer) describeOnce(ctx context.Context, imageURL string) (desc string, cost float64, retry bool, err error) {
 	body, _ := json.Marshal(map[string]any{
 		"model": d.Model, "max_completion_tokens": 400,
 		"messages": []any{map[string]any{"role": "user", "content": []any{
@@ -156,7 +246,7 @@ func (d *Describer) Describe(ctx context.Context, imageURL string) (string, floa
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(d.Endpoint, "/")+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", 0, err
+		return "", 0, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+d.APIKey)
 	req.Header.Set("x-agw-key", d.APIKey)
@@ -164,12 +254,13 @@ func (d *Describer) Describe(ctx context.Context, imageURL string) (string, floa
 	req.Header.Set("X-Client", "topic-feed-pipeline")
 	resp, err := d.Client.Do(req)
 	if err != nil {
-		return "", 0, err
+		// Connection resets and refusals are worth one retry; a deadline is not.
+		return "", 0, ctx.Err() == nil, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, fmt.Errorf("describe: %s: %.200s", resp.Status, raw)
+		return "", 0, resp.StatusCode >= 500, fmt.Errorf("describe: %s: %.200s", resp.Status, raw)
 	}
 	var out struct {
 		Choices []struct {
@@ -186,17 +277,17 @@ func (d *Describer) Describe(ctx context.Context, imageURL string) (string, floa
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", 0, fmt.Errorf("describe: %w", err)
+		return "", 0, false, fmt.Errorf("describe: %w", err)
 	}
 	u := out.Usage
-	cost := (float64(u.PromptTokens-u.PromptTokensDetails.CachedTokens)*d.Prices.Input +
+	cost = (float64(u.PromptTokens-u.PromptTokensDetails.CachedTokens)*d.Prices.Input +
 		float64(u.PromptTokensDetails.CachedTokens)*d.Prices.CachedInput +
 		float64(u.CompletionTokens)*d.Prices.Output) / 1e6
 	d.Budget.Add(cost)
 	if len(out.Choices) == 0 {
-		return "", cost, errors.New("describe: no choices")
+		return "", cost, false, errors.New("describe: no choices")
 	}
-	return strings.Join(strings.Fields(out.Choices[0].Message.Content), " "), cost, nil
+	return strings.Join(strings.Fields(out.Choices[0].Message.Content), " "), cost, false, nil
 }
 
 // Budget caps LLM spending per UTC day.
