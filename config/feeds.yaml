@@ -1,5 +1,5 @@
 # Topic feeds served by cmd/feedgen. After adding or changing a feed, restart feedgen and
-# run `make feedgen-publish` so Bluesky shows the new name and description.
+# run `make feeds-publish` so Bluesky shows the new name and description.
 #
 #   rkey          record key: the last part of the feed's at:// URI (max 15 characters;
 #                 changing it makes a new feed and orphans the old one)
