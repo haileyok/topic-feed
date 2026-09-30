@@ -260,19 +260,27 @@ func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]st
 			if i < len(ps.MediaAltTexts) && strings.TrimSpace(ps.MediaAltTexts[i]) != "" {
 				continue // the author's alt text is already in the post document
 			}
-			text, source, cost := p.imageText(ctx, ps.MediaKinds[i], ps.DID, ps.MediaCIDs[i])
-			r.ImageTexts = append(r.ImageTexts, text)
-			r.ImageTextSources = append(r.ImageTextSources, source)
-			r.LLMCostUSD += cost
-			metricImages.WithLabelValues(source).Inc()
+			res := p.imageText(ctx, ps.MediaKinds[i], ps.DID, ps.MediaCIDs[i])
+			r.ImageTexts = append(r.ImageTexts, res.Text)
+			r.ImageTextSources = append(r.ImageTextSources, res.Source)
+			r.LLMCostUSD += res.Cost
+			metricImages.WithLabelValues(res.Source).Inc()
 		}
 	}
 	r.ProcessedAt = time.Now().UTC()
 	return r
 }
 
+// imageResult is what the image step found for one attachment.
+type imageResult struct {
+	Text   string
+	Source string  // SourceOCR, SourceLLM, SourceNone, SourceBudget, SourceError, SourceUnavailable
+	Cost   float64 // LLM list-price cost
+	Err    string  // why it failed, for SourceError
+}
+
 // imageText finds text for one attachment: tesseract first, then an LLM description.
-func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string, string, float64) {
+func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) imageResult {
 	t0 := time.Now()
 	fctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	img, err := Fetch(fctx, p.HTTP, ThumbnailURL(kind, did, cid), 8<<20)
@@ -280,7 +288,7 @@ func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string
 	if err != nil {
 		metricErrors.WithLabelValues("fetch").Inc()
 		p.Log.Debug("thumbnail fetch failed", "err", err, "did", did, "cid", cid)
-		return "", SourceError, 0
+		return imageResult{Source: SourceError, Err: "fetch: " + err.Error()}
 	}
 	octx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	words, err := p.OCR.Words(octx, img)
@@ -290,30 +298,30 @@ func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) (string
 		metricErrors.WithLabelValues("ocr").Inc()
 		p.Log.Warn("ocr failed", "err", err)
 	} else if len(words) >= p.Cfg.MinOCRWords {
-		return strings.Join(words, " "), SourceOCR, 0
+		return imageResult{Text: strings.Join(words, " "), Source: SourceOCR}
 	}
 	if p.Describer == nil {
-		return "", SourceNone, 0
+		return imageResult{Source: SourceNone}
 	}
 	t1 := time.Now()
 	desc, cost, err := p.Describer.Describe(ctx, "data:image/jpeg;base64,"+base64.StdEncoding.EncodeToString(img))
 	metricLLMCost.Add(cost)
 	switch {
 	case errors.Is(err, ErrBudget):
-		return "", SourceBudget, 0
+		return imageResult{Source: SourceBudget}
 	case errors.Is(err, ErrUnavailable):
-		return "", SourceUnavailable, 0
+		return imageResult{Source: SourceUnavailable}
 	}
 	metricLLMSeconds.Observe(time.Since(t1).Seconds())
 	switch {
 	case err != nil:
 		metricErrors.WithLabelValues("llm").Inc()
 		p.Log.Warn("image description failed", "err", err)
-		return "", SourceError, cost
+		return imageResult{Source: SourceError, Cost: cost, Err: "describe: " + err.Error()}
 	case desc == "":
-		return "", SourceNone, cost
+		return imageResult{Source: SourceNone, Cost: cost}
 	}
-	return desc, SourceLLM, cost
+	return imageResult{Text: desc, Source: SourceLLM, Cost: cost}
 }
 
 // ModelInput renders the post document the classifier sees, in the post document

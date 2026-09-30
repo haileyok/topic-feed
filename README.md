@@ -344,6 +344,7 @@ Everything is in ClickHouse, database `topicfeed` (`make ch`):
 | `jev_labels`, `jev_requests` | teacher labels and the request log (tokens, latency, status) |
 | `feed_interactions` | what Bluesky reports people did with feed posts |
 | `ingest_cursor` | stream positions for ingest, modlabels, and the pipeline |
+| `image_retry_queue` | posts whose image step failed, waiting for a retry, with attempts and the last error |
 
 Tables that are re-written (`posts`, `post_pipeline`, …) are `ReplacingMergeTree`s: read them
 with `FINAL` to get one row per post.
@@ -360,6 +361,12 @@ with `FINAL` to get one row per post.
   and when most recent calls fail they pause for a minute (images are then marked
   `unavailable`), so classification keeps up. The pipeline's lag is `pipeline_lag_seconds` on
   its metrics endpoint; posts are normally classified about 15 seconds after they're posted.
+- **Failed images are retried.** Posts whose image step failed or was skipped during a pause
+  go into `image_retry_queue`; the pipeline retries just those images after about 2 min,
+  10 min, 30 min, 2 h, and 6 h, re-classifies the post when anything changes, and gives up
+  after 5 failures. Posts keep appearing in feeds meanwhile with their text-only
+  classification. `SELECT status, count() FROM image_retry_queue FINAL GROUP BY status` shows
+  the queue.
 - **Checking ingest.** `go run ./cmd/verifyingest -after <seq> -before <seq>` re-reads a range
   from the Jetstream archive and reports any post missing from `post_texts`.
 - **Reports.** Labeling runs, comparison pages, and taxonomy reviews are written under

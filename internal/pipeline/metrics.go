@@ -30,6 +30,15 @@ var (
 		Name: "pipeline_llm_cost_usd_total", Help: "List-price cost of LLM image descriptions.",
 	})
 
+	metricRetries = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_image_retries_total",
+		Help: "Image retry results per post: fixed, failed (will retry), paused (descriptions were paused), gave_up.",
+	}, []string{"result"})
+
+	metricRetryPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pipeline_image_retry_pending", Help: "Posts waiting in image_retry_queue.",
+	})
+
 	metricLLMPauses = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "pipeline_llm_pauses_total", Help: "Times image descriptions were paused because most recent calls failed.",
 	})

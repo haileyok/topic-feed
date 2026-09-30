@@ -15,6 +15,11 @@
 //	LLM_TIMEOUT_SECONDS      per description (including the wait for a worker), default 15
 //	LLM_PAUSE_SECONDS        skip descriptions this long when most recent ones failed, default 60
 //	LLM_DAILY_BUDGET_USD     list-price cap per UTC day, default 10
+//	IMAGE_RETRY              "off" disables retrying failed images (image_retry_queue), default on
+//	IMAGE_RETRY_EVERY_SECONDS  how often to queue failures and run due retries, default 120
+//	IMAGE_RETRY_WINDOW_HOURS   how far back failures are queued, default 48
+//	IMAGE_RETRY_MAX_ATTEMPTS   retries before giving up on a post, default 5
+//	IMAGE_RETRY_WORKERS        posts retried at once (they share LLM_WORKERS with live posts), default 4
 //	TYPESAFE_API_KEY         AI gateway key (required when LLM_MODEL is set)
 //	TYPESAFE_BASE_URL        AI gateway, default https://agw.noclues.net
 //	CLASSIFIER_URL           classifier service, default http://127.0.0.1:8700 ("none" disables)
@@ -124,6 +129,14 @@ func run(log *slog.Logger) error {
 		}
 		p.PostdocVersion = h.PostdocVersion
 		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "postdoc", h.PostdocVersion, "device", h.Device)
+	}
+	if p.Describer != nil && env("IMAGE_RETRY", "on") != "off" {
+		cfg := pipeline.DefaultRetry
+		cfg.Every = time.Duration(envInt("IMAGE_RETRY_EVERY_SECONDS", int(cfg.Every.Seconds()))) * time.Second
+		cfg.Window = time.Duration(envInt("IMAGE_RETRY_WINDOW_HOURS", int(cfg.Window.Hours()))) * time.Hour
+		cfg.MaxAttempts = envInt("IMAGE_RETRY_MAX_ATTEMPTS", cfg.MaxAttempts)
+		cfg.Workers = envInt("IMAGE_RETRY_WORKERS", cfg.Workers)
+		go p.RetryImages(ctx, cfg)
 	}
 	return p.Run(ctx)
 }
