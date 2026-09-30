@@ -16,7 +16,6 @@ model learns to reproduce its answers and runs on one GPU at about 770 posts a s
 roughly 1/2,000th of Jev's cost per post.
 
 - [How it works](#how-it-works)
-- [Repository layout](#repository-layout)
 - [Running it](#running-it)
 - [Feeds](#feeds)
 - [The feed builder](#the-feed-builder)
@@ -76,34 +75,6 @@ roughly 1/2,000th of Jev's cost per post.
 Training happens offline: the **labeler** (`cmd/labeler`) asks Jev about a sample of posts,
 **export** (`cmd/export`) turns the labels into a training set, and the **trainer**
 (`trainer/`) fine-tunes the model on the GPU.
-
-## Repository layout
-
-| path | what's there |
-|---|---|
-| `cmd/ingest` | Jetstream consumer: posts, likes, reposts, deletions, account status |
-| `cmd/modlabels` | Bluesky moderation label stream |
-| `cmd/pipeline` | live processing: label policy, image text, classification |
-| `cmd/feedgen` | feed generator, feed builder page, `publish` for feed records |
-| `cmd/labeler` | labels posts with Jev (labeling windows, a spread sample, or live posts) |
-| `cmd/export` | writes a training set from Jev labels |
-| `cmd/rescore` | re-classifies stored posts after a model switch |
-| `cmd/labelreport`, `cmd/taxview` | review pages for a labeling run and for a taxonomy |
-| `cmd/verifyingest` | checks ingest against the Jetstream archive for missing posts |
-| `internal/postdoc` | the post document: the one place posts are rendered for Jev and for the model |
-| `internal/feedgen` | feed config, candidate selection, ranking, server, builder, web page (`web/`) |
-| `internal/pipeline` | the pipeline loop, OCR, image descriptions, classifier client, rescoring |
-| `internal/ingest`, `internal/modlabels` | stream parsing and writers |
-| `internal/labeler`, `internal/labelreport` | Jev questions and requests; labeling reports |
-| `internal/labelpolicy`, `internal/taxonomy`, `internal/windows`, `internal/chdb` | label policy, taxonomy loader, labeling windows, ClickHouse connection |
-| `trainer/` | Python (uv): training, evaluation, comparison and review tools, the classifier service |
-| `taxonomy/` | `v1.yaml` (the taxonomy in use), `v1-equivalences.yaml`, earlier drafts |
-| `config/` | `feeds.yaml`, `label_policy.yaml`, `labeling_windows.yaml` |
-| `schema/` | ClickHouse schema, applied in order; every statement is idempotent |
-| `deploy/` | `docker-compose.yml`, Dockerfiles, systemd units, backup script, nginx config for reports |
-| `reference/` | human-reviewed reference and gold sets |
-| `tools/` | taxonomy drafting and labeling-window selection scripts |
-| `docs/` | the planning document, training guide, feeds roadmap |
 
 ## Running it
 
