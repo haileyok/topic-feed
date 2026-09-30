@@ -4,7 +4,15 @@
 const APPVIEW = "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts";
 const BATCH = 25;
 // Labels that keep a post off this public page even if our own filters missed them.
-const HIDE_LABELS = new Set(["porn", "sexual", "nudity", "sexual-figurative", "graphic-media", "gore", "!hide", "!takedown"]);
+const ALWAYS_HIDE = new Set(["graphic-media", "gore", "!hide", "!takedown"]);
+// Sexual-content labels: hidden unless the owner turned on adult content (setShowAdult).
+const ADULT_LABELS = new Set(["porn", "sexual", "nudity", "sexual-figurative"]);
+let showAdult = false;
+
+/** Shows (true) or hides posts with sexual-content labels. */
+export function setShowAdult(on) { showAdult = on; }
+
+const hideLabel = (l) => ALWAYS_HIDE.has(l.val) || (!showAdult && ADULT_LABELS.has(l.val));
 
 const cache = new Map(); // uri -> post view, or null when the AppView didn't return it
 
@@ -26,7 +34,7 @@ export async function hydrate(uris, signal) {
 
 function hidden(p) {
   const labels = [...(p.labels || []), ...(p.author?.labels || [])];
-  return labels.some((l) => HIDE_LABELS.has(l.val));
+  return labels.some(hideLabel);
 }
 
 // ---------- small DOM helpers ----------
@@ -139,7 +147,7 @@ function external(view) {
 
 function quote(rec) {
   if (!rec || rec.$type !== "app.bsky.embed.record#viewRecord" || !rec.author) return null;
-  if ((rec.labels || []).some((l) => HIDE_LABELS.has(l.val))) return null;
+  if ((rec.labels || []).some(hideLabel)) return null;
   const a = rec.author;
   const media = (rec.embeds || []).map(media1).filter(Boolean);
   return el("div", { class: "quote" },

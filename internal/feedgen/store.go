@@ -145,7 +145,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 			rm.Labeled++
 		default:
 			out = append(out, Post{URI: c.URI, DID: c.DID, IndexedAt: c.IndexedAt, Match: c.Score,
-				Signals: c.Signals,
+				Signals: c.Signals, Labels: c.Labels,
 				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs, Tone: c.Tone})
 		}
 	}

@@ -161,6 +161,11 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	// Interactions are written in the background and flushed after the server stops.
 	// The feed builder page at "/" previews feeds with the same store.
 	pv := feedgen.NewPreviewer(&feedgen.Store{Conn: conn, Policy: policy}, s.tax, log)
+	// The owner's private key for adult previews (visit /adult-access?key=...); unset: off.
+	pv.AdultKey = os.Getenv("FEEDGEN_BUILDER_ADULT_KEY")
+	if pv.AdultKey != "" && len(pv.AdultKey) < 24 {
+		return errors.New("FEEDGEN_BUILDER_ADULT_KEY must be at least 24 characters")
+	}
 	go pv.Run(ctx)
 	srv.Preview = pv
 

@@ -24,6 +24,7 @@ type Post struct {
 	Tone      map[string]float32
 
 	Signals map[string]float32 // the model's signal scores, 0-1
+	Labels  []string           // self-labels and moderation labels on the post and author when processed
 	// Engagement so far.
 	Likes, Reposts, Replies, Quotes uint64
 

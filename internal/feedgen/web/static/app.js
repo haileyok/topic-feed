@@ -1,5 +1,5 @@
 // Topic Feeds: the feed builder page.
-import { hydrate, renderPost, el, compact } from "./posts.js";
+import { hydrate, renderPost, el, compact, setShowAdult } from "./posts.js";
 
 const TONES = {
   informative: ["📰", "Informative", "facts, news, how-tos"],
@@ -42,15 +42,18 @@ function blankState() {
     tone: Object.fromEntries(Object.keys(TONES).map((k) => [k, dial()])),
     signals: Object.fromEntries(Object.keys(SIGNALS).map((k) => [k, dial()])),
     ranking: structuredClone(DEFAULT_RANKING),
+    adult: false,          // owner only: adult topics and posts (needs the adult-access cookie)
   };
 }
 let state = null;
+const isAdult = (id) => id === "adult_content" || id.startsWith("adult_content/");
 const ui = { open: new Set(), search: "", showScores: false };
 
 /** The API spec for the current state (mirrors a feeds.yaml entry). */
 function spec() {
-  const inc = Object.keys(state.topics).filter((k) => state.topics[k] === "include");
-  const exc = Object.keys(state.topics).filter((k) => state.topics[k] === "exclude");
+  const keep = (k) => state.adult || !isAdult(k);
+  const inc = Object.keys(state.topics).filter((k) => state.topics[k] === "include" && keep(k));
+  const exc = Object.keys(state.topics).filter((k) => state.topics[k] === "exclude" && keep(k));
   const rules = (dials) => {
     const r = { max: {}, min: {}, weights: {} };
     for (const [k, d] of Object.entries(dials)) {
@@ -67,6 +70,7 @@ function spec() {
     tone: rules(state.tone),
     signals: rules(state.signals),
     ranking: state.ranking,
+    allow_adult: state.adult || undefined,
   };
 }
 const round = (x) => Math.round(x * 100) / 100;
@@ -219,6 +223,7 @@ function renderTopics() {
 
   const groups = [];
   for (const t of TAX.topics) {
+    if (t.adult && !state.adult) continue;
     const subs = (t.subtopics || []).filter((s) => !q || match(s, q) || match(t, q));
     if (q && !subs.length && !match(t, q)) continue;
     const st = state.topics[t.id];
@@ -372,8 +377,9 @@ function copyYAML() {
     `    paths: [${s.paths.map((p) => (p === "*" ? '"*"' : p)).join(", ")}]`,
     `    min_prob: ${s.min_prob}`,
   ];
-  const exclude = { ...s.exclude, adult_content: 0.2 };
-  lines.push(`    exclude: ${map(exclude)}`);
+  const exclude = state.adult ? { ...s.exclude } : { ...s.exclude, adult_content: 0.2 };
+  if (Object.keys(exclude).length) lines.push(`    exclude: ${map(exclude)}`);
+  if (state.adult) lines.push("    allow_adult: true");
   for (const [name, r] of [["tone", s.tone], ["signals", s.signals]]) {
     const parts = ["max", "min", "weights"].filter((k) => Object.keys(r[k]).length);
     if (!parts.length) continue;
@@ -486,18 +492,52 @@ async function load(reset) {
   }
 }
 
+// Everything the model and the ranking said about a post, shown when "Scores" is on.
 function why(p) {
   if (!p) return null;
+  const pct = (v) => Math.round((v || 0) * 100);
   const topTone = Object.entries(p.tone || {}).sort((a, b) => b[1] - a[1])[0];
   const fresh = state.ranking.fresh_every > 0 && p.slot % state.ranking.fresh_every === 0;
-  return el("div", { class: "why" },
-    el("span", { class: "topic", title: (p.top || []).map(([k, v]) => `${NAMES.get(k) || k} ${Math.round(v * 100)}%`).join(" · "),
-      text: `${NAMES.get(p.topic) || p.topic} ${Math.round(p.p * 100)}%` }),
-    topTone ? el("span", { title: "Tone", text: `${TONES[topTone[0]]?.[0] || ""} ${TONES[topTone[0]]?.[1] || topTone[0]} ${Math.round(topTone[1] * 100)}%` }) : null,
-    el("span", { title: "Substance", text: `🧠 ${Math.round((p.signals?.substance || 0) * 100)}%` }),
-    el("span", { title: "Ranking score", text: `score ${p.score.toFixed(2)}` }),
-    el("span", { title: "Slot in the feed", text: `#${p.slot}` }),
-    fresh ? el("span", { class: "fresh", title: "Brand-new post slot", text: "fresh slot" }) : null);
+  const age = p.age_minutes < 60 ? `${p.age_minutes} min` : p.age_minutes < 2880 ? `${Math.round(p.age_minutes / 60)} h` : `${Math.round(p.age_minutes / 1440)} d`;
+
+  // One bar per score. "ruled" marks scores the current settings use (a range or a boost).
+  const meter = (label, v, { title = "", ruled = false, note = "" } = {}) =>
+    el("div", { class: "meter" + (ruled ? " ruled" : ""), title: title || label },
+      el("span", { class: "m-label", text: label }),
+      el("span", { class: "m-bar" }, el("span", { class: "m-fill", style: `width:${pct(v)}%` })),
+      el("span", { class: "m-val", text: `${pct(v)}%` }),
+      note ? el("span", { class: "m-note", text: note }) : null);
+  const ruleNote = (d) => [d.min > 0 || d.max < 1 ? `allowed ${rangeText(d)}` : "", d.w ? `boost ${d.w > 0 ? "+" : ""}${d.w}` : ""].filter(Boolean).join(", ");
+  const used = (d) => d && (d.min > 0 || d.max < 1 || d.w !== 0);
+  const section = (title, ...rows) => el("div", { class: "why-sec" }, el("h4", { text: title }), ...rows);
+
+  const topics = section("Topics",
+    ...(p.top || []).map(([k, v]) => meter(NAMES.get(k) || k, v, { title: k, ruled: state.topics[k] === "include" })),
+    el("div", { class: "kv" }, el("span", { text: "Matches this feed" }), el("b", { text: `${pct(p.match)}%` })));
+  const signals = section("Signals",
+    ...Object.entries(SIGNALS).filter(([k]) => p.signals && k in p.signals).map(([k, [icon, name, desc]]) =>
+      meter(`${icon} ${name}`, p.signals[k], { title: `${name}: ${desc}`, ruled: used(state.signals[k]), note: used(state.signals[k]) ? ruleNote(state.signals[k]) : "" })));
+  const tone = section("Tone",
+    ...Object.entries(p.tone || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+      meter(`${TONES[k]?.[0] || ""} ${TONES[k]?.[1] || k}`, v, { title: TONES[k]?.[2] || k, ruled: used(state.tone[k]), note: used(state.tone[k]) ? ruleNote(state.tone[k]) : "" })));
+  const kv = (k, v, title = "") => el("div", { class: "kv", title }, el("span", { text: k }), el("b", { text: v }));
+  const ranking = section("Ranking",
+    kv("Score", p.score.toFixed(3), "Ranking score: engagement plus a quality prior, decayed by age"),
+    kv("Slot", `#${p.slot}${fresh ? " (fresh slot)" : ""}`),
+    kv("Age", age),
+    kv("Likes · reposts", `${compact(p.likes)} · ${compact(p.reposts)}`),
+    kv("Replies · quotes", `${compact(p.replies)} · ${compact(p.quotes)}`),
+    p.labels?.length ? el("div", { class: "labels" }, ...p.labels.map((l) => el("span", { class: "label", text: l }))) : null);
+
+  // Clicks inside the panel don't open the post, so it can be read and selected.
+  return el("div", { class: "why", onclick: (e) => e.stopPropagation() },
+    el("div", { class: "why-chips" },
+      el("span", { class: "topic", text: `${NAMES.get(p.topic) || p.topic} ${pct(p.p)}%` }),
+      topTone ? el("span", { title: "Tone", text: `${TONES[topTone[0]]?.[0] || ""} ${TONES[topTone[0]]?.[1] || topTone[0]} ${pct(topTone[1])}%` }) : null,
+      el("span", { title: "Ranking score", text: `score ${p.score.toFixed(2)}` }),
+      el("span", { title: "Slot in the feed", text: `#${p.slot}` }),
+      fresh ? el("span", { class: "fresh", title: "Brand-new post slot", text: "fresh slot" }) : null),
+    el("div", { class: "why-grid" }, topics, signals, tone, ranking));
 }
 
 function emptyState(noResults = false) {
@@ -587,6 +627,8 @@ async function main() {
     for (const s of t.subtopics || []) NAMES.set(s.id, s.name);
   }
   state = loadHash() || blankState();
+  if (!tax.adult_allowed) state.adult = false;
+  setShowAdult(state.adult);
   ui.open = new Set(Object.keys(state.topics).map((k) => k.split("/")[0]));
 
   for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => show(t.dataset.view));
@@ -603,6 +645,21 @@ async function main() {
     ui.showScores = e.target.checked;
     document.getElementById("posts").classList.toggle("scores", ui.showScores);
   });
+  // Adult content: only offered when the server says this browser has the owner's key.
+  if (tax.adult_allowed) {
+    const sw = document.getElementById("adult-switch");
+    const input = document.getElementById("show-adult");
+    sw.hidden = false;
+    input.checked = state.adult;
+    input.addEventListener("change", () => {
+      state.adult = input.checked;
+      setShowAdult(state.adult);
+      if (!state.adult) for (const k of Object.keys(state.topics)) if (isAdult(k)) delete state.topics[k];
+      view.loaded = 0;
+      renderControls();
+      changed();
+    });
+  }
   new IntersectionObserver((entries) => {
     if (entries.some((e) => e.isIntersecting) && !view.loading && view.loaded && view.loaded < view.total) load(false);
   }, { rootMargin: "600px" }).observe(document.getElementById("posts-end"));

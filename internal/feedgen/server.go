@@ -88,6 +88,12 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog
 		}
 		return s.Preview.Handle(c)
 	})
+	e.GET("/adult-access", func(c echo.Context) error {
+		if s.Preview == nil {
+			return echo.ErrNotFound
+		}
+		return s.Preview.HandleAdultAccess(c)
+	})
 	addWebRoutes(e, "https://"+cfg.Hostname)
 	s.echo = e
 	return s

@@ -59,11 +59,18 @@
             <h1 class="preview-title" id="preview-title">Your feed</h1>
             <p class="preview-stats" id="preview-stats">Pick some topics to start.</p>
           </div>
-          <label class="switch" title="Show why each post is here">
-            <input type="checkbox" id="show-scores">
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">Scores</span>
-          </label>
+          <div class="switches">
+            <label class="switch" id="adult-switch" title="Show adult topics and posts (only you can see this)" hidden>
+              <input type="checkbox" id="show-adult">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">Adult</span>
+            </label>
+            <label class="switch" title="Show why each post is here">
+              <input type="checkbox" id="show-scores">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">Scores</span>
+            </label>
+          </div>
         </div>
         <div class="progress" id="progress" hidden><span></span></div>
         <div class="summary" id="summary"></div>
