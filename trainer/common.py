@@ -22,7 +22,11 @@ from dataclasses import dataclass
 import numpy as np
 import yaml
 
-SIGNALS = ["substance", "news", "promo", "general_interest"]
+# Jev's 0-1 scores. The first four are in every label; the rest came with questions q3
+# (2026-09-30) and are missing (NaN) in older labels, which the loss and scores skip.
+# New signals go at the end, so older models' outputs line up by position.
+SIGNALS = ["substance", "news", "promo", "general_interest",
+           "sentiment", "critical", "ad", "engagement_bait", "spam", "self_promo"]
 TONES = ["informative", "humorous", "personal", "outraged", "supportive", "other"]
 TEST_WINDOWS, VAL_WINDOWS = 3, 3  # newest 3 windows test, the 3 before them validation
 
@@ -115,7 +119,7 @@ def load(export_dir: str, space: Space) -> Data:
                 p[pi[key]] = 1.0
             p /= p.sum()
             sig = r["signals"] or {}
-            s = np.array([sig.get(k, 0.0) for k in SIGNALS], np.float32).clip(0, 1)
+            s = np.array([sig.get(k, np.nan) for k in SIGNALS], np.float32).clip(0, 1)  # NaN: not asked
             t = np.array([sig.get("tone." + k, 0.0) for k in TONES], np.float32)
             t = t / t.sum() if t.sum() > 0 else np.full(len(TONES), 1 / len(TONES), np.float32)
             uris.append(r["uri"]); texts.append(r["model_input"]); wins.append(r["window_id"])
@@ -266,6 +270,20 @@ def path_scores(path: np.ndarray, d: Data, eq: Equivalence) -> dict:
     }
 
 
+def signal_scores(pred: np.ndarray, target: np.ndarray, min_n: int = 30) -> dict:
+    """Per signal: mean absolute error and correlation with Jev, over posts where Jev
+    answered it. pred may have fewer columns (an older model); missing signals are left out."""
+    out = {}
+    for i, k in enumerate(SIGNALS[:min(pred.shape[1], target.shape[1])]):
+        ok = ~np.isnan(target[:, i])
+        if ok.sum() < min_n:
+            continue
+        p, t = pred[ok, i], target[ok, i]
+        corr = float(np.corrcoef(p, t)[0, 1]) if p.std() > 0 and t.std() > 0 else 0.0
+        out[k] = {"n": int(ok.sum()), "mae": float(np.abs(p - t).mean()), "corr": corr}
+    return out
+
+
 def evaluate(space: Space, broad: np.ndarray, path: np.ndarray, d: Data,
              signals: np.ndarray | None = None, tone: np.ndarray | None = None,
              eq: Equivalence | None = None) -> dict:
@@ -278,9 +296,7 @@ def evaluate(space: Space, broad: np.ndarray, path: np.ndarray, d: Data,
         "broad_per_class": per_class(broad, d.broad, space.broad),
     }
     if signals is not None:
-        m["signals"] = {k: {"mae": float(np.abs(signals[:, i] - d.signals[:, i]).mean()),
-                            "corr": float(np.corrcoef(signals[:, i], d.signals[:, i])[0, 1])}
-                        for i, k in enumerate(SIGNALS)}
+        m["signals"] = signal_scores(signals, d.signals)
     if tone is not None:
         m["tone_top1"] = topk_agreement(tone, d.tone, 1)
     return m

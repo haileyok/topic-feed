@@ -112,7 +112,7 @@ def main():
 
     # Student predictions on the whole test split.
     tok = AutoTokenizer.from_pretrained(a.model)
-    student = Student(cfg["base"], len(space.broad), len(space.paths)).cuda()
+    student = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).cuda()
     student.load_state_dict(torch.load(f"{a.model}/model.pt", map_location="cuda"))
     lb, lp, _, _ = predict(student, te, tok, cfg["max_len"])
     sb = F.softmax(lb / cfg["temperature_broad"], -1).numpy()

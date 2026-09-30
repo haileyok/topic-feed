@@ -128,7 +128,7 @@ def main():
     va, te = _sample(va, a.limit), _sample(te, a.limit)
 
     tok = AutoTokenizer.from_pretrained(a.model)
-    model = Student(cfg["base"], len(space.broad), len(space.paths)).to(a.device)
+    model = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).to(a.device)
     model.load_state_dict(torch.load(f"{a.model}/model.pt", map_location=a.device))
     name = os.path.basename(a.model.rstrip("/"))
     print(f"{name}: export {export}, common yardstick {a.common_export}", flush=True)

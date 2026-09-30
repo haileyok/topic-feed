@@ -53,8 +53,12 @@ type Feed struct {
 // Tones are the model's tone labels; a post's tone probabilities sum to 1.
 var Tones = []string{"informative", "humorous", "personal", "outraged", "supportive", "other"}
 
-// Signals are the model's independent 0-1 scores.
-var Signals = []string{"substance", "news", "promo", "general_interest"}
+// Signals are the model's independent 0-1 scores. Since v4 (2026-09-30): sentiment
+// (0 very negative .. 1 very positive), critical (negative about or mocking what the post
+// is about), and the kinds of promotion: ad, engagement_bait, spam, self_promo. Older
+// models don't produce these; a cutoff on a missing score treats it as 0.
+var Signals = []string{"substance", "news", "promo", "general_interest",
+	"sentiment", "critical", "ad", "engagement_bait", "spam", "self_promo"}
 
 // Rules use one of the model's score sets (tone or signals, each 0-1) in two ways:
 //

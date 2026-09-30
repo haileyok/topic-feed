@@ -13,11 +13,14 @@ def soft_ce(logits, target):
 
 
 def parts(lb, lp, ls, lt, yb, yp, ys, yt) -> dict[str, torch.Tensor]:
-    """Per-example loss for each head, unweighted."""
+    """Per-example loss for each head, unweighted. Signal targets that are NaN (questions
+    Jev wasn't asked for that label) are left out of the signals mean."""
+    known = ~torch.isnan(ys)
+    bce = F.binary_cross_entropy_with_logits(ls.float(), torch.nan_to_num(ys), reduction="none")
     return {
         "broad": soft_ce(lb, yb),
         "path": soft_ce(lp, yp),
-        "signals": F.binary_cross_entropy_with_logits(ls.float(), ys, reduction="none").mean(-1),
+        "signals": (bce * known).sum(-1) / known.sum(-1).clamp(min=1),
         "tone": soft_ce(lt, yt),
     }
 

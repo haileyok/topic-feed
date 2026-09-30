@@ -12,7 +12,9 @@ import (
 // is part of every label_config.
 //   - q1: the broad question lists text, alt text, link, quoted post, and tags.
 //   - q2: it also lists attachments, text in images, image descriptions, and labels (pd2).
-const QuestionsVersion = "q2"
+//   - q3: adds sentiment, critical, and the kinds of promotion (ad, engagement bait,
+//     spam, self-promotion).
+const QuestionsVersion = "q3"
 
 // Ranking signal question IDs (suffixes after "p{i}_"), plan §10.3.
 const (
@@ -21,7 +23,25 @@ const (
 	sigPromo           = "promo"
 	sigGeneralInterest = "general_interest"
 	sigTone            = "tone"
+	// q3
+	sigSentiment      = "sentiment"
+	sigCritical       = "critical"
+	sigAd             = "ad"
+	sigEngagementBait = "engagement_bait"
+	sigSpam           = "spam"
+	sigSelfPromo      = "self_promo"
 )
+
+// yesNoSignals are the signals asked as yes/no questions, read as P(yes).
+var yesNoSignals = []string{sigNews, sigPromo, sigGeneralInterest, sigCritical, sigAd, sigEngagementBait, sigSpam, sigSelfPromo}
+
+var sentimentLevels = []string{
+	"Very negative",
+	"Somewhat negative",
+	"Neutral or mixed",
+	"Somewhat positive",
+	"Very positive",
+}
 
 var substanceLevels = []string{
 	"Low effort: a few words, a reaction, or filler",
@@ -67,6 +87,16 @@ func pass1Questions(t *taxonomy.Taxonomy, i int, q typesafe.Questions) {
 	q[id(sigPromo)] = typesafe.Noul(fmt.Sprintf("Is the post %s mainly self-promotion, an advertisement, or a request for follows, likes, or reposts?", p))
 	q[id(sigGeneralInterest)] = typesafe.Noul(fmt.Sprintf("Would someone who doesn't know the author find the post %s interesting?", p))
 	q[id(sigTone)] = typesafe.Choice(fmt.Sprintf("What is the main tone of the post %s?", p), toneOptions...)
+	q[id(sigSentiment)] = typesafe.Score(fmt.Sprintf("What is the overall sentiment of the post %s?", p), sentimentLevels...)
+	q[id(sigCritical)] = typesafe.Noul(fmt.Sprintf("Is the post %s negative about, critical of, or mocking the main thing it is about "+
+		"(for example a post about AI that says AI is bad)?", p))
+	q[id(sigAd)] = typesafe.Noul(fmt.Sprintf("Is the post %s an advertisement, sales pitch, or deal for a product or service?", p))
+	q[id(sigEngagementBait)] = typesafe.Noul(fmt.Sprintf("Does the post %s mainly ask for follows, likes, reposts, or replies "+
+		"(follow trains, \"like if you agree\", repost-to-win giveaways)?", p))
+	q[id(sigSpam)] = typesafe.Noul(fmt.Sprintf("Is the post %s spam: a scam, a crypto or money scheme, repetitive or automated junk, "+
+		"a link farm, or piles of unrelated hashtags?", p))
+	q[id(sigSelfPromo)] = typesafe.Noul(fmt.Sprintf("Is the post %s the author sharing or promoting their own work "+
+		"(their art, writing, music, stream, shop, or research)?", p))
 }
 
 // subQuestionID is the question ID for post i's subtopic within a broad topic.

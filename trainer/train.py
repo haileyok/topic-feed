@@ -37,14 +37,14 @@ POSTDOC_VERSION = "pd2"  # must match internal/postdoc.Version used by the expor
 
 
 class Student(nn.Module):
-    def __init__(self, base: str, n_broad: int, n_paths: int, attn: str = "sdpa"):
+    def __init__(self, base: str, n_broad: int, n_paths: int, attn: str = "sdpa", n_signals: int = len(common.SIGNALS)):
         super().__init__()
         self.encoder = AutoModel.from_pretrained(base, attn_implementation=attn)
         h = self.encoder.config.hidden_size
         self.drop = nn.Dropout(0.1)
         self.broad = nn.Linear(h, n_broad)
         self.path = nn.Linear(h, n_paths)
-        self.signals = nn.Linear(h, len(common.SIGNALS))
+        self.signals = nn.Linear(h, n_signals)
         self.tone = nn.Linear(h, len(common.TONES))
 
     def forward(self, input_ids, attention_mask):
@@ -281,7 +281,7 @@ def export_onnx(model: Student, tok, te: common.Data, a, path: str) -> dict:
             return F.softmax(b, -1), F.softmax(p, -1), torch.sigmoid(s), F.softmax(t, -1)
 
     # Export from an eager-attention copy on CPU: the simplest graph to trace.
-    cpu = Student(a.base, model.broad.out_features, model.path.out_features, attn="eager")
+    cpu = Student(a.base, model.broad.out_features, model.path.out_features, attn="eager", n_signals=model.signals.out_features)
     cpu.load_state_dict({k: v.float() for k, v in model.state_dict().items()})
     cpu.eval()
     enc = tok(te.texts[:8], padding=True, truncation=True, max_length=a.max_len, return_tensors="pt")

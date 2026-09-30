@@ -35,7 +35,7 @@ def main():
     _, _, te, _ = common.split(common.load(export, space))
 
     tok = AutoTokenizer.from_pretrained(a.model)
-    model = Student(cfg["base"], len(space.broad), len(space.paths)).cuda()
+    model = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).cuda()
     model.load_state_dict(torch.load(f"{a.model}/model.pt", map_location="cuda"))
     lb, lp, ls, lt = predict(model, te, tok, cfg["max_len"])
     sb = F.softmax(lb / cfg["temperature_broad"], -1).numpy()
@@ -75,9 +75,7 @@ def main():
             "student_top_in_jevs_top2": float(((stu_top == jev_top) | (stu_top == jev_second))[m].mean()),
         })
 
-    out["signals"] = {k: {"mae": float(np.abs(sig[:, i] - te.signals[:, i]).mean()),
-                          "corr": float(np.corrcoef(sig[:, i], te.signals[:, i])[0, 1])}
-                      for i, k in enumerate(common.SIGNALS)}
+    out["signals"] = common.signal_scores(sig, te.signals)
 
     # Most common confident disagreements (Jev >= 0.9): which topic pairs.
     m = (jev_conf >= 0.9) & ~agree

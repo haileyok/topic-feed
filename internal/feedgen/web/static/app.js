@@ -13,7 +13,13 @@ const SIGNALS = {
   substance: ["🧠", "Substance", "has something to say"],
   general_interest: ["🌍", "Broad appeal", "interesting to most people"],
   news: ["🗞️", "Newsy", "reports what happened"],
-  promo: ["📣", "Promotional", "selling or self-promo"],
+  sentiment: ["😊", "Positive", "upbeat rather than negative"],
+  critical: ["👎", "Critical", "against or mocking what it's about"],
+  promo: ["📣", "Promotional", "any kind of promotion"],
+  ad: ["🏷️", "Ad", "selling a product, service, or deal"],
+  self_promo: ["🎨", "Own work", "sharing their own art, writing, stream…"],
+  engagement_bait: ["🎣", "Engagement bait", "asks for likes, follows, reposts"],
+  spam: ["🚫", "Spam", "scams, schemes, junk"],
 };
 const PAGE = 30;
 const FEED_COLORS = ["#3b6cf6", "#8b5cf6", "#e5484d", "#f59e0b", "#10b981", "#0ea5e9", "#ec4899", "#6366f1", "#14b8a6", "#f97316", "#84cc16", "#a855f7"];

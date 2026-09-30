@@ -208,7 +208,10 @@ func (l *Labeler) readSignals(r *typesafe.Response, i int, out map[string]float3
 		// Levels are numbered from 0, so this maps the score onto 0..1.
 		out[sigSubstance] = float32(s.Score / float64(len(substanceLevels)-1))
 	}
-	for _, n := range []string{sigNews, sigPromo, sigGeneralInterest} {
+	if s, ok := r.Score(id(sigSentiment)); ok {
+		out[sigSentiment] = float32(s.Score / float64(len(sentimentLevels)-1))
+	}
+	for _, n := range yesNoSignals {
 		if a, ok := r.Noul(id(n)); ok {
 			out[n] = float32(a.Noul)
 		}

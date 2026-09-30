@@ -36,7 +36,7 @@ class Classifier:
         self.cfg = json.load(open(f"{self.dir}/config.json"))
         self.device = device
         self.tok = AutoTokenizer.from_pretrained(self.dir)
-        self.model = Student(self.cfg["base"], len(self.cfg["broad"]), len(self.cfg["paths"])).to(device)
+        self.model = Student(self.cfg["base"], len(self.cfg["broad"]), len(self.cfg["paths"]), n_signals=len(self.cfg["signals"])).to(device)
         self.model.load_state_dict(torch.load(f"{self.dir}/model.pt", map_location=device))
         self.model.eval()
         self.lock = threading.Lock()  # one GPU batch at a time

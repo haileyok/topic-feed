@@ -37,7 +37,7 @@ def model_probs(model_dir: str, space, *sets: common.Data):
 
     cfg = json.load(open(f"{model_dir}/config.json"))
     tok = AutoTokenizer.from_pretrained(model_dir)
-    m = Student(cfg["base"], len(space.broad), len(space.paths)).cuda()
+    m = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).cuda()
     m.load_state_dict(torch.load(f"{model_dir}/model.pt", map_location="cuda"))
     out = [tbreport.probs(tbreport.predict(m, d, tok, cfg["max_len"]), cfg["temperature_broad"], cfg["temperature_path"])
            for d in sets]
@@ -126,6 +126,11 @@ def main():
     print(f"  {'topic':18s} " + " ".join(f"{c:>9s}" for c in cols))
     for b in sorted(space.broad, key=lambda b: -res["topic_mix"]["Jev"][b]):
         print(f"  {b:18s} " + " ".join(f"{res['topic_mix'][c][b]:9.1%}" for c in cols))
+    print("\nlive signals, correlation with Jev (- : the model has no such output):")
+    print(f"  {'signal':18s} " + " ".join(f"{c:>9s}" for c in names))
+    for k in common.SIGNALS:
+        vals = [res["models"][c]["live"]["all"].get("signals_corr", {}).get(k) for c in names]
+        print(f"  {k:18s} " + " ".join(f"{v:9.3f}" if v is not None else f"{'-':>9s}" for v in vals))
     print("\nlive recall by broad topic (Jev's top topic):")
     print(f"  {'topic':18s} {'n':>5s} " + " ".join(f"{c:>9s}" for c in names))
     for b in sorted(space.broad, key=lambda b: -res["topic_mix"]["Jev"][b]):

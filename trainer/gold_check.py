@@ -69,7 +69,7 @@ def student_answers(model_dir: str, space, uris: list[str], texts: dict[str, str
 
     cfg = json.load(open(f"{model_dir}/config.json"))
     tok = AutoTokenizer.from_pretrained(model_dir)
-    m = Student(cfg["base"], len(space.broad), len(space.paths)).cuda()
+    m = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).cuda()
     m.load_state_dict(torch.load(f"{model_dir}/model.pt", map_location="cuda"))
     d = common.Data(uris, [texts[u] for u in uris], [""] * len(uris), np.zeros((len(uris), len(space.broad))),
                     np.zeros((len(uris), len(space.paths))), np.zeros((len(uris), 4)), np.zeros((len(uris), 6)),
