@@ -1,8 +1,8 @@
 // Command labeler labels posts with hosted Jev (plan §10) and writes jev_labels and
 // jev_requests.
 //
-//	labeler -taxonomy taxonomy/v1.yaml -windows config/labeling_windows.yaml -report auto
-//	labeler -taxonomy taxonomy/v1.yaml -limit 2500        # a spread sample instead
+//	labeler -taxonomy taxonomy/v2.1.yaml -windows config/labeling_windows.yaml -report auto
+//	labeler -taxonomy taxonomy/v2.1.yaml -limit 2500        # a spread sample instead
 //	labeler -live random -source sample -limit 40000 -from 2026-09-29T05:00:00Z -to 2026-09-30T00:00:00Z
 //	labeler -taxonomy taxonomy/v2.yaml -uris /data/clef/v2/jev-all.txt -source relabel
 //
@@ -60,7 +60,7 @@ type opts struct {
 
 func run(log *slog.Logger) error {
 	var o opts
-	flag.StringVar(&o.taxPath, "taxonomy", "taxonomy/v1.yaml", "taxonomy YAML file")
+	flag.StringVar(&o.taxPath, "taxonomy", "taxonomy/v2.1.yaml", "taxonomy YAML file")
 	flag.StringVar(&o.windowsPath, "windows", "", "label every post in these labeling windows (config/labeling_windows.yaml)")
 	flag.IntVar(&o.limit, "limit", 2500, "without -windows: label a spread sample (or with -live, a live selection) of this many posts")
 	flag.StringVar(&o.liveMode, "live", "", `label posts the pipeline classified: "random" or "uncertain" (low confidence or weak topics); needs -from and -to`)

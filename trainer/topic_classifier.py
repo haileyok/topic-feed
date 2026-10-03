@@ -209,17 +209,26 @@ class TopicClassifier:
             self._image_model = m.to(self.device).eval()
             self._image_processor = self._AutoProcessor.from_pretrained(self._image_encoder_id)
 
+    def load_image_encoder(self):
+        """Load the picture encoder now (it is otherwise loaded when the first picture arrives)."""
+        self._load_image_encoder()
+
     @staticmethod
     def _open(p):
-        """A PIL RGB image from a file path or a PIL image; None when the file cannot be read."""
+        """A PIL RGB image from encoded bytes, a file path or a PIL image; None when it cannot be read."""
+        import io
+
         from PIL import Image
 
         try:
+            if isinstance(p, (bytes, bytearray, memoryview)):
+                with Image.open(io.BytesIO(p)) as im:
+                    return im.convert("RGB")
             if isinstance(p, (str, os.PathLike)):
                 with Image.open(p) as im:
                     return im.convert("RGB")
             return p.convert("RGB")
-        except OSError:
+        except Exception:  # noqa: BLE001  broken, truncated or hostile files must not fail a whole batch
             return None
 
     @torch.no_grad()
@@ -257,24 +266,29 @@ class TopicClassifier:
                 img[b, k] = e
                 have[b, k] = True
         d = self.device
-        return ids.to(d), att.to(d), torch.from_numpy(img).to(d), torch.from_numpy(have).to(d)
+        return (ids.to(d), att.to(d), torch.from_numpy(img).to(d), torch.from_numpy(have).to(d)), have.sum(1)
 
     @torch.no_grad()
     def predict_arrays(self, items, batch_size=32):
-        """Arrays in the input order: broad [n, 25], paths [n, 118], signals [n, 11], tone [n, 6] (all probabilities)."""
+        """Arrays in the input order: broad [n, 25], paths [n, 118], signals [n, 11], tone [n, 6] (all
+        probabilities) and pictures_used [n] (how many of each post's pictures could be read and were used)."""
         order = np.argsort([len(it["text"] or "") for it in items], kind="stable")  # similar lengths together
-        parts = [[], [], [], []]
+        parts, used = [[], [], [], []], []
         for s in range(0, len(items), batch_size):
             batch = [items[i] for i in order[s:s + batch_size]]
+            inputs, n_used = self._batch(batch)
             with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
-                lb, lp, ls, lt = self.model(*self._batch(batch))
+                lb, lp, ls, lt = self.model(*inputs)
             probs = (torch.softmax(lb.float() / self.t_broad, -1), torch.softmax(lp.float() / self.t_path, -1),
                      torch.sigmoid(ls.float()), torch.softmax(lt.float(), -1))
             for k in range(4):
                 parts[k].append(probs[k].cpu().numpy())
+            used.append(n_used)
         inv = np.empty(len(order), int)
         inv[order] = np.arange(len(order))
-        return {name: np.concatenate(p)[inv] for name, p in zip(("broad", "paths", "signals", "tone"), parts)}
+        out = {name: np.concatenate(p)[inv] for name, p in zip(("broad", "paths", "signals", "tone"), parts)}
+        out["pictures_used"] = np.concatenate(used)[inv]
+        return out
 
     def predict(self, items, batch_size=32, top_k=None):
         """items: list of {"text": str, "pictures": [PIL image or file path, ...]}  ("pictures" optional).

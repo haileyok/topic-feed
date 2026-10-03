@@ -1,73 +1,116 @@
 # Training the topic classifier
 
-Run these from a checkout of the repo (the Python environment lives in `trainer/`).
-Training takes 5-40 minutes, so run it inside `tmux` or `screen` if your SSH session
-might drop.
+The live model reads a post's text and up to two of its pictures. It is a fine-tuned
+Ettin-150M text encoder plus frozen SigLIP 2 so400m (512 px) picture embeddings, fused by a small
+network into four heads (broad topic, subtopic, signals including meme, tone). It is trained to
+reproduce two teachers' probability lists under taxonomy v2.1:
 
-## 1. Export the labels
+- **Jev** labels posts with text or a link card (no pictures).
+- **Clef-flash** labels posts with attached pictures or a video poster frame (it sees the
+  pictures), plus the meme and tone questions; its probabilities are calibrated to Jev's sharpness.
+
+Run these from a checkout of the repo. The Python environment lives in `trainer/`. Training
+itself needs a GPU (about 37 minutes for 8 epochs of 142k posts on an RTX 5090).
+
+## 1. Label
+
+- **Jev:** the Go labeler writes to ClickHouse `jev_labels`. It is resumable: rerun the same
+  command and it skips posts already labelled.
+
+  ```sh
+  set -a; . ~/.config/topic-feed/env; set +a
+  go run ./cmd/labeler -taxonomy taxonomy/v2.1.yaml -uris <file of post URIs> -source relabel \
+    -batch 1 -topk 3 -max-rpm 500 -rounds 3
+  ```
+
+  The labeler prints a `label_config` hash when it starts (taxonomy, questions, post rendering,
+  model); the training set is built from one such configuration.
+- **Clef-flash:** runs on a GPU with 24 GB or more (it is a 9B vision-language model). The scripts in
+  `trainer/runs/run_clef_v21*.sh` show the commands (`trainer/clef_run.py`, `clef_fast.py`,
+  `clef_labels.py`). The pictures come from the image archive (below). Results are JSONL files.
+- **Calibrate and import (optional but recommended):** `trainer/clef_calibrate.py fit` fits
+  Clef-flash's sharpness against Jev's on posts both labelled; `trainer/clef_import.py` loads the
+  results, raw and calibrated, into `clef_labels`.
+
+The image archive (`make images-resolve images-fetch`, then `trainer/prepare_images.py`) keeps the
+pictures of the labelled posts on disk (`/data/images/1000/...`), so labelling and training read the
+same pixels (see the README's "Image archive").
+
+## 2. Build the training set
 
 ```sh
-make export LABEL_CONFIG=5697660f73fc EXPORT=/data/exports/v1-full
+trainer/.venv/bin/python trainer/build_mm_dataset.py --out /data/mm/v21 \
+    --clef <Clef-flash result files, calibrated while building> ...
 ```
 
-Writes one Jev label per post (never `eval` posts), with each post rendered exactly as
-the model will see it, to `/data/exports/v1-full/labels.jsonl.gz`. `manifest.json`
-next to it lists row counts per labeling window. `LABEL_CONFIG` is printed by the
-labeler when it starts; `5697660f73fc` is the v1 full run.
+One row per labelled post: the rendered post text (the same document the pipeline sends), the
+picture hashes (up to two), when the post was indexed, and the targets. Only Clef-flash rows that
+carry the meme and tone answers are taken. Writes `labels.jsonl.gz` and `manifest.json`.
 
-## 2. (Optional) Embedding baseline
+## 3. Embed the pictures
 
 ```sh
-make baseline EXPORT=/data/exports/v1-full RUN=v1
+python trainer/extract_image_features.py --export /data/mm/v21 --images /data/images \
+    --out /data/mm/feats/siglip2-so400m-512
 ```
 
-A few minutes. Results in `/data/models/baseline-v1/metrics.json`. This is the bar the
-fine-tuned model has to beat.
+Runs the frozen SigLIP 2 picture encoder once over every distinct picture (about 155 pictures a
+second on an RTX 5090) and saves the embeddings, so training does not run it again.
 
-## 3. Train
+## 4. Train
 
 ```sh
-make train EXPORT=/data/exports/v1-full RUN=v1 EPOCHS=8
+python trainer/train_fusion.py --export /data/mm/v21 --feats /data/mm/feats/siglip2-so400m-512 \
+    --out /data/models/<RUN> --taxonomy taxonomy/v2.1.yaml --epochs 8 --bs 32 --lr 5e-5
 ```
 
-- Trains ModernBERT-base on the GPU into `/data/models/v1`.
-- Stops early once validation agreement hasn't improved for `PATIENCE` (default 2)
-  epochs, and keeps the best epoch.
-- Split by labeling window: newest 3 windows test, the 3 before them validation, the
-  rest train.
-
-## Watching progress
-
-- **Terminal:** a progress bar per epoch (loss, learning rate, batches/s, time left),
-  then one line per epoch with validation agreement, and a final `TEST` line.
-  Everything also goes to `/data/models/<RUN>/train.log`
-  (`tail -f /data/models/v1/train.log` from another terminal).
-- **Browser:** TensorBoard at `http://<machine>:6006/` (the `tensorboard` compose
-  service). Charts for training loss and learning rate (every 50 steps) and
-  validation agreement (every epoch), with every run under `/data/models` side by
-  side. It refreshes every 15 seconds.
-
-## Outputs (`/data/models/<RUN>/`)
+Split by time within each teacher: the newest 8% of posts are the test set and the 4% before them
+the validation set. The best epoch by validation top pick is kept, and temperatures for the broad
+and subtopic heads are fitted on the validation set. `trainer/runs/run_fusion1.sh` is the run that
+produced the live model. Outputs in `/data/models/<RUN>/`:
 
 | File | What |
 |---|---|
-| `model.pt` | Weights (encoder and heads) |
-| `config.json` | Base model, taxonomy version, label maps, temperatures, max length, post document version |
-| `metrics.json` | Test agreement (top-1/top-3 broad and path), per-topic precision and recall, calibration, signal correlation, GPU throughput, per-epoch history |
-| `data_manifest.json` | The export's manifest |
-| `train.log`, `tb/` | Logs and TensorBoard events |
+| `model.pt` | All trained weights |
+| `config.json` | Text and picture encoders used, labels, signals, tones, temperatures, limits |
+| `metrics.json` | Test scores, closeness to the teachers, per-epoch history, arguments |
+| `test-probs.npz` | The model's probabilities on the test posts, for later analysis |
 
-Agreement is measured against Jev on posts from windows the model never trained on.
-
-## Checking a model against Jev by hand
+## 5. Score against the teachers
 
 ```sh
-cd trainer && uv run python compare.py --model /data/models/v1 --page
+python trainer/mm_score.py --model /data/models/<RUN> --export /data/mm/v21 --images /data/images \
+    --taxonomy taxonomy/v2.1.yaml --out score.json
 ```
 
-Writes `compare_jev.json` into the model's directory (agreement by Jev's confidence,
-distribution distances, the most common confident disagreements) and a side-by-side
-review page at `http://<machine>:8090/<RUN>-vs-jev/`. The page filters by agreement,
-Jev's confidence, topic, and text, and has verdict buttons on each post (Jev right,
-student right, both fine, neither). Verdicts are saved in your browser; "Download
-verdicts" saves them as JSON, the start of the human-reviewed reference set.
+Reports how much of the teacher's probability the model shares (1 = identical), the extra cost
+of using the model's list instead of the teacher's, and how often the model's top pick falls inside
+the few topics that hold 80% of the teacher's probability, split by teacher and by how sure the
+teacher was. Agreement with a teacher is not human accuracy: check by hand (below).
+`trainer/analysis/fusion_report_plots.py` draws charts and a summary from these files.
+
+## 6. Package, verify, deploy
+
+```sh
+python trainer/package_fusion.py --model /data/models/<RUN> --out /data/models/<NAME>
+python trainer/verify_fusion_package.py --package /data/models/<NAME> --export /data/mm/v21 \
+    --render --posts /data/clef/full_posts.jsonl
+python trainer/verify_fusion_package.py --package /data/models/<NAME> --export /data/mm/v21 \
+    --images /data/images --predict --probs /data/models/<RUN>/test-probs.npz --n 20
+```
+
+`package_fusion.py` converts the weights to safetensors and writes the model folder the classifier
+service reads: `model.safetensors`, `config.json` (with the post document version), the text
+encoder's config and tokenizer, `topics.json`, and a copy of `topic_classifier.py`. The first
+verification checks that the post document the Go pipeline renders matches the training text; the second
+that the packaged model reproduces the test probabilities. Then point `MODEL_DIR` in
+`deploy/systemd/topic-feed-classifier.service` at the folder and follow "To switch models" in the
+README. The Hugging Face card's source is `trainer/hf/microblog-topic-classifier-v5/`.
+
+## Checking a model by hand
+
+The judging pages (`trainer/mm_eval_sample.py` and `mm_eval_app.py` for one answer at a time,
+`mm_disagree_sample.py` and `mm_eval_pair.py` for blind side-by-sides against the teacher) take
+random or disagreeing test posts and record verdicts, and `mm_eval_report.py` /
+`mm_eval_pair_report.py` summarise them. `trainer/consolidate_judged.py` collects every round of
+verdicts into one file.

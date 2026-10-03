@@ -1,5 +1,5 @@
 """The student's training loss, split into its parts so training and reports log the same
-numbers. Weights match train.py's objective: broad + path + 0.5 * signals + 0.3 * tone,
+numbers. Weights: broad + path + 0.5 * signals + 0.3 * tone,
 each example weighted by Jev's broad confidence (floored)."""
 
 import torch

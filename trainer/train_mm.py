@@ -1,5 +1,5 @@
 """Trains the picture-capable student: ModernVBERT (ModernBERT text encoder + SigLIP vision encoder)
-with the same kinds of heads as train.py, trained to match the teachers' distributions.
+with the same kinds of heads as the first student (a ModernBERT text model, no longer in the repo), trained to match the teachers' distributions.
 
 Data: build_mm_dataset.py's export. Jev's text posts and Clef's picture posts train one model; a post
 with pictures is shown to the model with them (at most --max-images, each as one 512 px tile), a text

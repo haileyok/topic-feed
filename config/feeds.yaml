@@ -6,7 +6,7 @@
 #   display_name  shown in Bluesky (max 24 characters)
 #   description   shown in Bluesky (max 300 characters)
 #   paths         taxonomy subtopic paths (sports/american_football) or whole broad
-#                 topics (world_news), from taxonomy/v1.yaml; a post matches when its
+#                 topics (world_news), from taxonomy/v2.1.yaml; a post matches when its
 #                 probability for any of them is at least min_prob (for a broad topic:
 #                 the broad-topic probability, which covers all its subtopics)
 #   exclude       optional; leave out posts whose probability for a broad topic or

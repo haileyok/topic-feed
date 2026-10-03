@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/haileyok/topic-feed/internal/chdb"
@@ -11,33 +12,52 @@ import (
 // rescoreRow is one post_pipeline row joined with its posts row.
 type rescoreRow struct {
 	post
-	ProcessedAt      time.Time `ch:"processed_at"`
-	FeedPolicy       string    `ch:"feed_policy"`
-	Labels           []string  `ch:"labels"`
-	ImageTexts       []string  `ch:"image_texts"`
-	ImageTextSources []string  `ch:"image_text_sources"`
-	LLMCostUSD       float64   `ch:"luna_cost_usd"`
+	ProcessedAt    time.Time `ch:"processed_at"`
+	FeedPolicy     string    `ch:"feed_policy"`
+	Labels         []string  `ch:"labels"`
+	PicturesWanted uint8     `ch:"pictures_wanted"`
+	PicturesUsed   uint8     `ch:"pictures_used"`
 }
 
-// Rescore re-classifies posts that model oldModel classified before `before`, with the
-// current classifier, reusing what the pipeline already stored for them (labels, label
-// policy decision, text found in images): no images are fetched and no LLM is called.
-//
-// Each new row keeps the original processed_at plus 1ms, so it replaces the old row
-// (post_pipeline is a ReplacingMergeTree on processed_at) without changing how late the
-// post was processed. Only rows still on oldModel are picked, so a rerun resumes.
-func (p *Pipeline) Rescore(ctx context.Context, oldModel string, before time.Time, window time.Duration) error {
+// rescoreSelect is the start of the query that reads rescoreRow; callers add the FROM clause.
+const rescoreSelect = `
+		SELECT p.uri AS uri, p.did AS did, p.indexed_at AS indexed_at, p.text AS text, p.media_alts AS media_alts,
+		       p.link_domain AS link_domain, p.link_title AS link_title, p.link_description AS link_description,
+		       p.quote_text AS quote_text, p.tags AS tags, p.self_labels AS self_labels, p.media_kinds AS media_kinds,
+		       p.media_cids AS media_cids, p.media_alt_texts AS media_alt_texts,
+		       pp.processed_at AS processed_at, pp.feed_policy AS feed_policy, pp.labels AS labels,
+		       pp.pictures_wanted AS pictures_wanted, pp.pictures_used AS pictures_used`
+
+// row is the post_pipeline row to write when re-classifying this post: it keeps the original
+// processed_at plus 1ms, so the new row replaces the old one (post_pipeline is a ReplacingMergeTree
+// on processed_at) without changing how late the post was processed.
+func (r rescoreRow) row() Row {
+	out := newRow(r.URI, r.DID, r.IndexedAt, r.FeedPolicy, r.Labels)
+	out.ProcessedAt = r.ProcessedAt.Add(time.Millisecond)
+	out.PicturesWanted, out.PicturesUsed = r.PicturesWanted, r.PicturesUsed
+	return out
+}
+
+// Rescore re-classifies posts that model oldModel classified between `after` and `before` (by
+// indexed_at; a zero `after` means from the first one), with the current classifier, reusing the
+// labels and label policy decision the pipeline already stored but downloading each post's pictures
+// again (the model looks at them). A post whose pictures are gone is classified without them. Only
+// rows still on oldModel are picked, so a rerun resumes.
+func (p *Pipeline) Rescore(ctx context.Context, oldModel string, after, before time.Time, window time.Duration) error {
+	if after.IsZero() {
+		after = time.Unix(0, 0).UTC()
+	}
 	var first time.Time
 	var n uint64
-	if err := p.Conn.QueryRow(ctx, `SELECT min(indexed_at), count() FROM post_pipeline FINAL WHERE model = ? AND indexed_at < ?`,
-		oldModel, before).Scan(&first, &n); err != nil {
+	if err := p.Conn.QueryRow(ctx, `SELECT min(indexed_at), count() FROM post_pipeline FINAL WHERE model = ? AND indexed_at >= ? AND indexed_at < ?`,
+		oldModel, after, before).Scan(&first, &n); err != nil {
 		return err
 	}
 	if n == 0 {
 		p.Log.Info("nothing to rescore", "model", oldModel)
 		return nil
 	}
-	p.Log.Info("rescoring", "from_model", oldModel, "posts", n, "from", first, "before", before, "postdoc", p.PostdocVersion)
+	p.Log.Info("rescoring", "from_model", oldModel, "posts", n, "from", first, "before", before, "max_pictures", p.Cfg.MaxPictures)
 	done, start := 0, time.Now()
 	for t := first.Truncate(window); t.Before(before); t = t.Add(window) {
 		if err := ctx.Err(); err != nil {
@@ -47,17 +67,15 @@ func (p *Pipeline) Rescore(ctx context.Context, oldModel string, before time.Tim
 		if end.After(before) {
 			end = before
 		}
+		lo := t // the first window may start before `after`
+		if after.After(lo) {
+			lo = after
+		}
 		var rs []rescoreRow
-		if err := p.Conn.Select(ctx, &rs, `
-			SELECT p.uri AS uri, p.did AS did, p.indexed_at AS indexed_at, p.text AS text, p.media_alts AS media_alts,
-			       p.link_domain AS link_domain, p.link_title AS link_title, p.link_description AS link_description,
-			       p.quote_text AS quote_text, p.tags AS tags, p.self_labels AS self_labels, p.media_kinds AS media_kinds,
-			       p.media_cids AS media_cids, p.media_alt_texts AS media_alt_texts,
-			       pp.processed_at AS processed_at, pp.feed_policy AS feed_policy, pp.labels AS labels,
-			       pp.image_texts AS image_texts, pp.image_text_sources AS image_text_sources, pp.luna_cost_usd AS luna_cost_usd
+		if err := p.Conn.Select(ctx, &rs, rescoreSelect+`
 			FROM (SELECT * FROM post_pipeline FINAL WHERE indexed_at >= ? AND indexed_at < ? AND model = ?) AS pp
 			INNER JOIN (SELECT * FROM posts FINAL WHERE indexed_at >= ? AND indexed_at < ?) AS p ON p.uri = pp.uri`,
-			t, end, oldModel, t, end); err != nil {
+			lo, end, oldModel, lo, end); err != nil {
 			return fmt.Errorf("select %s: %w", t, err)
 		}
 		if len(rs) == 0 {
@@ -65,14 +83,25 @@ func (p *Pipeline) Rescore(ctx context.Context, oldModel string, before time.Tim
 		}
 		posts := make([]post, len(rs))
 		rows := make([]Row, len(rs))
+		pics := make([][][]byte, len(rs))
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 64)
 		for i, r := range rs {
-			posts[i] = r.post
-			rows[i] = Row{URI: r.URI, DID: r.DID, IndexedAt: r.IndexedAt, ProcessedAt: r.ProcessedAt.Add(time.Millisecond),
-				FeedPolicy: r.FeedPolicy, Labels: nonNil(r.Labels), ImageTexts: nonNil(r.ImageTexts),
-				ImageTextSources: nonNil(r.ImageTextSources), LLMCostUSD: r.LLMCostUSD,
-				BroadProbs: map[string]float32{}, PathProbs: map[string]float32{}, Signals: map[string]float32{}, Tone: map[string]float32{}}
+			posts[i], rows[i] = r.post, r.row()
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(i int) {
+				defer func() { <-sem; wg.Done() }()
+				refs := pictureRefs(posts[i], p.Cfg.MaxPictures)
+				pics[i], _ = p.fetchPictures(ctx, posts[i].DID, refs)
+				rows[i].PicturesWanted, rows[i].PicturesUsed = uint8(len(refs)), uint8(len(pics[i]))
+			}(i)
 		}
-		if err := p.classify(ctx, posts, rows); err != nil {
+		wg.Wait()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := p.classify(ctx, posts, rows, pics); err != nil {
 			return err
 		}
 		// Keep only rows the new model classified; anything it skipped keeps its old row.

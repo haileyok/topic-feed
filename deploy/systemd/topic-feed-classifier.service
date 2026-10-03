@@ -1,5 +1,5 @@
 [Unit]
-Description=topic-feed classifier service (student model on the GPU, trainer/serve.py)
+Description=topic-feed classifier service (topic model on the GPU: text and pictures, trainer/serve.py)
 After=network-online.target
 
 [Service]
@@ -7,7 +7,7 @@ After=network-online.target
 # container (host network) reaches it on loopback.
 # %h is the user's home directory. `make install-classifier` installs this unit.
 WorkingDirectory=%h/bluesky/topic-feed/trainer
-Environment=MODEL_DIR=/data/models/v4
+Environment=MODEL_DIR=/data/models/v5
 Environment=SERVE_ADDR=127.0.0.1:8700
 Environment=HF_HUB_OFFLINE=1
 Environment=PYTHONUNBUFFERED=1

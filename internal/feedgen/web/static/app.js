@@ -20,6 +20,7 @@ const SIGNALS = {
   self_promo: ["🎨", "Own work", "sharing their own art, writing, stream…"],
   engagement_bait: ["🎣", "Engagement bait", "asks for likes, follows, reposts"],
   spam: ["🚫", "Spam", "scams, schemes, junk"],
+  meme: ["😂", "Meme", "a captioned or edited joke image, a reaction image"],
 };
 const PAGE = 30;
 const FEED_COLORS = ["#3b6cf6", "#8b5cf6", "#e5484d", "#f59e0b", "#10b981", "#0ea5e9", "#ec4899", "#6366f1", "#14b8a6", "#f97316", "#84cc16", "#a855f7"];

@@ -134,7 +134,7 @@ are a small, human-picked set of hard cases for the next model.
 - Also sample posts just above each feed's threshold that got no engagement, as a second
   source of likely mistakes.
 
-**Open:** how to weight them in training (`trainer/train.py`); whether Jev relabels them
+**Open:** how to weight them in training (`trainer/train_fusion.py`); whether Jev relabels them
 first or the review page is the only label source.
 
 ## 5. Ranking tuning page

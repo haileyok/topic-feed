@@ -1,17 +1,15 @@
 // Package pipeline processes live posts shortly after ingest: it applies the label
-// policy, finds text in images (tesseract first, then an LLM description), classifies
-// topics, and records the result in post_pipeline.
+// policy, downloads the pictures the topic model looks at, classifies topics, and records
+// the result in post_pipeline.
 package pipeline
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,8 +26,7 @@ type Config struct {
 	Delay       time.Duration // process posts once they are at least this old (labels arrive within seconds)
 	Consumer    string        // ingest_cursor row holding the pipeline's position (unix micros of indexed_at)
 	BatchLimit  int           // posts per batch
-	MinOCRWords int           // tesseract text is used when it has at least this many confident words
-	MaxMedia    int           // attachments per post to find text for
+	MaxPictures int           // pictures per post the model looks at (the classifier's Health.MaxImages)
 	Poll        time.Duration // wait between batches when caught up
 }
 
@@ -38,14 +35,9 @@ type Pipeline struct {
 	Cfg        Config
 	Conn       driver.Conn
 	Policy     *labelpolicy.Policy
-	OCR        *OCR
-	Describer  *Describer  // nil: no LLM descriptions
 	Classifier *Classifier // nil: no topic predictions
-	// PostdocVersion is the post document version the classifier's model expects
-	// (from its health endpoint): "pd1" or "pd2".
-	PostdocVersion string
-	HTTP           *http.Client
-	Log            *slog.Logger
+	HTTP       *http.Client
+	Log        *slog.Logger
 }
 
 type post struct {
@@ -65,17 +57,20 @@ type post struct {
 	MediaAltTexts   []string  `ch:"media_alt_texts"`
 }
 
-// Row mirrors the post_pipeline table.
+// Row mirrors the post_pipeline columns the pipeline writes (the older image_texts,
+// image_text_sources and luna_cost_usd columns are no longer written; rows from before the topic model
+// looked at pictures keep them).
 type Row struct {
-	URI              string    `ch:"uri"`
-	DID              string    `ch:"did"`
-	IndexedAt        time.Time `ch:"indexed_at"`
-	ProcessedAt      time.Time `ch:"processed_at"`
-	FeedPolicy       string    `ch:"feed_policy"`
-	Labels           []string  `ch:"labels"`
-	ImageTexts       []string  `ch:"image_texts"`
-	ImageTextSources []string  `ch:"image_text_sources"`
-	LLMCostUSD       float64   `ch:"luna_cost_usd"`
+	URI         string    `ch:"uri"`
+	DID         string    `ch:"did"`
+	IndexedAt   time.Time `ch:"indexed_at"`
+	ProcessedAt time.Time `ch:"processed_at"`
+	FeedPolicy  string    `ch:"feed_policy"`
+	Labels      []string  `ch:"labels"`
+	// Pictures the model should have seen (the post's first attachments, up to the model's limit) and
+	// how many it did see. Fewer seen than wanted means a download failed; the retry worker tries again.
+	PicturesWanted uint8 `ch:"pictures_wanted"`
+	PicturesUsed   uint8 `ch:"pictures_used"`
 	// Topic predictions; empty for dropped posts and posts with no content.
 	Model      string             `ch:"model"`
 	ModelInput string             `ch:"model_input"`
@@ -86,6 +81,12 @@ type Row struct {
 	TopBroad   string             `ch:"top_broad"`
 	TopPath    string             `ch:"top_path"`
 	TopPathP   float32            `ch:"top_path_p"`
+}
+
+// newRow is a row with the prediction maps allocated.
+func newRow(uri, did string, indexedAt time.Time, policy string, labels []string) Row {
+	return Row{URI: uri, DID: did, IndexedAt: indexedAt, FeedPolicy: policy, Labels: nonNil(labels),
+		BroadProbs: map[string]float32{}, PathProbs: map[string]float32{}, Signals: map[string]float32{}, Tone: map[string]float32{}}
 }
 
 // Run processes posts until ctx is cancelled. The first run starts at the live edge;
@@ -186,6 +187,7 @@ func (p *Pipeline) batch(ctx context.Context, from, to time.Time) (time.Time, in
 	}
 
 	rows := make([]Row, len(posts))
+	pics := make([][][]byte, len(posts))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 64)
 	for i := range posts {
@@ -193,14 +195,14 @@ func (p *Pipeline) batch(ctx context.Context, from, to time.Time) (time.Time, in
 		sem <- struct{}{}
 		go func(i int) {
 			defer func() { <-sem; wg.Done() }()
-			rows[i] = p.process(ctx, posts[i], labels)
+			rows[i], pics[i] = p.process(ctx, posts[i], labels)
 		}(i)
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {
 		return from, 0, err
 	}
-	if err := p.classify(ctx, posts, rows); err != nil {
+	if err := p.classify(ctx, posts, rows, pics); err != nil {
 		return from, 0, err
 	}
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
@@ -240,7 +242,9 @@ func (p *Pipeline) labelerLabels(ctx context.Context, posts []post) (map[string]
 	return p.Policy.Current(ctx, p.Conn, subjects)
 }
 
-func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]string) Row {
+// process applies the label policy to a post and downloads the pictures the model looks at. Dropped
+// posts are never classified, so their pictures are not downloaded.
+func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]string) (Row, [][]byte) {
 	var labels []string
 	for _, group := range [][]string{ps.SelfLabels, labeler[ps.URI], labeler[ps.DID]} {
 		for _, l := range group {
@@ -249,133 +253,59 @@ func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]st
 			}
 		}
 	}
-	r := Row{URI: ps.URI, DID: ps.DID, IndexedAt: ps.IndexedAt, FeedPolicy: p.Policy.Decide(labels),
-		Labels: nonNil(labels), ImageTexts: []string{}, ImageTextSources: []string{},
-		BroadProbs: map[string]float32{}, PathProbs: map[string]float32{}, Signals: map[string]float32{}, Tone: map[string]float32{}}
-	if r.FeedPolicy == labelpolicy.OK {
-		for i := range ps.MediaCIDs {
-			if len(r.ImageTexts) >= p.Cfg.MaxMedia {
-				break
-			}
-			if i < len(ps.MediaAltTexts) && strings.TrimSpace(ps.MediaAltTexts[i]) != "" {
-				continue // the author's alt text is already in the post document
-			}
-			res := p.imageText(ctx, ps.MediaKinds[i], ps.DID, ps.MediaCIDs[i])
-			r.ImageTexts = append(r.ImageTexts, res.Text)
-			r.ImageTextSources = append(r.ImageTextSources, res.Source)
-			r.LLMCostUSD += res.Cost
-			metricImages.WithLabelValues(res.Source).Inc()
-		}
+	r := newRow(ps.URI, ps.DID, ps.IndexedAt, p.Policy.Decide(labels), labels)
+	var pics [][]byte
+	if r.FeedPolicy != labelpolicy.Drop {
+		refs := pictureRefs(ps, p.Cfg.MaxPictures)
+		r.PicturesWanted = uint8(len(refs))
+		pics, _ = p.fetchPictures(ctx, ps.DID, refs)
+		r.PicturesUsed = uint8(len(pics))
 	}
 	r.ProcessedAt = time.Now().UTC()
-	return r
+	return r, pics
 }
 
-// imageResult is what the image step found for one attachment.
-type imageResult struct {
-	Text   string
-	Source string  // SourceOCR, SourceLLM, SourceNone, SourceBudget, SourceError, SourceUnavailable
-	Cost   float64 // LLM list-price cost
-	Err    string  // why it failed, for SourceError
-}
-
-// imageText finds text for one attachment: tesseract first, then an LLM description.
-func (p *Pipeline) imageText(ctx context.Context, kind, did, cid string) imageResult {
-	t0 := time.Now()
-	fctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	img, err := Fetch(fctx, p.HTTP, ThumbnailURL(kind, did, cid), 8<<20)
-	cancel()
-	if err != nil {
-		metricErrors.WithLabelValues("fetch").Inc()
-		p.Log.Debug("thumbnail fetch failed", "err", err, "did", did, "cid", cid)
-		return imageResult{Source: SourceError, Err: "fetch: " + err.Error()}
-	}
-	octx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	words, err := p.OCR.Words(octx, img)
-	cancel()
-	metricOCRSeconds.Observe(time.Since(t0).Seconds())
-	if err != nil {
-		metricErrors.WithLabelValues("ocr").Inc()
-		p.Log.Warn("ocr failed", "err", err)
-	} else if len(words) >= p.Cfg.MinOCRWords {
-		return imageResult{Text: strings.Join(words, " "), Source: SourceOCR}
-	}
-	if p.Describer == nil {
-		return imageResult{Source: SourceNone}
-	}
-	t1 := time.Now()
-	desc, cost, err := p.Describer.Describe(ctx, "data:image/jpeg;base64,"+base64.StdEncoding.EncodeToString(img))
-	metricLLMCost.Add(cost)
-	switch {
-	case errors.Is(err, ErrBudget):
-		return imageResult{Source: SourceBudget}
-	case errors.Is(err, ErrUnavailable):
-		return imageResult{Source: SourceUnavailable}
-	}
-	metricLLMSeconds.Observe(time.Since(t1).Seconds())
-	switch {
-	case err != nil:
-		metricErrors.WithLabelValues("llm").Inc()
-		p.Log.Warn("image description failed", "err", err)
-		return imageResult{Source: SourceError, Cost: cost, Err: "describe: " + err.Error()}
-	case desc == "":
-		return imageResult{Source: SourceNone, Cost: cost}
-	}
-	return imageResult{Text: desc, Source: SourceLLM, Cost: cost}
-}
-
-// ModelInput renders the post document the classifier sees, in the post document
-// version the classifier's model was trained on:
-//   - pd2: text read from images, image descriptions, attachments, and labels each get
-//     their own line, exactly as Jev saw them when labeling live posts.
-//   - pd1: text found in images is added as alt text after the author's own (how pd1
-//     models have always been served); attachments and labels are not shown.
-func ModelInput(ps post, r Row, version string) (string, bool) {
+// ModelInput renders the post document the classifier sees (post document version pd2:
+// attachments and labels each get their own line). The pictures themselves go to the model
+// separately, so no text read from them is added. A post with nothing but pictures still has
+// content, since the model looks at the pictures.
+func ModelInput(ps post, r Row, hasPictures bool) (string, bool) {
 	in := postdoc.Input{Text: ps.Text, MediaAlts: ps.MediaAlts, LinkDomain: ps.LinkDomain, LinkTitle: ps.LinkTitle,
-		LinkDescription: ps.LinkDescription, QuoteText: ps.QuoteText, Tags: ps.Tags}
-	if version == "pd1" {
-		alts := append([]string{}, ps.MediaAlts...)
-		for _, t := range r.ImageTexts {
-			if strings.TrimSpace(t) != "" {
-				alts = append(alts, t)
-			}
-		}
-		in.MediaAlts = alts
-	} else {
-		in.AddImageTexts(r.ImageTexts, r.ImageTextSources)
-		in.MediaKinds = ps.MediaKinds
-		in.Labels = r.Labels
-	}
+		LinkDescription: ps.LinkDescription, QuoteText: ps.QuoteText, Tags: ps.Tags, MediaKinds: ps.MediaKinds, Labels: r.Labels}
 	doc := postdoc.New(in)
-	if doc.Empty() {
+	if doc.Empty() && !hasPictures {
 		return "", false
 	}
 	return doc.Student(), true
 }
 
-// classify fills in predictions for every post not dropped by the label policy. A failed
-// classifier call is retried; if it keeps failing the batch fails and is retried.
-func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error {
+// classify fills in predictions for every post not dropped by the label policy, sending each post's
+// pictures (pics[i], when given) with its text. A failed classifier call is retried; if it keeps
+// failing the batch fails and is retried.
+func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row, pics [][][]byte) error {
 	if p.Classifier == nil {
 		return nil
 	}
 	var idx []int
-	var texts []string
+	var items []Item
 	for i := range rows {
 		if rows[i].FeedPolicy == labelpolicy.Drop {
 			continue
 		}
-		text, ok := ModelInput(posts[i], rows[i], p.PostdocVersion)
+		var pp [][]byte
+		if i < len(pics) {
+			pp = pics[i]
+		}
+		text, ok := ModelInput(posts[i], rows[i], len(pp) > 0)
 		if !ok {
 			continue
 		}
 		rows[i].ModelInput = text
 		idx = append(idx, i)
-		texts = append(texts, text)
+		items = append(items, Item{Text: text, Pictures: pp})
 	}
-	const chunk = 1024
-	for s := 0; s < len(texts); s += chunk {
-		e := min(s+chunk, len(texts))
+	for _, c := range chunkItems(items) {
+		s, e := c[0], c[1]
 		var (
 			model string
 			preds []Prediction
@@ -383,8 +313,8 @@ func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error
 		)
 		t0 := time.Now()
 		for attempt := 0; attempt < 6; attempt++ {
-			cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			model, preds, err = p.Classifier.Classify(cctx, texts[s:e])
+			cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			model, preds, err = p.Classifier.Classify(cctx, items[s:e])
 			cancel()
 			if err == nil || ctx.Err() != nil {
 				break
@@ -402,6 +332,16 @@ func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row) error
 			r.Model, r.BroadProbs, r.PathProbs, r.Signals, r.Tone = model, pr.Broad, pr.Paths, pr.Signals, pr.Tone
 			r.TopBroad, _ = top(pr.Broad)
 			r.TopPath, r.TopPathP = top(pr.Paths)
+			r.PicturesUsed = 0
+			if sent := len(items[s+k].Pictures); sent > 0 {
+				r.PicturesUsed = uint8(min(pr.PicturesUsed, sent)) // the service may not read every file
+			}
+			if r.PicturesUsed == 0 {
+				// The meme score only means something for a post whose picture the model saw (it was
+				// never trained on text-only posts), so it isn't stored for the others. Feeds treat a
+				// missing score as 0.
+				delete(r.Signals, "meme")
+			}
 			metricClassified.WithLabelValues(r.TopBroad).Inc()
 		}
 	}

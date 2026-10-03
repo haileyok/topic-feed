@@ -55,10 +55,13 @@ var Tones = []string{"informative", "humorous", "personal", "outraged", "support
 
 // Signals are the model's independent 0-1 scores. Since v4 (2026-09-30): sentiment
 // (0 very negative .. 1 very positive), critical (negative about or mocking what the post
-// is about), and the kinds of promotion: ad, engagement_bait, spam, self_promo. Older
-// models don't produce these; a cutoff on a missing score treats it as 0.
+// is about), and the kinds of promotion: ad, engagement_bait, spam, self_promo. Since v5
+// (the model that looks at pictures): meme, a captioned, edited or AI-generated joke image or
+// a reaction image. It is only stored for posts whose pictures the model saw, so it is
+// missing on text-only posts, and older models don't produce the newer scores either: a
+// cutoff on a missing score treats it as 0.
 var Signals = []string{"substance", "news", "promo", "general_interest",
-	"sentiment", "critical", "ad", "engagement_bait", "spam", "self_promo"}
+	"sentiment", "critical", "ad", "engagement_bait", "spam", "self_promo", "meme"}
 
 // Rules use one of the model's score sets (tone or signals, each 0-1) in two ways:
 //

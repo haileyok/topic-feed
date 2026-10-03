@@ -15,7 +15,7 @@
 //	FEEDGEN_SERVICE_DID       the service's DID, default did:web:<FEEDGEN_HOSTNAME>
 //	FEEDGEN_OWNER_DID         account that owns the feed records (required)
 //	FEEDGEN_CONFIG            feed list, default config/feeds.yaml
-//	TAXONOMY                  default taxonomy/v1.yaml (feed paths are checked against it)
+//	TAXONOMY                  default taxonomy/v2.1.yaml (feed paths are checked against it)
 //	LABEL_POLICY              default config/label_policy.yaml
 //	FEEDGEN_WINDOW_HOURS      how far back feeds go, default 48
 //	FEEDGEN_REFRESH_SECONDS   how often feeds are rebuilt, default 20
@@ -110,7 +110,7 @@ func load() (*settings, error) {
 		return nil, fmt.Errorf("FEEDGEN_OWNER_DID: %w", err)
 	}
 	s.owner = owner
-	tax, err := taxonomy.Load(env("TAXONOMY", "taxonomy/v1.yaml"))
+	tax, err := taxonomy.Load(env("TAXONOMY", "taxonomy/v2.1.yaml"))
 	if err != nil {
 		return nil, err
 	}

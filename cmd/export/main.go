@@ -4,7 +4,7 @@
 // input rendered by internal/postdoc, so training and serving see identical text, and
 // the labeling window the post falls in (empty for posts outside the windows).
 //
-//	export -taxonomy taxonomy/v1.yaml -label-configs 5697660f73fc -out /data/exports/v1-v0
+//	export -taxonomy taxonomy/v2.1.yaml -label-configs 5697660f73fc -out /data/exports/v1-v0
 //	export -label-configs 5697660f73fc,6a350cf6d994,f101541647c7 -full-context-configs f101541647c7 -out /data/exports/v4
 //
 // Output: labels.jsonl.gz (one JSON object per post) and manifest.json.
@@ -49,7 +49,7 @@ func main() {
 }
 
 func run() error {
-	taxPath := flag.String("taxonomy", "taxonomy/v1.yaml", "taxonomy YAML file")
+	taxPath := flag.String("taxonomy", "taxonomy/v2.1.yaml", "taxonomy YAML file")
 	configs := flag.String("label-configs", "", "comma-separated label_config hashes accepted for this training set")
 	windowsPath := flag.String("windows", "config/labeling_windows.yaml", "labeling windows file")
 	out := flag.String("out", "", "output directory")

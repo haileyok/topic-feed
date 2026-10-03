@@ -11,40 +11,23 @@ var (
 		Help: "Posts processed, by feed policy (ok, adult_only, drop).",
 	}, []string{"policy"})
 
-	metricImages = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "pipeline_image_texts_total",
-		Help: "Images and videos without alt text, by where their text came from (ocr, luna, none, budget, error).",
-	}, []string{"source"})
+	metricPictures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_pictures_total",
+		Help: "Pictures (images and video poster frames) the model should look at, by download result (fetched, failed).",
+	}, []string{"result"})
 
-	metricOCRSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "pipeline_ocr_seconds", Help: "Time to download and OCR one thumbnail.",
-		Buckets: prometheus.ExponentialBuckets(0.05, 2, 10),
-	})
-
-	metricLLMSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "pipeline_llm_seconds", Help: "Time for one LLM image description.",
-		Buckets: prometheus.ExponentialBuckets(0.25, 2, 10),
-	})
-
-	metricLLMCost = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pipeline_llm_cost_usd_total", Help: "List-price cost of LLM image descriptions.",
+	metricFetchSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "pipeline_picture_fetch_seconds", Help: "Time to download one picture.",
+		Buckets: prometheus.ExponentialBuckets(0.02, 2, 10),
 	})
 
 	metricRetries = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "pipeline_image_retries_total",
-		Help: "Image retry results per post: fixed, failed (will retry), paused (descriptions were paused), gave_up.",
+		Help: "Picture retry results per post: fixed, failed (will retry), gave_up.",
 	}, []string{"result"})
 
 	metricRetryPending = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "pipeline_image_retry_pending", Help: "Posts waiting in image_retry_queue.",
-	})
-
-	metricLLMPauses = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pipeline_llm_pauses_total", Help: "Times image descriptions were paused because most recent calls failed.",
-	})
-
-	metricLLMSpentToday = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pipeline_llm_spent_today_usd", Help: "List-price LLM spending so far today (UTC), counted against the daily budget.",
 	})
 
 	metricBatchSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -57,7 +40,7 @@ var (
 	})
 
 	metricClassifySeconds = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "pipeline_classify_seconds", Help: "Time for one classifier service call (up to 1024 posts), including retries.",
+		Name: "pipeline_classify_seconds", Help: "Time for one classifier service call (up to 512 posts), including retries.",
 		Buckets: prometheus.ExponentialBuckets(0.01, 2, 12),
 	})
 

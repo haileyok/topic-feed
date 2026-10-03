@@ -2,16 +2,13 @@ SHELL    := bash
 .SHELLFLAGS := -eo pipefail -c
 ENV_FILE ?= $(HOME)/.config/topic-feed/env
 
-# Training (plan §11). Override on the command line, e.g.
+# Training data (plan §11; the current model's training flow is in docs/training.md). Override on
+# the command line, e.g.
 #   make export LABEL_CONFIG=5697660f73fc EXPORT=/data/exports/v1-full
-#   make train  EXPORT=/data/exports/v1-full RUN=v1 EPOCHS=8
-TAXONOMY     ?= taxonomy/v1.yaml
+TAXONOMY     ?= taxonomy/v2.1.yaml
 LABEL_CONFIG ?= 5697660f73fc
 FULL_CONTEXT ?=
 EXPORT       ?= /data/exports/v1-latest
-RUN          ?= run-$(shell date -u +%Y%m%dT%H%MZ)
-EPOCHS       ?= 8
-PATIENCE     ?= 2
 COMPOSE  := docker compose --env-file $(ENV_FILE) -f deploy/docker-compose.yml
 CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicfeed --password "$$CLICKHOUSE_PASSWORD" --database topicfeed --multiquery'
 
@@ -22,7 +19,7 @@ CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicf
 RELABEL  ?= v1-luna-le05
 MAX_CONF ?= 0.5
 
-.PHONY: up down ps logs schema ch test backup install-backup label label-logs export baseline train relabel relabel-load install-classifier classifier-logs feeds feeds-logs feeds-publish
+.PHONY: up down ps logs schema ch test backup install-backup label label-logs export relabel relabel-load install-classifier classifier-logs feeds feeds-logs feeds-publish
 
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
@@ -50,15 +47,6 @@ test:
 
 export: ## Export Jev labels to a training set (one label per post, no eval posts)
 	set -a; . $(ENV_FILE); set +a; go run ./cmd/export -taxonomy $(TAXONOMY) -label-configs $(LABEL_CONFIG) -full-context-configs "$(FULL_CONTEXT)" -out $(EXPORT)
-
-baseline: ## Train and evaluate the embedding baseline on $(EXPORT)
-	mkdir -p /data/models/baseline-$(RUN)
-	cd trainer && uv run python baseline.py --export $(EXPORT) --taxonomy ../$(TAXONOMY) --out /data/models/baseline-$(RUN) 2>&1 | tee /data/models/baseline-$(RUN)/train.log
-
-train: ## Train the student on $(EXPORT) into /data/models/$(RUN); watch at :6006 or in the terminal
-	mkdir -p /data/models/$(RUN)
-	cd trainer && uv run python train.py --export $(EXPORT) --taxonomy ../$(TAXONOMY) --out /data/models/$(RUN) \
-		--epochs $(EPOCHS) --patience $(PATIENCE) $(TRAIN_ARGS) 2>&1 | tee /data/models/$(RUN)/train.log
 
 relabel: ## Relabel posts in $(EXPORT) with Jev confidence <= $(MAX_CONF) using Luna (resumable)
 	set -a; . $(ENV_FILE); set +a; cd trainer && uv run python relabel.py --export $(EXPORT) \

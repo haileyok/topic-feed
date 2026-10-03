@@ -1,27 +1,17 @@
 // Command pipeline processes live posts shortly after ingest: it applies the label policy
-// (config/label_policy.yaml), finds text in images without alt text (tesseract first,
-// then an LLM description within a daily budget), and writes post_pipeline.
+// (config/label_policy.yaml), downloads each post's first pictures, has the classifier service
+// (trainer/serve.py) look at the post's text and pictures, and writes post_pipeline.
 //
 // Configuration comes from environment variables:
 //
 //	PIPELINE_DELAY_SECONDS   process posts once they are this old, default 10
 //	PIPELINE_CONSUMER        ingest_cursor row for the pipeline's position, default pipeline
 //	LABEL_POLICY             default config/label_policy.yaml
-//	TESSERACT                tesseract executable, default tesseract
-//	OCR_WORKERS              tesseract processes at once, default 4
-//	OCR_MIN_WORDS            confident words needed to use tesseract's text, default 7
-//	LLM_MODEL                vision model for descriptions, default gpt-6-luna:api ("" disables)
-//	LLM_WORKERS              descriptions at once, default 16
-//	LLM_TIMEOUT_SECONDS      per description (including the wait for a worker), default 15
-//	LLM_PAUSE_SECONDS        skip descriptions this long when most recent ones failed, default 60
-//	LLM_DAILY_BUDGET_USD     list-price cap per UTC day, default 10
-//	IMAGE_RETRY              "off" disables retrying failed images (image_retry_queue), default on
+//	IMAGE_RETRY              "off" disables retrying posts whose pictures didn't download (image_retry_queue), default on
 //	IMAGE_RETRY_EVERY_SECONDS  how often to queue failures and run due retries, default 120
 //	IMAGE_RETRY_WINDOW_HOURS   how far back failures are queued, default 48
 //	IMAGE_RETRY_MAX_ATTEMPTS   retries before giving up on a post, default 5
-//	IMAGE_RETRY_WORKERS        posts retried at once (they share LLM_WORKERS with live posts), default 4
-//	TYPESAFE_API_KEY         AI gateway key (required when LLM_MODEL is set)
-//	TYPESAFE_BASE_URL        AI gateway, default https://agw.noclues.net
+//	IMAGE_RETRY_WORKERS        posts retried at once, default 4
 //	CLASSIFIER_URL           classifier service, default http://127.0.0.1:8700 ("none" disables)
 //	CLICKHOUSE_*             see internal/chdb
 //	METRICS_ADDR             default :9103
@@ -35,12 +25,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"slices"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/haileyok/topic-feed/internal/chdb"
@@ -81,42 +69,18 @@ func run(log *slog.Logger) error {
 	}
 	defer conn.Close()
 
-	httpClient := &http.Client{Timeout: 60 * time.Second}
+	httpClient := &http.Client{Timeout: 90 * time.Second}
 	p := &pipeline.Pipeline{
 		Cfg: pipeline.Config{
-			Delay:       time.Duration(envInt("PIPELINE_DELAY_SECONDS", 10)) * time.Second,
-			Consumer:    env("PIPELINE_CONSUMER", "pipeline"),
-			BatchLimit:  2000,
-			MinOCRWords: envInt("OCR_MIN_WORDS", 7),
-			MaxMedia:    4,
-			Poll:        time.Second,
+			Delay:      time.Duration(envInt("PIPELINE_DELAY_SECONDS", 10)) * time.Second,
+			Consumer:   env("PIPELINE_CONSUMER", "pipeline"),
+			BatchLimit: 2000,
+			Poll:       time.Second,
 		},
 		Conn:   conn,
 		Policy: policy,
-		OCR:    &pipeline.OCR{Binary: env("TESSERACT", "tesseract"), MinConf: 70, Workers: envInt("OCR_WORKERS", 4)},
 		HTTP:   httpClient,
 		Log:    log,
-	}
-	if model := env("LLM_MODEL", "gpt-6-luna:api"); model != "" && model != "none" {
-		key := os.Getenv("TYPESAFE_API_KEY")
-		if key == "" {
-			return errors.New("TYPESAFE_API_KEY must be set for image descriptions (or set LLM_MODEL=none)")
-		}
-		spent, err := spentToday(ctx, conn)
-		if err != nil {
-			return err
-		}
-		budget, _ := strconv.ParseFloat(env("LLM_DAILY_BUDGET_USD", "10"), 64)
-		p.Describer = &pipeline.Describer{
-			Endpoint: env("TYPESAFE_BASE_URL", "https://agw.noclues.net"), APIKey: key, Model: model, Client: httpClient,
-			// gpt-6-luna list prices per million tokens (OpenAI API docs, 2026-09).
-			Prices:  pipeline.Prices{Input: 0.10, CachedInput: 0.01, Output: 0.50},
-			Budget:  pipeline.NewBudget(budget, spent),
-			Workers: envInt("LLM_WORKERS", 16),
-			Timeout: time.Duration(envInt("LLM_TIMEOUT_SECONDS", 15)) * time.Second,
-			Pause:   time.Duration(envInt("LLM_PAUSE_SECONDS", 60)) * time.Second,
-		}
-		log.Info("image descriptions on", "model", model, "budget_usd_per_day", budget, "spent_today_usd", spent)
 	}
 	if u := env("CLASSIFIER_URL", "http://127.0.0.1:8700"); u != "" && u != "none" {
 		p.Classifier = &pipeline.Classifier{URL: u, Client: httpClient}
@@ -124,19 +88,20 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		if !slices.Contains(postdoc.Versions, h.PostdocVersion) {
-			return fmt.Errorf("classifier model %s expects post documents %s, this build renders %v", h.Model, h.PostdocVersion, postdoc.Versions)
+		if h.PostdocVersion != postdoc.Version {
+			return fmt.Errorf("classifier model %s expects post documents %s, this build renders %s", h.Model, h.PostdocVersion, postdoc.Version)
 		}
-		p.PostdocVersion = h.PostdocVersion
-		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "postdoc", h.PostdocVersion, "device", h.Device)
+		p.Cfg.MaxPictures = h.MaxImages
+		log.Info("classifier ready", "url", u, "model", h.Model, "taxonomy", h.TaxonomyVersion, "postdoc", h.PostdocVersion,
+			"device", h.Device, "pictures_per_post", h.MaxImages)
 	}
-	if p.Describer != nil && env("IMAGE_RETRY", "on") != "off" {
+	if p.Classifier != nil && env("IMAGE_RETRY", "on") != "off" {
 		cfg := pipeline.DefaultRetry
 		cfg.Every = time.Duration(envInt("IMAGE_RETRY_EVERY_SECONDS", int(cfg.Every.Seconds()))) * time.Second
 		cfg.Window = time.Duration(envInt("IMAGE_RETRY_WINDOW_HOURS", int(cfg.Window.Hours()))) * time.Hour
 		cfg.MaxAttempts = envInt("IMAGE_RETRY_MAX_ATTEMPTS", cfg.MaxAttempts)
 		cfg.Workers = envInt("IMAGE_RETRY_WORKERS", cfg.Workers)
-		go p.RetryImages(ctx, cfg)
+		go p.RetryPictures(ctx, cfg)
 	}
 	return p.Run(ctx)
 }
@@ -160,14 +125,6 @@ func waitForClassifier(ctx context.Context, c *pipeline.Classifier, log *slog.Lo
 		case <-time.After(5 * time.Second):
 		}
 	}
-}
-
-// spentToday is the list-price LLM spending already recorded today (UTC), so a restart
-// doesn't reset the daily budget.
-func spentToday(ctx context.Context, conn driver.Conn) (float64, error) {
-	var v float64
-	err := conn.QueryRow(ctx, "SELECT sum(luna_cost_usd) FROM post_pipeline FINAL WHERE processed_at >= toStartOfDay(now64(3))").Scan(&v)
-	return v, err
 }
 
 func env(key, def string) string {

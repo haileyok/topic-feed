@@ -1,6 +1,6 @@
 // Command labelreport writes the review report and viewer page for a labeling run:
 //
-//	labelreport -taxonomy taxonomy/v1.yaml -label-config <hash> [-out dir]
+//	labelreport -taxonomy taxonomy/v2.1.yaml -label-config <hash> [-out dir]
 //
 // The default output directory is /data/reports/<version>-<label_config>, which the
 // viewer service serves.
@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	taxPath := flag.String("taxonomy", "taxonomy/v1.yaml", "taxonomy YAML file")
+	taxPath := flag.String("taxonomy", "taxonomy/v2.1.yaml", "taxonomy YAML file")
 	labelConfig := flag.String("label-config", "", "label_config hash of the run (printed by labeler)")
 	out := flag.String("out", "", "output directory (default /data/reports/<version>-<label_config>)")
 	perTopic := flag.Int("examples", 10, "examples per broad topic")

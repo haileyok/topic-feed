@@ -2,19 +2,20 @@
 
 Topic feeds for Bluesky, picked by a trained classifier instead of keyword lists.
 
-Every English post on the network is classified seconds after it's posted: which of 25 broad
-topics and 117 subtopics it's about, what tone it has, and ten scores such as how substantive
-it is, whether it's news, whether it's an ad or spam, and whether it's critical of its own
-subject. Feeds are defined in one YAML file as "posts about these topics, above this
+Every English post on the network is classified seconds after it's posted, from its text and
+its first two pictures: which of 25 broad topics and 117 subtopics it's about, what tone it
+has, and eleven scores such as how substantive it is, whether it's news, whether it's an ad or
+spam, whether it's critical of its own subject, and whether it's a meme. Feeds are defined in one YAML file as "posts about these topics, above this
 confidence, with these score rules", ranked by engagement and freshness, and served to the
 Bluesky app from `https://feeds.hailey.at`. A web page at the same address builds and previews
 feeds interactively.
 
-The classifier is a ModernBERT-base model distilled from **Jev** (`jev-1.13.0`), a hosted
-model that answers structured questions about text. Jev labels a sample of posts; the small
-model learns to reproduce its answers and runs on one GPU at about 770 posts a second, for
-roughly 1/2,000th of Jev's cost per post. The model is on Hugging Face:
-[haileyok/microblog-topic-classifier-v4](https://huggingface.co/haileyok/microblog-topic-classifier-v4).
+The classifier is a small model distilled from two hosted teachers that answer structured
+questions: **Jev** (`jev-1.13.0`) for posts with text or a link card, and **Clef-flash** for posts
+with pictures. The teachers label a sample of posts; the small model (a fine-tuned Ettin-150M text
+encoder plus frozen SigLIP 2 picture embeddings) learns to reproduce their answers and runs on one
+GPU. The model is on Hugging Face (private for now):
+[haileyok/microblog-topic-classifier-v5](https://huggingface.co/haileyok/microblog-topic-classifier-v5).
 
 - [How it works](#how-it-works)
 - [Running it](#running-it)
@@ -33,9 +34,9 @@ roughly 1/2,000th of Jev's cost per post. The model is on Hugging Face:
  Jetstream ── posts, ──►│ ingest ──► ClickHouse ◄── modlabels ◄── Bluesky moderation labels │
  (Bluesky     likes,    │               │  ▲                                                 │
   firehose)   reposts,  │               ▼  │                                                 │
-              deletes   │            pipeline ── label policy, OCR, image descriptions ──►   │
-                        │               │  ▲         (tesseract; vision model via the        │
-                        │               ▼  │          AI gateway)                            │
+              deletes   │            pipeline ── label policy, downloads each post's ──►    │
+                        │               │  ▲         first two pictures from the CDN         │
+                        │               ▼  │                                                 │
                         │        classifier service (GPU, trainer/serve.py)                  │
                         │               │                                                    │
                         │               ▼                                                    │
@@ -60,22 +61,22 @@ roughly 1/2,000th of Jev's cost per post. The model is on Hugging Face:
    have usually arrived:
    - applies the label policy (`config/label_policy.yaml`): posts are `ok`, `adult_only`
      (shown only in feeds that allow adult content), or `drop` (never shown);
-   - finds text for images without alt text: tesseract OCR first, and if that finds fewer
-     than 7 confident words, a one- or two-sentence description from a vision model (Luna,
-     `gpt-6-luna`) through the AI gateway, within a daily budget;
-   - sends the post, rendered as a *post document* (below), to the classifier service and
-     writes everything to `post_pipeline`.
+   - downloads the post's first two pictures (images, carousel items, quoted-post media, or a
+     video's poster frame) from the Bluesky CDN, for `ok` and `adult_only` posts;
+   - sends the post, rendered as a *post document* (below), and its pictures to the classifier
+     service and writes everything to `post_pipeline`. A post whose pictures didn't download
+     is classified without them and retried later (see Operations).
 4. **The classifier service** (`trainer/serve.py`) runs on the host under systemd, serves the
-   current model on the GPU at `127.0.0.1:8700`, and answers batches of post documents with
-   topic, tone, and score probabilities.
+   current model on the GPU at `127.0.0.1:8700`, and answers batches of posts (document text and
+   up to two pictures each) with topic, tone, and score probabilities.
 5. **The feed generator** (`cmd/feedgen`) rebuilds every feed every 20 seconds from the last 48
    hours of `post_pipeline`, ranks it, and serves `app.bsky.feed.getFeedSkeleton` to Bluesky.
    It also records the interactions Bluesky sends back (seen, liked, "show more", "show less")
    and serves the feed builder page.
 
-Training happens offline: the **labeler** (`cmd/labeler`) asks Jev about a sample of posts,
-**export** (`cmd/export`) turns the labels into a training set, and the **trainer**
-(`trainer/`) fine-tunes the model on the GPU.
+Training happens offline: the **labeler** (`cmd/labeler`) asks Jev about posts with text, Clef-flash
+labels posts with pictures on a rented GPU (`trainer/clef_*.py`), and the **trainer** (`trainer/`)
+builds a training set from both and fine-tunes the model (`docs/training.md`).
 
 ## Running it
 
@@ -93,15 +94,14 @@ override with `ENV_FILE=`):
 |---|---|---|
 | `CLICKHOUSE_PASSWORD` | everything | database password |
 | `JETSTREAM_API_KEY` | ingest, verifyingest | Jetstream archive replay |
-| `TYPESAFE_API_KEY` | labeler, pipeline | the AI gateway key (Jev, image descriptions) |
+| `TYPESAFE_API_KEY` | labeler | the AI gateway key (Jev) |
 | `FEEDGEN_HOSTNAME` | feedgen | public hostname, e.g. `feeds.hailey.at` |
 | `FEEDGEN_OWNER_DID` | feedgen | the account that owns the feed records |
 | `FEEDGEN_HANDLE`, `FEEDGEN_APP_PASSWORD` | `make feeds-publish` | login for writing feed records |
 | `FEEDGEN_BUILDER_ADULT_KEY` | feedgen | optional; the owner's key for adult content in the feed builder (at least 24 characters) |
 
 Each command documents its other settings (all with defaults) at the top of its `main.go`;
-for example the pipeline's `LLM_DAILY_BUDGET_USD`, `LLM_TIMEOUT_SECONDS`, `OCR_WORKERS`, and
-feedgen's `FEEDGEN_WINDOW_HOURS`, `FEEDGEN_REFRESH_SECONDS`, `FEEDGEN_MAX_POSTS`.
+for example the pipeline's `CLASSIFIER_URL` and `IMAGE_RETRY_*`, and feedgen's `FEEDGEN_WINDOW_HOURS`, `FEEDGEN_REFRESH_SECONDS`, `FEEDGEN_MAX_POSTS`.
 
 ### Starting everything
 
@@ -114,8 +114,8 @@ make feeds-publish        # write the feed records to the owner's account (asks 
 make install-backup       # nightly backup timer
 ```
 
-The pipeline waits for the classifier service and refuses to start if the model expects a
-post document version it can't render. Enable linger (`loginctl enable-linger $USER`) so
+The pipeline waits for the classifier service, takes how many pictures per post the model looks
+at from it, and refuses to start if the model expects a post document version it can't render. Enable linger (`loginctl enable-linger $USER`) so
 rootless containers keep running without a login session.
 
 ### Services and ports
@@ -233,7 +233,7 @@ caches repeated settings for 30 seconds.
   every topic; `taxonomy/v1-equivalences.yaml` lists subtopics treated as interchangeable when
   scoring.
 - **Tone**: `informative`, `humorous`, `personal`, `outraged`, `supportive`, or `other`.
-- **Signals**, each 0-1, one per question Jev answers:
+- **Signals**, each 0-1, one per question the teachers answer:
 
 | signal | question |
 |---|---|
@@ -247,13 +247,14 @@ caches repeated settings for 30 seconds.
 | `engagement_bait` | does it mainly ask for follows, likes, reposts, or replies |
 | `spam` | is it a scam, money scheme, automated junk, link farm, or hashtag pile |
 | `self_promo` | is the author sharing their own work (art, writing, music, stream, shop, research) |
+| `meme` | is it mainly a meme: a captioned, edited, or AI-generated joke image, or a reaction image. Only stored for posts whose pictures the model saw; a feed rule on a missing score treats it as 0 |
 
 `critical` is what makes feeds like AI usable: many posts against a topic are sarcastic or
 personal rather than angry, so tone alone doesn't catch them.
 
 ### The post document
 
-Jev and the model must see exactly the same content, or the model learns to guess from
+The teachers and the model must see the same content, or the model learns to guess from
 information it never gets. `internal/postdoc` builds the one canonical rendering; for the model
 it's plain text:
 
@@ -263,68 +264,54 @@ it's plain text:
 [media] 2 images, 1 video
 [labels] porn, nudity
 [alt] {author's alt text}
-[image text] {words read from images without alt text}
-[image description] {descriptions of images without alt text}
 [link] {domain} | {title} | {description}
 [quote] {quoted post text}
 ```
 
-Empty lines are left out. The format has a version (`pd2`) recorded in every label
+Empty lines are left out. The pictures are not described in the document: the model looks at
+them directly. (Older labels and Jev's prompts also have `[image text]` and `[image description]`
+lines, from when the pipeline read pictures with OCR and a vision LLM; the pipeline no longer
+produces them, and the picture-aware model was trained without them for posts with pictures.) The format has a version (`pd2`) recorded in every label
 configuration and model config; any change to either rendering bumps it, and golden files in
 `internal/postdoc/testdata` catch accidental changes. The pipeline renders whichever version the
 loaded model expects.
 
 ### How it's trained
 
-- **Teacher labels.** The labeler sends each post to Jev with questions: which broad topic,
-  then which subtopic within the likeliest broad topics, plus the tone and signal questions.
-  Jev answers with probability distributions, and the model is trained to match them (soft
-  targets), so it learns Jev's uncertainty as well as its top answer. Requests stay within a
-  rate budget (500 a minute by default) shared with other users of the account.
-- **Training data.** About 180k posts from 24 fifteen-minute labeling windows spread over
-  three days (`config/labeling_windows.yaml`, each hour of the day once); a relabel of the
-  ~23k posts Jev was least sure about by a second model, blended with Jev's labels; and 60k
-  recent live posts labeled with the full post document and every signal question (40k random,
-  20k hard cases), of which 10k random posts are held out for testing and 3k for validation.
-- **Model.** ModernBERT-base with mean pooling and four heads (broad, subtopic, signals, tone),
-  temperature-scaled on the validation set. Splits are by time, so test scores measure later,
-  unseen posts.
-- **Current model.** On 10k held-out live posts it agrees with Jev on the broad topic 83.8% of
-  the time (top-3: 96.3%), on the exact subtopic 75.7%, and its subtopic is one of Jev's
-  plausible answers 90.4% of the time. It's published at
-  [haileyok/microblog-topic-classifier-v4](https://huggingface.co/haileyok/microblog-topic-classifier-v4),
-  with a model card covering evaluation, calibration, feed thresholds, signals, and cost, and a
-  standalone loader (`modeling.py`) for using it outside this repo.
+- **Teacher labels.** Jev (the labeler, `cmd/labeler`) answers structured questions about posts
+  with text or a link card: which broad topic, then which subtopic within the likeliest broad
+  topics, plus the tone and signal questions, each as a probability distribution. Clef-flash,
+  a vision-language model run on a rented GPU, answers the same questions about posts with
+  pictures (it sees the pictures), plus the meme question, and its probabilities are calibrated
+  to Jev's sharpness (`trainer/clef_calibrate.py`). The model is trained to match the
+  distributions (soft targets), so it learns the teachers' uncertainty as well as their top
+  answer.
+- **Training data.** 142,696 posts from 2026-09-25 to 2026-09-29 under taxonomy v2.1: 104,800 text
+  and link-card posts labelled by Jev and 37,896 picture posts labelled by Clef-flash. Split by
+  time within each teacher: the newest 8% test, the 4% before them validation.
+- **Model.** A fine-tuned Ettin-150M text encoder (mean pooled) and frozen SigLIP 2 so400m
+  (512 px) embeddings of up to two pictures, fused by a small network into four heads (broad,
+  subtopic, signals including meme, tone), temperature-scaled on the validation set.
+- **Current model.** On the held-out test posts it shares 0.758 of its broad-topic probability
+  with Jev on text posts and 0.781 with Clef-flash on picture posts (1 = identical), and its top
+  pick equals the teacher's on 75.5% and 78.3%. Those measure agreement with a teacher, not human
+  accuracy. Details, hand checks, and limits are in the model card
+  ([haileyok/microblog-topic-classifier-v5](https://huggingface.co/haileyok/microblog-topic-classifier-v5),
+  private for now; the card's source is `trainer/hf/microblog-topic-classifier-v5/README.md`).
 
 ## Training a new model
 
-`docs/training.md` has the details; in short:
+`docs/training.md` has the whole flow: label with the teachers, build the training set
+(`trainer/build_mm_dataset.py`), embed the pictures (`trainer/extract_image_features.py`), train
+(`trainer/train_fusion.py`), score against the teachers (`trainer/mm_score.py`), and package and
+verify the model (`trainer/package_fusion.py`, `trainer/verify_fusion_package.py`).
 
-```sh
-set -a; . ~/.config/topic-feed/env; set +a   # commands run with go run need the env file
-
-# 1. Label posts with Jev (runs for hours; resumable)
-go run ./cmd/labeler -live random -source sample -limit 40000 \
-  -from 2026-09-29T05:00:00Z -to 2026-09-30T00:00:00Z
-
-# 2. Export a training set: the label configurations to include, and the ones labeled
-#    with the full post document (image text, attachments, labels)
-make export LABEL_CONFIG=5697660f73fc,6a350cf6d994,ea4d660431d6 FULL_CONTEXT=ea4d660431d6 \
-  EXPORT=/data/exports/v4
-
-# 3. Train on the GPU (about 80 minutes; watch at :6006)
-make train EXPORT=/data/exports/v4 RUN=v4 EPOCHS=8 \
-  TRAIN_ARGS="--live-configs ea4d660431d6 --live-weight 3 --live-test 10000 --live-val 3000"
-
-# 4. Compare with the model in production
-cd trainer && uv run python compare_live.py --export /data/exports/v4 --live-configs ea4d660431d6 \
-  --production-inputs /data/exports/v4/production_inputs.jsonl.gz --models <current> v4
-```
-
-To switch models: point `MODEL_DIR` in `deploy/systemd/topic-feed-classifier.service` at the
-new model, `make install-classifier`, rebuild and restart the pipeline, then re-score the posts
-feeds can still show with `go run ./cmd/rescore -from-model <old> -before <switch time>`
-(it reuses stored image text, so no image fetches or model calls).
+To switch models: put the model folder where the classifier service reads it (`MODEL_DIR` in
+`deploy/systemd/topic-feed-classifier.service`; the picture encoder's weights,
+`google/siglip2-so400m-patch16-512`, must be in the Hugging Face cache because the service runs
+offline), `make install-classifier`, restart the pipeline, then re-score the posts feeds can still
+show with `go run ./cmd/rescore -from-model <old> -after <48 hours ago> -before <switch time>`
+(it reuses stored labels and policy decisions and downloads each post's pictures again).
 
 Long jobs (labeling, training, rescoring) should run in `tmux`, a systemd unit, or similar, so
 a dropped session doesn't stop them. The labeler and rescore both resume where they left off.
@@ -340,11 +327,11 @@ Everything is in ClickHouse, database `topicfeed` (`make ch`):
 | `likes`, `reposts`, `like_counts_hourly`, `engagement_hourly`, `post_refs` | engagement for ranking |
 | `deletions`, `account_status` | deleted posts and deactivated or suspended accounts, applied on every read |
 | `mod_labels` | moderation labels and label removals |
-| `post_pipeline` | per post: label policy decision, labels, image text and its source, model, topic probabilities, tone, signals |
+| `post_pipeline` | per post: label policy decision, labels, pictures wanted and used, model, topic probabilities, tone, signals (older rows also have the image text and its source from the OCR/LLM days) |
 | `jev_labels`, `jev_requests` | teacher labels and the request log (tokens, latency, status) |
 | `feed_interactions` | what Bluesky reports people did with feed posts |
 | `ingest_cursor` | stream positions for ingest, modlabels, and the pipeline |
-| `image_retry_queue` | posts whose image step failed, waiting for a retry, with attempts and the last error |
+| `image_retry_queue` | posts whose pictures didn't all download, waiting for a retry, with attempts and the last error |
 
 Tables that are re-written (`posts`, `post_pipeline`, …) are `ReplacingMergeTree`s: read them
 with `FINAL` to get one row per post.
@@ -354,19 +341,17 @@ with `FINAL` to get one row per post.
 - **Backups.** `topic-feed-backup.timer` runs `deploy/backup.sh` nightly at 03:30 UTC: Jev
   labels, request logs, and model files, to the OS drive, kept 14 days. Ingest tables aren't
   backed up; the Jetstream archive can replay them.
-- **Costs.** Jev labeling is about $0.11 per 1,000 posts. Image descriptions are capped per day
-  (`LLM_DAILY_BUDGET_USD`, $25 in `docker-compose.yml`) and typically run about $10 a day. The
-  model itself only costs GPU time.
-- **Resilience.** If the AI gateway slows down, image descriptions time out after 15 seconds,
-  and when most recent calls fail they pause for a minute (images are then marked
-  `unavailable`), so classification keeps up. The pipeline's lag is `pipeline_lag_seconds` on
+- **Costs.** Jev labeling is about $0.11 per 1,000 posts. The live model only costs GPU time and
+  the picture downloads; nothing is sent to an outside service while classifying.
+- **Resilience.** If the classifier service is down the pipeline waits and retries, and picks up
+  from its saved position when the service is back. A picture download times out after 15 seconds
+  and never stops a post from being classified. The pipeline's lag is `pipeline_lag_seconds` on
   its metrics endpoint; posts are normally classified about 15 seconds after they're posted.
-- **Failed images are retried.** Posts whose image step failed or was skipped during a pause
-  go into `image_retry_queue`; the pipeline retries just those images after about 2 min,
-  10 min, 30 min, 2 h, and 6 h, re-classifies the post when anything changes, and gives up
-  after 5 failures. Posts keep appearing in feeds meanwhile with their text-only
-  classification. `SELECT status, count() FROM image_retry_queue FINAL GROUP BY status` shows
-  the queue.
+- **Pictures that failed are retried.** A post whose pictures didn't all download is classified
+  with the ones that did (`pictures_used` < `pictures_wanted` in `post_pipeline`) and goes into
+  `image_retry_queue`; the pipeline downloads the missing ones after about 2 min, 10 min,
+  30 min, 2 h, and 6 h, re-classifies the post when it got more, and gives up after 5 failures.
+  `SELECT status, count() FROM image_retry_queue FINAL GROUP BY status` shows the queue.
 - **Checking ingest.** `go run ./cmd/verifyingest -after <seq> -before <seq>` re-reads a range
   from the Jetstream archive and reports any post missing from `post_texts`.
 - **Reports.** Labeling runs, comparison pages, and taxonomy reviews are written under

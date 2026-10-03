@@ -29,7 +29,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model", required=True, help="folder with model.pt, config.json, metrics.json")
     ap.add_argument("--taxonomy", default=str(HERE.parent / "taxonomy" / "v2.1.yaml"))
-    ap.add_argument("--module", default=None, help="topic_classifier.py to copy (default: the one already in --out)")
+    ap.add_argument("--module", default=str(HERE / "topic_classifier.py"), help="topic_classifier.py to copy into --out")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     out, src = Path(a.out), Path(a.model)
@@ -46,6 +46,7 @@ def main():
     AutoConfig.from_pretrained(cfg["text_model"]).save_pretrained(out / "text_encoder")
     AutoTokenizer.from_pretrained(cfg["text_model"]).save_pretrained(out / "tokenizer")
 
+    cfg["postdoc_version"] = "pd2"  # the post document format (internal/postdoc) the Go pipeline renders for this model
     json.dump(cfg, open(out / "config.json", "w"), indent=2)
 
     tax = yaml.safe_load(open(a.taxonomy))
@@ -63,8 +64,7 @@ def main():
     m["args"] = {k: v for k, v in m["args"].items() if k not in ("export", "feats", "out", "taxonomy", "tb")}
     json.dump(m, open(out / "metrics.json", "w"), indent=1)
 
-    if a.module:
-        shutil.copy(a.module, out / "topic_classifier.py")
+    shutil.copy(a.module, out / "topic_classifier.py")
     print("done:", sorted(p.name for p in out.iterdir()))
 
 

@@ -7,11 +7,12 @@ A model's top path is scored four ways:
   +look-alike  it matches an acceptable path through taxonomy/<v>-equivalences.yaml
   broad        its broad topic is the broad topic of an acceptable path
 
-Scores Jev (its label in --export), each student model, and optionally an LLM asked
-fresh with relabel.py's prompt (answers cached in /data/relabel/gold-<name>.llm.jsonl).
+Scores Jev (its label in --export), any other labeler's or model's answers given with --answers
+(a JSON file of {uri: top path}), and optionally an LLM asked fresh with relabel.py's prompt
+(answers cached in /data/relabel/gold-<name>.llm.jsonl).
 
     uv run python gold_check.py --labels ../reference/gold/v1-gold-100.labels-1.json \
-        --models v1 v2 v3-blend --llm gpt-6-luna:api
+        --answers fusion=/tmp/fusion-gold.paths.json --llm gpt-6-luna:api
 """
 
 import argparse
@@ -60,26 +61,6 @@ def score(answers: dict[str, str], gold: dict[str, dict], eq, pi, texts) -> dict
     return out
 
 
-def student_answers(model_dir: str, space, uris: list[str], texts: dict[str, str]) -> dict[str, str]:
-    import torch
-    from transformers import AutoTokenizer
-
-    import tbreport
-    from train import Student
-
-    cfg = json.load(open(f"{model_dir}/config.json"))
-    tok = AutoTokenizer.from_pretrained(model_dir)
-    m = Student(cfg["base"], len(space.broad), len(space.paths), n_signals=len(cfg["signals"])).cuda()
-    m.load_state_dict(torch.load(f"{model_dir}/model.pt", map_location="cuda"))
-    d = common.Data(uris, [texts[u] for u in uris], [""] * len(uris), np.zeros((len(uris), len(space.broad))),
-                    np.zeros((len(uris), len(space.paths))), np.zeros((len(uris), 4)), np.zeros((len(uris), 6)),
-                    np.zeros(len(uris)), ["window"] * len(uris))
-    _, sp, _, _ = tbreport.probs(tbreport.predict(m, d, tok, cfg["max_len"]), cfg["temperature_broad"], cfg["temperature_path"])
-    del m
-    torch.cuda.empty_cache()
-    return {u: space.paths[int(sp[i].argmax())] for i, u in enumerate(uris)}
-
-
 def llm_answers(model: str, name: str, space, uris, texts) -> tuple[dict[str, str], float]:
     import relabel
 
@@ -116,7 +97,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--labels", required=True, help="labels downloaded from the gold page")
     ap.add_argument("--export", default="/data/exports/v1-final", help="export holding Jev's labels")
-    ap.add_argument("--models", nargs="*", default=["v1", "v2", "v3-blend"])
     ap.add_argument("--llm", default="", help="also ask this LLM fresh (e.g. gpt-6-luna:api)")
     ap.add_argument("--answers", nargs="*", default=[], metavar="NAME=FILE",
                     help="also score another labeler's answers: FILE is JSON of {uri: top path} "
@@ -154,8 +134,6 @@ def main():
                         cand[b] = math.sqrt(v)  # broad topics without subtopics: comparable to path scores
                 jev[r["uri"]] = max(cand.items(), key=lambda kv: kv[1])[0] if cand else None
     answers["Jev"] = jev
-    for m in a.models:
-        answers[m] = student_answers(f"/data/models/{m}", space, uris, texts)
     for spec in a.answers:
         name, _, path = spec.partition("=")
         answers[name] = json.load(open(path))
@@ -193,7 +171,7 @@ def main():
             res["paired"][f"{x} vs {y}"] = [b, c]
             print(f"  {x:>14s} vs {y:<14s} {b:2d} / {c:2d}")
 
-    # Misses for the best student model, to see what goes wrong.
+    # Every labeler's answer for every post, to see what goes wrong.
     res["answers"] = {u: {"gold": gold[u]["acceptable"], **{k: v.get(u) for k, v in answers.items()},
                           "text": texts[u][:140]} for u in uris}
     if a.out:
