@@ -118,6 +118,9 @@ def main():
     ap.add_argument("--export", default="/data/exports/v1-final", help="export holding Jev's labels")
     ap.add_argument("--models", nargs="*", default=["v1", "v2", "v3-blend"])
     ap.add_argument("--llm", default="", help="also ask this LLM fresh (e.g. gpt-6-luna:api)")
+    ap.add_argument("--answers", nargs="*", default=[], metavar="NAME=FILE",
+                    help="also score another labeler's answers: FILE is JSON of {uri: top path} "
+                         "(clef_labels.py writes <out>.paths.json)")
     ap.add_argument("--fix", default="", help="JSON file of {uri: {acceptable, primary}} corrections to apply")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
@@ -153,6 +156,9 @@ def main():
     answers["Jev"] = jev
     for m in a.models:
         answers[m] = student_answers(f"/data/models/{m}", space, uris, texts)
+    for spec in a.answers:
+        name, _, path = spec.partition("=")
+        answers[name] = json.load(open(path))
     cost = None
     if a.llm:
         answers[a.llm], cost = llm_answers(a.llm, os.path.basename(a.labels).split(".")[0], space, uris, texts)

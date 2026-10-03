@@ -103,3 +103,17 @@ install-backup: ## Install and start the nightly backup timer (systemd user unit
 	cp deploy/systemd/topic-feed-backup.service deploy/systemd/topic-feed-backup.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 	systemctl --user enable --now topic-feed-backup.timer
+
+# Image archive (internal/imagearchive, cmd/images): download once and keep the pictures
+# of every post Jev labeled, so relabeling and training read the same pixels. Resumable.
+images-resolve: ## Ask the AppView where each labeled post's pictures are (RPS=N; LIMIT=N for a pilot)
+	set -a; . $(ENV_FILE); set +a; go run ./cmd/images resolve $(if $(LIMIT),-limit $(LIMIT),) $(if $(RPS),-rps $(RPS),)
+
+images-fetch: ## Download the pending pictures into /data/images (FETCH_RPS=N WORKERS=N LIMIT=N)
+	set -a; . $(ENV_FILE); set +a; go run ./cmd/images fetch $(if $(LIMIT),-limit $(LIMIT),) $(if $(FETCH_RPS),-fetch-rps $(FETCH_RPS),) $(if $(WORKERS),-workers $(WORKERS),)
+
+images-purge: ## Mark deleted posts' pictures purged and delete files no other post needs
+	set -a; . $(ENV_FILE); set +a; go run ./cmd/images purge
+
+images-stats: ## Print posts by outcome and pictures by status/kind/policy
+	set -a; . $(ENV_FILE); set +a; go run ./cmd/images stats

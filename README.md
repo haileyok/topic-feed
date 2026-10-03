@@ -381,3 +381,25 @@ with `FINAL` to get one row per post.
 - `docs/feeds-roadmap.md`: planned feed features (interaction dashboard, learning from "show
   less", ranking tuning).
 - The header comments of `config/feeds.yaml`, `config/label_policy.yaml`, and each `cmd/*/main.go`.
+### Image archive
+
+The pictures of every post Jev labeled, downloaded once and kept on disk so a relabel (a vision
+model) and classifier training can read the same pixels as often as they like (posts rot, so
+the archive grabs them while they're still there). It lives under `/data/images`:
+
+- `raw/<sha256[:2]>/<sha256>.<jpg|png|gif>` — the bytes as the CDN served them, named by their
+  SHA-256, so a picture posted twice is stored once.
+- `1000/<sha256[:2]>/<sha256>.jpg` — derived copies for training (`trainer/prepare_images.py`:
+  EXIF-transposed, RGB, long side at most 1000 px, JPEG quality 90).
+
+ClickHouse tracks it all: `post_image_resolve` (one row per post: found, no_images, or gone)
+and `post_images` (one row per picture: status `ok`, `gone`, `bad_image`, `error`, or
+`purged`; read both with `FINAL`).
+
+Run it with `make images-resolve`, `make images-fetch`, `make images-purge`, and
+`make images-stats` (all resumable; `LIMIT=300` for a pilot). The feed policy
+(`config/label_policy.yaml`) applies: pictures of posts whose policy is `drop` are listed
+but never fetched (`skipped_policy`); `adult_only` posts' pictures are fetched like any
+other. Purge marks the pictures of posts that were deleted (or whose author deactivated)
+`purged` and deletes their files, but only when no other kept picture needs the same file.
+

@@ -1,8 +1,10 @@
 package labeler
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -149,6 +151,124 @@ func (s *Store) SelectLive(ctx context.Context, taxonomyVersion, labelConfig, so
 		out = append(out, Post{URI: uri, Doc: postdoc.New(in)})
 	}
 	return out, rows.Err()
+}
+
+// URIItem names one post to label and how much of it Jev is shown.
+type URIItem struct {
+	URI string
+	// Plain shows only the columns of the posts row (what SelectWindows shows). Otherwise Jev
+	// also gets the attachments, the text the pipeline found in images, and the labels (what
+	// SelectLive shows).
+	Plain bool
+}
+
+// ReadURIList parses a list of posts to label: one URI per line, optionally followed by a tab
+// and "plain" or "full" (default "full"). Blank lines and lines starting with '#' are skipped,
+// and a URI listed twice counts once, with its first setting.
+func ReadURIList(r io.Reader) ([]URIItem, error) {
+	var items []URIItem
+	seen := map[string]bool{}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 1<<20)
+	for n := 1; sc.Scan(); n++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		uri, mode, _ := strings.Cut(line, "\t")
+		uri, mode = strings.TrimSpace(uri), strings.TrimSpace(mode)
+		if !strings.HasPrefix(uri, "at://") {
+			return nil, fmt.Errorf("line %d: %q is not an at:// URI", n, uri)
+		}
+		if mode != "" && mode != "plain" && mode != "full" {
+			return nil, fmt.Errorf("line %d: unknown mode %q (want plain or full)", n, mode)
+		}
+		if seen[uri] {
+			continue
+		}
+		seen[uri] = true
+		items = append(items, URIItem{URI: uri, Plain: mode == "plain"})
+	}
+	return items, sc.Err()
+}
+
+// uriChunk is how many URIs go into one query; it keeps the query text under ClickHouse's
+// default max_query_size.
+const uriChunk = 1000
+
+// SelectURIs returns the listed posts that aren't yet labeled under (taxonomyVersion,
+// labelConfig), in list order, and how many listed posts are missing from the posts table.
+// Unlike the other selections it skips nothing else (deleted posts, inactive authors, and
+// posts without text are labeled too), since the list was chosen by hand.
+func (s *Store) SelectURIs(ctx context.Context, taxonomyVersion, labelConfig string, items []URIItem) ([]Post, int, error) {
+	docs := make(map[string]postdoc.Doc, len(items))
+	plain := make(map[string]bool, len(items))
+	for _, it := range items {
+		plain[it.URI] = it.Plain
+	}
+	for i := 0; i < len(items); i += uriChunk {
+		chunk := make([]string, 0, uriChunk)
+		for _, it := range items[i:min(i+uriChunk, len(items))] {
+			chunk = append(chunk, it.URI)
+		}
+		rows, err := s.Conn.Query(ctx, `
+			SELECT p.uri, p.text, p.media_alts, p.link_domain, p.link_title, p.link_description, p.quote_text,
+			       p.tags, p.media_kinds, pp.image_texts, pp.image_text_sources, pp.labels
+			FROM (SELECT * FROM posts FINAL WHERE uri IN ?) AS p
+			LEFT JOIN (SELECT uri, image_texts, image_text_sources, labels FROM post_pipeline FINAL WHERE uri IN ?) AS pp
+			       ON pp.uri = p.uri
+			WHERE p.uri NOT IN (SELECT uri FROM jev_labels WHERE taxonomy_version = ? AND label_config = ? AND uri IN ?)`,
+			chunk, chunk, taxonomyVersion, labelConfig, chunk)
+		if err != nil {
+			return nil, 0, err
+		}
+		for rows.Next() {
+			var (
+				uri, text, domain, title, desc, quote string
+				alts, tags, kinds, imgTexts, imgSrcs  []string
+				labels                                []string
+			)
+			if err := rows.Scan(&uri, &text, &alts, &domain, &title, &desc, &quote, &tags, &kinds, &imgTexts, &imgSrcs, &labels); err != nil {
+				rows.Close()
+				return nil, 0, err
+			}
+			in := postdoc.Input{Text: text, MediaAlts: alts, LinkDomain: domain, LinkTitle: title,
+				LinkDescription: desc, QuoteText: quote, Tags: tags}
+			if !plain[uri] {
+				in.MediaKinds, in.Labels = kinds, labels
+				in.AddImageTexts(imgTexts, imgSrcs)
+			}
+			docs[uri] = postdoc.New(in)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		rows.Close()
+	}
+
+	// Posts absent from the posts table are told apart from posts already labeled by asking
+	// which of the listed URIs exist.
+	missing := 0
+	for i := 0; i < len(items); i += uriChunk {
+		chunk := make([]string, 0, uriChunk)
+		for _, it := range items[i:min(i+uriChunk, len(items))] {
+			chunk = append(chunk, it.URI)
+		}
+		var found uint64
+		if err := s.Conn.QueryRow(ctx, "SELECT uniqExact(uri) FROM posts WHERE uri IN ?", chunk).Scan(&found); err != nil {
+			return nil, 0, err
+		}
+		missing += len(chunk) - int(found)
+	}
+
+	out := make([]Post, 0, len(docs))
+	for _, it := range items {
+		if d, ok := docs[it.URI]; ok {
+			out = append(out, Post{URI: it.URI, Doc: d})
+		}
+	}
+	return out, missing, nil
 }
 
 func scanPosts(rows driver.Rows) ([]Post, error) {

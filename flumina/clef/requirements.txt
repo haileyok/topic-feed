@@ -1,0 +1,11 @@
+# Versions the app was tested with locally (an RTX 4090, Python 3.12). Cloudflare tested the
+# release with torch 2.11 and transformers 5.10.2 on an H200; the Flumina service installs
+# these before starting the app.
+torch>=2.11
+torchvision
+transformers==5.17.0
+accelerate
+pillow
+safetensors
+huggingface_hub
+pydantic

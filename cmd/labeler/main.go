@@ -4,6 +4,11 @@
 //	labeler -taxonomy taxonomy/v1.yaml -windows config/labeling_windows.yaml -report auto
 //	labeler -taxonomy taxonomy/v1.yaml -limit 2500        # a spread sample instead
 //	labeler -live random -source sample -limit 40000 -from 2026-09-29T05:00:00Z -to 2026-09-30T00:00:00Z
+//	labeler -taxonomy taxonomy/v2.yaml -uris /data/clef/v2/jev-all.txt -source relabel
+//
+// With -uris it labels exactly the posts in a file you choose (one URI per line, optionally a
+// tab and "plain" or "full" for how much of the post Jev sees), skipping the ones already
+// labeled under the same taxonomy version and label_config, so a rerun resumes.
 //
 // With -windows it labels every not-yet-labeled post in the labeling windows. A rerun
 // (or a restart after a crash) picks up where it left off, since posts that already
@@ -48,6 +53,7 @@ func main() {
 type opts struct {
 	taxPath, windowsPath, report, source string
 	liveMode, liveFrom, liveTo           string
+	urisPath                             string
 	limit, rounds                        int
 	cfg                                  labeler.Config
 }
@@ -60,6 +66,7 @@ func run(log *slog.Logger) error {
 	flag.StringVar(&o.liveMode, "live", "", `label posts the pipeline classified: "random" or "uncertain" (low confidence or weak topics); needs -from and -to`)
 	flag.StringVar(&o.liveFrom, "from", "", "with -live: start of the time range (RFC 3339)")
 	flag.StringVar(&o.liveTo, "to", "", "with -live: end of the time range (RFC 3339)")
+	flag.StringVar(&o.urisPath, "uris", "", "label exactly the posts listed in this file (one URI per line, optionally a tab and plain|full), in that order; exclusive with -windows and -live")
 	flag.StringVar(&o.source, "source", "window", "jev_labels.source value")
 	flag.StringVar(&o.report, "report", "", `write the review report when done: a directory, or "auto" for /data/reports/<version>-<label_config>`)
 	flag.IntVar(&o.rounds, "rounds", 3, "passes over remaining unlabeled posts (retries failed batches)")
@@ -88,6 +95,24 @@ func run(log *slog.Logger) error {
 	if o.windowsPath != "" {
 		if ws, err = windows.Load(o.windowsPath); err != nil {
 			return err
+		}
+	}
+	var uriItems []labeler.URIItem
+	if o.urisPath != "" {
+		if len(ws) > 0 || o.liveMode != "" {
+			return errors.New("-uris is exclusive with -windows and -live")
+		}
+		f, err := os.Open(o.urisPath)
+		if err != nil {
+			return err
+		}
+		uriItems, err = labeler.ReadURIList(f)
+		f.Close()
+		if err != nil {
+			return fmt.Errorf("-uris %s: %w", o.urisPath, err)
+		}
+		if len(uriItems) == 0 {
+			return fmt.Errorf("-uris %s: no posts listed", o.urisPath)
 		}
 	}
 	var liveFrom, liveTo time.Time
@@ -128,6 +153,12 @@ func run(log *slog.Logger) error {
 	for round := 1; round <= o.rounds; round++ {
 		var posts []labeler.Post
 		switch {
+		case o.urisPath != "":
+			var missing int
+			posts, missing, err = store.SelectURIs(ctx, tax.Version, labelConfig, uriItems)
+			if err == nil && missing > 0 {
+				log.Warn("listed posts not in the posts table", "missing", missing, "listed", len(uriItems))
+			}
 		case o.liveMode != "":
 			posts, err = store.SelectLive(ctx, tax.Version, labelConfig, o.source, o.liveMode, liveFrom, liveTo, o.limit)
 		case len(ws) > 0:
@@ -148,7 +179,7 @@ func run(log *slog.Logger) error {
 			return err
 		}
 		log.Info("round done", "round", round, "failed", failed)
-		if failed == 0 || (len(ws) == 0 && o.liveMode == "") {
+		if failed == 0 || (len(ws) == 0 && o.liveMode == "" && o.urisPath == "") {
 			break // the spread sample is a one-shot preview
 		}
 	}
