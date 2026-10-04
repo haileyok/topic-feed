@@ -24,6 +24,7 @@ import io
 import json
 import os
 import queue
+import sys
 import threading
 import time
 import traceback
@@ -285,6 +286,8 @@ def warm_up(clf: Classifier):
 def main():
     model_dir = os.environ.get("MODEL_DIR", "/data/models/v5")
     host, _, port = os.environ.get("SERVE_ADDR", "0.0.0.0:8700").rpartition(":")
+    if os.environ.get("SWITCH_INTERVAL"):  # seconds a thread may hold the GIL when others wait (Python default 0.005)
+        sys.setswitchinterval(float(os.environ["SWITCH_INTERVAL"]))
     clf = Classifier(model_dir)
     warm_up(clf)
     every = float(os.environ.get("TOPIC_PROFILE_SECONDS", "30"))  # 0 turns the timing log off
