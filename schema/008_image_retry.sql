@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS image_retry_queue
     uri              String,
     did              String,
     indexed_at       DateTime64(6, 'UTC'),
-    status           LowCardinality(String),   -- pending | fixed | gave_up
+    status           LowCardinality(String),   -- pending | fixed | gave_up | deleted (post deleted or account inactive: not retried)
     attempts         UInt8,                    -- retries that ran (paused tries don't count)
     next_attempt_at  DateTime64(3, 'UTC'),
     last_error       String,                   -- why the last try failed

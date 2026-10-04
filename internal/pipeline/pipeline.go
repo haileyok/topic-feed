@@ -258,7 +258,7 @@ func (p *Pipeline) process(ctx context.Context, ps post, labeler map[string][]st
 	if r.FeedPolicy != labelpolicy.Drop {
 		refs := pictureRefs(ps, p.Cfg.MaxPictures)
 		r.PicturesWanted = uint8(len(refs))
-		pics, _ = p.fetchPictures(ctx, ps.DID, refs)
+		pics, _ = p.fetchPictures(ctx, stageFetch, ps.DID, refs)
 		r.PicturesUsed = uint8(len(pics))
 	}
 	r.ProcessedAt = time.Now().UTC()

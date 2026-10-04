@@ -31,6 +31,9 @@ const (
 	RetryPending = "pending"
 	RetryFixed   = "fixed"
 	RetryGaveUp  = "gave_up"
+	// RetryGone: the post was deleted or its account is inactive, so its pictures are gone and no
+	// retry can bring them back. It is not fetched.
+	RetryGone = "deleted"
 )
 
 // queueRow mirrors image_retry_queue.
@@ -69,14 +72,18 @@ func (p *Pipeline) RetryPictures(ctx context.Context, cfg RetryConfig) {
 func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 	// Sweep: every recent post whose pictures didn't all download and that isn't queued yet. The
 	// sweep (rather than queueing at write time) also catches a crash between writing a post and
-	// queueing it.
+	// queueing it. Posts that were deleted, and posts of inactive accounts, are left out: their
+	// pictures are gone (a rescore of older posts finds many), and retrying them only fails.
+	// A deletion is indexed after its post, so deletions since the window began cover them.
 	if err := p.Conn.Exec(ctx, `
 		INSERT INTO image_retry_queue (uri, did, indexed_at, status, attempts, next_attempt_at, last_error, queued_at, updated_at)
 		SELECT uri, did, indexed_at, 'pending', 0, now64(3), '', now64(3), now64(3)
 		FROM post_pipeline FINAL
 		WHERE indexed_at > now64(6) - toIntervalSecond(?) AND feed_policy != ? AND pictures_used < pictures_wanted
-		  AND uri NOT IN (SELECT uri FROM image_retry_queue WHERE indexed_at > now64(6) - toIntervalSecond(?))`,
-		int64(cfg.Window.Seconds()), labelpolicy.Drop, int64(cfg.Window.Seconds())); err != nil {
+		  AND uri NOT IN (SELECT uri FROM image_retry_queue WHERE indexed_at > now64(6) - toIntervalSecond(?))
+		  AND uri NOT IN (SELECT uri FROM deletions WHERE collection = 'app.bsky.feed.post' AND indexed_at > now64(6) - toIntervalSecond(?))
+		  AND did NOT IN (SELECT did FROM account_status GROUP BY did HAVING argMax(active, indexed_at) = 0)`,
+		int64(cfg.Window.Seconds()), labelpolicy.Drop, int64(cfg.Window.Seconds()), int64(cfg.Window.Seconds())); err != nil {
 		return fmt.Errorf("sweep: %w", err)
 	}
 	var pending uint64
@@ -115,6 +122,10 @@ func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 	for _, r := range rs {
 		byURI[r.URI] = r
 	}
+	gone, err := p.gonePosts(ctx, due)
+	if err != nil {
+		return err
+	}
 
 	type outcome struct {
 		row     Row
@@ -122,15 +133,20 @@ func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 		pics    [][]byte
 		changed bool // more pictures than before: write a new post_pipeline row
 		fixed   bool // every picture downloaded, or nothing left to retry
+		gone    bool // the post was deleted or its account is inactive: not fetched
 		err     string
 	}
 	outs := make([]outcome, len(due))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, max(1, cfg.Workers))
 	for i, q := range due {
+		if gone[q.URI] {
+			outs[i] = outcome{gone: true} // its pictures are gone for good: don't ask for them
+			continue
+		}
 		r, ok := byURI[q.URI]
 		if !ok || r.FeedPolicy == labelpolicy.Drop {
-			outs[i] = outcome{fixed: true} // deleted, or no longer shown: nothing to retry
+			outs[i] = outcome{fixed: true} // no longer shown: nothing to retry
 			continue
 		}
 		wg.Add(1)
@@ -139,7 +155,7 @@ func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 			defer func() { <-sem; wg.Done() }()
 			row := r.row()
 			refs := pictureRefs(r.post, p.Cfg.MaxPictures)
-			pics, failed := p.fetchPictures(ctx, r.DID, refs)
+			pics, failed := p.fetchPictures(ctx, stageRetryFetch, r.DID, refs)
 			o := outcome{row: row, post: r.post, pics: pics}
 			o.row.PicturesWanted, o.row.PicturesUsed = uint8(len(refs)), uint8(len(pics))
 			o.changed = len(pics) > int(r.PicturesUsed)
@@ -183,8 +199,13 @@ func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 	counts := map[string]int{}
 	for i, q := range due {
 		o := outs[i]
-		q.Status, q.Attempts, q.NextAttemptAt = nextRetryState(q.Attempts, o.fixed, now, cfg)
-		q.LastError, q.UpdatedAt = truncateErr(o.err), now
+		if o.gone {
+			q.Status, q.NextAttemptAt, q.LastError = RetryGone, now, "post deleted or account inactive"
+		} else {
+			q.Status, q.Attempts, q.NextAttemptAt = nextRetryState(q.Attempts, o.fixed, now, cfg)
+			q.LastError = truncateErr(o.err)
+		}
+		q.UpdatedAt = now
 		updates[i] = q
 		result := q.Status
 		if q.Status == RetryPending {
@@ -199,8 +220,57 @@ func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
 		return fmt.Errorf("update queue: %w", err)
 	}
 	p.Log.Info("picture retries", "tried", len(due), "rewritten", len(rows), "fixed", counts[RetryFixed],
-		"failed", counts["failed"], "gave_up", counts[RetryGaveUp], "pending", pending)
+		"failed", counts["failed"], "gave_up", counts[RetryGaveUp], "deleted", counts[RetryGone], "pending", pending)
 	return nil
+}
+
+// gonePosts returns the URIs among the queued posts that cannot get their pictures back: posts
+// that were deleted, and posts of accounts whose latest status is inactive (deactivated,
+// suspended, taken down).
+func (p *Pipeline) gonePosts(ctx context.Context, due []queueRow) (map[string]bool, error) {
+	uris := make([]string, 0, len(due))
+	dids := make([]string, 0, len(due))
+	seen := map[string]bool{}
+	for _, q := range due {
+		uris = append(uris, q.URI)
+		if !seen[q.DID] {
+			seen[q.DID] = true
+			dids = append(dids, q.DID)
+		}
+	}
+	var deleted []struct {
+		URI string `ch:"uri"`
+	}
+	// did IN uses the table's sort key (collection, did, rkey).
+	if err := p.Conn.Select(ctx, &deleted, `
+		SELECT DISTINCT uri FROM deletions
+		WHERE collection = 'app.bsky.feed.post' AND did IN ? AND uri IN ?`, dids, uris); err != nil {
+		return nil, fmt.Errorf("select deletions: %w", err)
+	}
+	var inactive []struct {
+		DID string `ch:"did"`
+	}
+	if err := p.Conn.Select(ctx, &inactive, `
+		SELECT did FROM account_status
+		WHERE did IN ?
+		GROUP BY did
+		HAVING argMax(active, indexed_at) = 0`, dids); err != nil {
+		return nil, fmt.Errorf("select account status: %w", err)
+	}
+	gone := make(map[string]bool, len(deleted))
+	for _, d := range deleted {
+		gone[d.URI] = true
+	}
+	off := make(map[string]bool, len(inactive))
+	for _, a := range inactive {
+		off[a.DID] = true
+	}
+	for _, q := range due {
+		if off[q.DID] {
+			gone[q.URI] = true
+		}
+	}
+	return gone, nil
 }
 
 // nextRetryState is a queue entry's state after a try.

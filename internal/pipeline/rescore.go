@@ -79,7 +79,7 @@ func (p *Pipeline) prepareWindow(ctx context.Context, start, lo, end time.Time, 
 		go func(i int) {
 			defer func() { <-sem; wg.Done() }()
 			refs := pictureRefs(w.posts[i], p.Cfg.MaxPictures)
-			w.pics[i], _ = p.fetchPictures(ctx, w.posts[i].DID, refs)
+			w.pics[i], _ = p.fetchPictures(ctx, stageFetch, w.posts[i].DID, refs)
 			w.rows[i].PicturesWanted, w.rows[i].PicturesUsed = uint8(len(refs)), uint8(len(w.pics[i]))
 		}(i)
 	}

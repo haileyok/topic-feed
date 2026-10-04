@@ -62,9 +62,18 @@ func pictureRefs(ps post, max int) []pictureRef {
 	return refs
 }
 
-// fetchPictures downloads the pictures for refs. It returns the ones it got, in order, and how many
-// it could not get (the retry worker tries those again later).
-func (p *Pipeline) fetchPictures(ctx context.Context, did string, refs []pictureRef) (pics [][]byte, failed int) {
+// Stages of pipeline_errors_total for failed picture downloads. They are separate so the live
+// failure rate is not buried under retries: a picture that cannot be fetched (its post was
+// deleted, say) fails once as stageFetch and then again at every retry as stageRetryFetch.
+const (
+	stageFetch      = "fetch"       // a post's pictures downloaded for the first time (or by a rescore)
+	stageRetryFetch = "retry_fetch" // the retry worker trying a post's missing pictures again
+)
+
+// fetchPictures downloads the pictures for refs; a failed download counts as an error of the given
+// stage. It returns the ones it got, in order, and how many it could not get (the retry worker
+// tries those again later).
+func (p *Pipeline) fetchPictures(ctx context.Context, stage, did string, refs []pictureRef) (pics [][]byte, failed int) {
 	for _, ref := range refs {
 		t0 := time.Now()
 		fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
@@ -74,7 +83,7 @@ func (p *Pipeline) fetchPictures(ctx context.Context, did string, refs []picture
 		if err != nil || len(img) == 0 {
 			failed++
 			metricPictures.WithLabelValues("failed").Inc()
-			metricErrors.WithLabelValues("fetch").Inc()
+			metricErrors.WithLabelValues(stage).Inc()
 			p.Log.Debug("picture fetch failed", "err", err, "did", did, "cid", ref.CID)
 			continue
 		}
