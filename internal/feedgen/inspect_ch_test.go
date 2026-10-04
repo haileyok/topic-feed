@@ -49,7 +49,8 @@ type diffAccount struct {
 }
 
 // TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse is what lets the inspector page be trusted: for
-// every feed in config/feeds.yaml, the posts Store.Build's query admits are exactly the posts
+// every feed in testdata/feeds.yaml (the topic feeds config/feeds.yaml had, and its For you feed),
+// the posts Store.Build's query admits are exactly the posts
 // EvaluateFeed says match (and are fresh), over posts made to sit on every cutoff the feeds have. The
 // same is checked for the personal feed's pool. Without it the two could drift apart one edit at a
 // time. It runs only when TOPICFEED_CLICKHOUSE_TEST is set, in a database of its own.
@@ -61,7 +62,7 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfig("../../config/feeds.yaml", tax)
+	cfg, err := LoadConfig("testdata/feeds.yaml", tax)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 		}
 	}
 	if len(feeds) == 0 || personal == nil {
-		t.Fatalf("config/feeds.yaml has %d topic feeds and a personal feed: %v", len(feeds), personal != nil)
+		t.Fatalf("testdata/feeds.yaml has %d topic feeds and a personal feed: %v", len(feeds), personal != nil)
 	}
 	slices.Sort(feedPaths)
 	feedPaths = slices.Compact(feedPaths)

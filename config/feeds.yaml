@@ -1,12 +1,12 @@
-# Topic feeds served by cmd/feedgen.
+# The personal feed served by cmd/feedgen, and the layout of every feed's fields.
 #
-# THE TOPIC FEEDS IN THIS FILE ARE ONLY A STARTING POINT. The feeds served are kept in the database
-# (schema/014_user_feeds.sql) and are made and changed on the web (the page at /feeds, and the builder at
-# /): the first time feedgen starts with that table, the feeds below are copied into it under the
-# owner's account, and from then on this file's topic feeds are not looked at. Editing one here changes
-# nothing; a feed taken down on the web is not brought back by a restart. What is still read from this
-# file: the `personal:` feed (made from each viewer's likes), and the layout of every feed's fields,
-# documented below. See docs/web-feeds.md.
+# TOPIC FEEDS ARE NOT KEPT HERE. They are kept in the database (schema/014_user_feeds.sql) and are made
+# and changed on the web (the page at /feeds, and the builder at /). The topic feeds this file used to
+# list were copied into the database under the owner's account, and now live only there. A topic feed
+# added below would be copied in the same way the next time feedgen starts, if its rkey has never been
+# used by the owner; after that, editing it here changes nothing. What is read from this file: the
+# `personal:` feed (made from each viewer's likes), and the layout of every feed's fields, documented
+# below (the specs stored in the database use the same fields). See docs/web-feeds.md.
 #
 # `make feeds-publish` still writes the owner's feeds (those in the database) to the owner's account.
 #
@@ -96,143 +96,6 @@
 # posts/hour on a Monday night; at 0.6, AI matched ~90/hour.
 
 feeds:
-  - rkey: nfl
-    display_name: "NFL on Bluesky"
-    description: "Keep up with the NFL on Bluesky"
-    paths: [sports/american_football]
-    min_prob: 0.5
-    exclude: {us_politics: 0.15, world_news: 0.15, adult_content: 0.2}
-    ranking:
-      gravity: 2.6
-      fresh_every: 7
-      author_gap: 3
-
-  - rkey: mlb   # "baseball" is taken by the peruse Baseball Feed on hailey.at
-    display_name: Baseball
-    description: Posts about baseball (MLB, the playoffs, and the rest of the game), picked by a topic classifier. No keyword lists.
-    # Same settings as NFL (Hailey, 2026-09-29): only clear baseball posts, no politics.
-    paths: [sports/baseball]
-    min_prob: 0.85
-    exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
-    # Ranking tuned by Hailey in the feed builder (2026-09-29): strongly favors what's
-    # new (gravity 3), a brand-new post every 3rd slot, authors 3 slots apart.
-    ranking:
-      gravity: 3
-      fresh_every: 3
-      author_gap: 3
-      promo_penalty: 3.5
-    max_posts: 10000   # ~2,800 posts in 48 hours at 0.85 during the playoffs
-
-  # Tuned in the feed builder (2026-10-01); keeps the original `ai` rkey so the
-  # published feed isn't orphaned.
-  - rkey: ai
-    display_name: "AI remix"
-    description: "AI remix, picked by a topic classifier. No keyword lists."
-    paths: [technology/ai]
-    min_prob: 0.3
-    exclude: {adult_content: 0.2}
-    tone:
-      max: {humorous: 0.45}
-    signals:
-      max: {critical: 0.15, spam: 0.05}
-    ranking:
-      gravity: 2
-      fresh_every: 0
-      author_gap: 0
-      weights: {like: 3.5}
-
-  - rkey: video-games
-    display_name: Video Games
-    description: Posts about video games (playing, reviews, news, and indie development), picked by a topic classifier. No keyword lists.
-    paths: [gaming/video_games]
-    min_prob: 0.5
-    max_posts: 10000   # ~800 posts/hour at 0.5 (2026-09-29): about 12 hours of candidates
-
-  # Tuned by Hailey in the feed builder (2026-09-30): only upbeat, non-joke pet posts,
-  # strongly favoring what's new, no fresh slots.
-  - rkey: pets
-    display_name: "Pets!"
-    description: "Pets!, picked by a topic classifier. No keyword lists."
-    paths: [animals_nature/cats, animals_nature/dogs, animals_nature/other_pets]
-    min_prob: 0.5   # posts at 0.5-0.6 were real pets (2026-09-29)
-    exclude: {adult_content: 0.2}
-    tone:
-      max: {humorous: 0.4}
-    signals:
-      min: {sentiment: 0.8}
-    ranking:
-      gravity: 2.5
-      fresh_every: 0
-
-  - rkey: anime
-    display_name: Anime & Manga
-    description: Posts about anime and manga, picked by a topic classifier. No keyword lists.
-    paths: [entertainment/anime_manga]
-    min_prob: 0.65  # at 0.5-0.6 about half were K-pop, comics, or games; at 0.65-0.75 nearly all anime (2026-09-29)
-
-  - rkey: software-dev
-    display_name: Software Dev
-    description: Posts about programming and building software, picked by a topic classifier. No keyword lists.
-    paths: [technology/software_dev]
-    min_prob: 0.6   # 0.5-0.6 was mostly conference hashtags and engagement bait (2026-09-29)
-
-  - rkey: tabletop
-    display_name: Tabletop Games
-    description: D&D and other tabletop RPGs, board games, card games, Warhammer, and miniature painting, picked by a topic classifier. No keyword lists.
-    paths: [gaming/tabletop_games]
-    min_prob: 0.5   # posts at 0.5-0.6 were mostly tabletop: TTRPG lore, board games, minis (2026-09-29)
-
-  - rkey: photography
-    display_name: Photography
-    description: Photography, picked by a topic classifier. No keyword lists, no adult content.
-    paths: [art/photography]
-    min_prob: 0.5
-    exclude: {adult_content: 0.2}   # ~2% of photography posts lean adult without labels (2026-09-29)
-
-  - rkey: art
-    display_name: Art
-    description: Fine art, illustration, fan art, comics, and photography, picked by a topic classifier. No keyword lists, no commission ads, no adult content.
-    paths: [art]
-    min_prob: 0.5
-    exclude: {art/commissions: 0.3, adult_content: 0.2}   # ~5% commission posts, ~1.4% suggestive (2026-09-29)
-    max_posts: 10000   # ~900 posts/hour
-
-  - rkey: calm-news
-    display_name: Calm World News
-    description: World news without the outrage, picked by a topic classifier. Posts the model reads as angry are left out. No keyword lists.
-    paths: [world_news]
-    min_prob: 0.6
-    tone:
-      max: {outraged: 0.3}   # ~43% of world news posts are above this (2026-09-29)
-    max_posts: 10000   # ~690 posts/hour after the cutoff
-
-  - rkey: chill-tech
-    display_name: Chill Tech
-    description: Technology posts (AI, software, security, gadgets) without the outrage, picked by a topic classifier. No keyword lists.
-    # Tuned by Hailey in the feed builder (2026-09-29).
-    paths: [technology/ai, technology/software_dev, technology/consumer_tech, technology/cybersecurity, technology/other]
-    min_prob: 0.5
-    exclude: {adult_content: 0.2}
-    tone:
-      max: {outraged: 0.35}
-      weights: {humorous: 2}
-    signals:
-      min: {substance: 0.5}
-    ranking:
-      gravity: 1.2
-      fresh_every: 0
-      author_gap: 3
-      promo_penalty: 3
-    max_posts: 10000
-
-  - rkey: funny
-    display_name: Funny
-    description: Jokes, puns, funny stories, and shitposts, picked by a topic classifier and a humor score. No keyword lists.
-    paths: [humor]
-    min_prob: 0.6
-    tone:
-      min: {humorous: 0.5}
-
   # Built for each viewer from the posts they liked (see `personal` above). Needs FEEDGEN_WELCOME_POST.
   - rkey: for-you
     display_name: For you

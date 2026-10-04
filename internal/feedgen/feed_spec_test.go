@@ -15,15 +15,16 @@ func realConfig(t *testing.T) (*Config, map[string]bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfig("../../config/feeds.yaml", tax)
+	cfg, err := LoadConfig("testdata/feeds.yaml", tax)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return cfg, TaxonomyPaths(tax)
 }
 
-// Importing the config file into the database must not change what a feed does: a feed that
-// goes through its stored form (JSON) and comes back is the same feed, for every feed we serve.
+// Importing a feed of the config file into the database must not change what it does: a feed that
+// goes through its stored form (JSON) and comes back is the same feed, for every feed of
+// testdata/feeds.yaml (the topic feeds the config file had when they were imported).
 func TestEveryFeedOfTheConfigFileSurvivesBeingStored(t *testing.T) {
 	cfg, paths := realConfig(t)
 	n := 0
