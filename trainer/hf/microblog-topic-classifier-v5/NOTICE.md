@@ -1,10 +1,11 @@
 # Notice
 
-This repository contains parts derived from other projects.
+This repository is under the MIT licence (`LICENSE`), and contains parts derived from other projects, which keep their own licences.
 
 - **Ettin-150M** (`jhu-clsp/ettin-encoder-150m`), MIT licence: https://huggingface.co/jhu-clsp/ettin-encoder-150m
   The fine-tuned weights in `model.safetensors` (every tensor whose name starts with `text.`) were initialised from it, and `text_encoder/` and
-  `tokenizer/` are copies of its architecture config and tokenizer files. Copyright remains with its authors.
+  `tokenizer/` are copies of its architecture config and tokenizer files. Copyright remains with its authors (Johns Hopkins University CLSP); its
+  repository declares the MIT licence in its model card.
 - **SigLIP 2 so400m patch16 512** (`google/siglip2-so400m-patch16-512`), Apache-2.0 licence: https://huggingface.co/google/siglip2-so400m-patch16-512
   Not included here. `topic_classifier.py` downloads it from its own repository and uses it frozen, to turn pictures into embeddings.
 

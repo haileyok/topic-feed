@@ -1,4 +1,5 @@
 ---
+license: mit
 library_name: pytorch
 pipeline_tag: text-classification
 language:
@@ -26,7 +27,7 @@ Reads one short social-media post (its text, plus up to two pictures) and return
 
 The topic list (taxonomy v2.1) with every topic's name and description is in `topics.json`.
 
-**Status: private, licence not chosen yet.** See "Licence and sources" below before sharing it.
+**Licence: MIT** (`LICENSE`). Parts that came from elsewhere keep their own licences: see "Licence and sources" below.
 
 ## How it works
 
@@ -149,11 +150,12 @@ Full numbers, validation history and per-epoch scores: `metrics.json`.
 ## Files
 
 `model.safetensors` weights · `config.json` labels, temperatures, limits · `topics.json` taxonomy v2.1 (ids, names, descriptions) ·
-`topic_classifier.py` inference code · `text_encoder/`, `tokenizer/` from Ettin-150M · `metrics.json` training and test scores · `NOTICE.md` ·
+`topic_classifier.py` inference code · `text_encoder/`, `tokenizer/` from Ettin-150M · `metrics.json` training and test scores · `LICENSE` · `NOTICE.md` ·
 `images/` the charts on this page, drawn with matplotlib from `metrics.json` and the model's probabilities on the test posts (every chart's numbers are
 checked against `metrics.json` before it is drawn). No posts are included in this repository, and no post text appears in any chart.
 
 ## Licence and sources
 
-Licence not chosen yet. Parts that came from elsewhere: Ettin-150M weights/tokenizer/config (MIT), SigLIP 2 (Apache-2.0, not included, downloaded
-from its own repository). The training labels were produced by two LLM-based teachers; their output terms have not been checked.
+MIT (`LICENSE`). Parts that came from elsewhere, credited in `NOTICE.md`: the fine-tuned text encoder was initialised from Ettin-150M, and
+`text_encoder/` and `tokenizer/` are copies of its files (MIT); SigLIP 2 (Apache-2.0) is not included, `topic_classifier.py` downloads it from its own
+repository. No posts or training labels are included.
