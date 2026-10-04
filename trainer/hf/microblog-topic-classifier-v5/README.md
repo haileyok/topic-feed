@@ -8,7 +8,6 @@ tags:
   - topic-classification
   - multimodal
   - bluesky
-  - distillation
 base_model:
   - jhu-clsp/ettin-encoder-150m
   - google/siglip2-so400m-patch16-512
