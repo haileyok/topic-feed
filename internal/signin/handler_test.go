@@ -465,6 +465,49 @@ func TestCallbackSignsTheBrowserIn(t *testing.T) {
 	}
 }
 
+const returnCookieName = "__Host-feeds_return"
+
+func TestALoginComesBackToThePageItStartedFrom(t *testing.T) {
+	r := newRig(t, func(c *Config) { c.Returns = []string{"/feeds", "/inspect"} })
+	start := func(back string) *httptest.ResponseRecorder {
+		return r.do(req{method: "POST", target: "/oauth/login", form: url.Values{"handle": {"alice.example.test"}, "return": {back}}, header: asJSON})
+	}
+
+	// A page that may be come back to: remembered for as long as the login, like the state cookie.
+	w := start("/feeds")
+	c := cookieNamed(w, returnCookieName)
+	if w.Code != 200 || c == nil || c.Value != "/feeds" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/" ||
+		c.MaxAge != cookieNamed(w, stateCookieName).MaxAge {
+		t.Fatalf("%d, return cookie %+v", w.Code, c)
+	}
+	// Signing in comes back there, and so does a problem, so the page that was used can say what it was.
+	ok := finishLogin(r, "code=abc&state=state-123", stateCookie("state-123"), c)
+	if location(ok) != "/feeds" || cookieNamed(ok, sessionCookieName) == nil {
+		t.Errorf("signed in: %q", location(ok))
+	}
+	if gone := cookieNamed(ok, returnCookieName); gone == nil || gone.MaxAge >= 0 {
+		t.Errorf("the return cookie should be cleared: %+v", gone)
+	}
+	if denied := finishLogin(r, "error=access_denied&state=state-123", stateCookie("state-123"), c); location(denied) != "/feeds?signin=denied" {
+		t.Errorf("denied: %q", location(denied))
+	}
+
+	// Anything else is not remembered (and one left from an earlier login is cleared): home it is.
+	for _, back := range []string{"", "/me", "//evil.test", "https://evil.test/feeds", "/feeds?x=1", "/feeds/../me", "/FEEDS", "feeds"} {
+		w := start(back)
+		if c := cookieNamed(w, returnCookieName); c == nil || c.MaxAge >= 0 {
+			t.Errorf("%q: return cookie %+v, want it cleared", back, c)
+		}
+	}
+	// And a cookie that says somewhere not allowed (it can't come from here, but say it did) is ignored.
+	for _, v := range []string{"https://evil.test/", "//evil.test", "/me"} {
+		w := finishLogin(r, "code=abc&state=state-123", stateCookie("state-123"), &http.Cookie{Name: returnCookieName, Value: v})
+		if location(w) != "/me" {
+			t.Errorf("cookie %q: came back to %q, want home", v, location(w))
+		}
+	}
+}
+
 func TestCallbackFromALoginThisBrowserDidNotStartIsRefused(t *testing.T) {
 	// Somebody sends a victim a link that finishes the attacker's own login: it would sign
 	// the victim in as the attacker. The victim's browser never started it, so it has no

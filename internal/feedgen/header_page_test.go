@@ -19,18 +19,70 @@ var pagesWithTheHeader = []struct{ file, path, script, current string }{
 
 var headerMarkup = regexp.MustCompile(`(?s)<header class="topbar">.*?</header>`)
 
-// headerIDs are the elements header.js fills in: they belong to the header, not to any one page.
-func headerIDs(t *testing.T) map[string]bool {
+// idsUsedBy are the elements the scripts ask for by id ($("...")).
+func idsUsedBy(t *testing.T, scripts ...string) map[string]bool {
 	t.Helper()
-	src, err := webFS.ReadFile("web/static/header.js")
-	if err != nil {
-		t.Fatal(err)
-	}
 	ids := map[string]bool{}
-	for _, m := range regexp.MustCompile(`\$\("([a-z][a-z0-9-]*)"\)`).FindAllStringSubmatch(string(src), -1) {
-		ids[m[1]] = true
+	for _, name := range scripts {
+		src, err := webFS.ReadFile("web/static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range regexp.MustCompile(`\$\("([a-z][a-z0-9-]*)"\)`).FindAllStringSubmatch(string(src), -1) {
+			ids[m[1]] = true
+		}
 	}
 	return ids
+}
+
+// headerIDs are the elements header.js fills in: they belong to the header, not to any one page.
+func headerIDs(t *testing.T) map[string]bool { return idsUsedBy(t, "header.js") }
+
+// sharedIDs are the elements of what several pages share: the header and the sign-in form.
+func sharedIDs(t *testing.T) map[string]bool { return idsUsedBy(t, "header.js", "signin-form.js") }
+
+// The pages that need someone signed in, and the script each starts from.
+var pagesWithTheSignInForm = []struct{ file, script string }{
+	{"web/me.html", "me.js"},
+	{"web/feeds.html", "feeds.js"},
+	{"web/inspect.html", "inspect.js"},
+}
+
+var signedOutSection = regexp.MustCompile(`(?s)<section class="me-card" id="signed-out" hidden>.*?</section>`)
+
+func TestEveryPageThatNeedsSignInHasTheSameForm(t *testing.T) {
+	// Only the heading and the line under it, which say what the page is for, differ.
+	pagesOwn := regexp.MustCompile(`(?s)<h1>.*?</h1>\s*<p class="me-lead">.*?</p>`)
+	var first string
+	for _, p := range pagesWithTheSignInForm {
+		raw, err := webFS.ReadFile(p.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		section := signedOutSection.FindString(string(raw))
+		if section == "" || !pagesOwn.MatchString(section) {
+			t.Errorf("%s has no signed-out section with a heading and a line under it", p.file)
+			continue
+		}
+		same := pagesOwn.ReplaceAllString(section, "")
+		if first == "" {
+			first = same
+		} else if same != first {
+			t.Errorf("%s's sign-in differs from %s's:\n%s\n---\n%s", p.file, pagesWithTheSignInForm[0].file, same, first)
+		}
+		for id := range idsUsedBy(t, "signin-form.js") {
+			if !strings.Contains(section, `id="`+id+`"`) {
+				t.Errorf("%s: the sign-in has no #%s, which signin-form.js uses", p.file, id)
+			}
+		}
+		js, err := webFS.ReadFile("web/static/" + p.script)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(js), `from "./signin-form.js";`) || !strings.Contains(string(js), "setupSignInForm()") {
+			t.Errorf("%s doesn't set up the sign-in form", p.script)
+		}
+	}
 }
 
 // loadsFromAnotherSite reports whether a page has the browser load something from elsewhere: a script,

@@ -11,6 +11,7 @@ import { el, renderPost, hydrate } from "./posts.js";
 import { meter } from "./stats.js";
 import { describe } from "./scores.js";
 import { ago } from "./draft.js";
+import { setupSignInForm, showSignInProblem, signInOff } from "./signin-form.js";
 
 // What /api/inspect says went wrong, in words, for the errors that don't carry their own message.
 export const PROBLEMS = {
@@ -305,12 +306,14 @@ async function run(input, { push = true } = {}) {
 
 async function whoAmI() {
   const res = await fetch("/api/me", { headers: { Accept: "application/json" }, credentials: "same-origin" });
-  if (res.status === 401 || res.status === 404) return null;
+  if (res.status === 401) return null;
+  if (res.status === 404) return "off"; // the server has sign-in switched off
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 export async function main() {
+  const problem = setupSignInForm(); // a problem the last sign-in came back with, if any
   let me;
   try {
     me = await whoAmI();
@@ -319,8 +322,14 @@ export async function main() {
     showError(PROBLEMS.network);
     return;
   }
+  if (me === "off") {
+    show("signed-out");
+    signInOff();
+    return;
+  }
   if (!me) {
     show("signed-out");
+    showSignInProblem(problem);
     return;
   }
   show("inspector");

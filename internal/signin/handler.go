@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,7 +45,11 @@ type Config struct {
 	// Home is where people land after signing in or out, and where sign-in problems are
 	// reported (as ?signin=denied, invalid, busy, or failed). Default /me.
 	Home string
-	Log  *slog.Logger
+	// Returns are the pages a login may come back to instead of Home: the sign-in form sends the
+	// path of the page it is on (the form field "return"), and only a path listed here exactly is
+	// used, so a link can't send someone elsewhere after they sign in.
+	Returns []string
+	Log     *slog.Logger
 }
 
 // Handler serves the sign-in routes and tells the rest of the service who is signed in.
@@ -53,6 +58,7 @@ type Handler struct {
 	secure     bool
 	sessionKey string // cookie names
 	stateKey   string
+	returnKey  string
 }
 
 // New checks cfg and prepares the routes.
@@ -72,11 +78,37 @@ func New(cfg Config) (*Handler, error) {
 	h := &Handler{cfg: cfg, secure: strings.HasPrefix(cfg.Origin, "https://")}
 	// The __Host- prefix makes a browser refuse these unless they were set over https for
 	// this exact host, and keeps other subdomains from planting their own.
-	h.sessionKey, h.stateKey = "feeds_session", "feeds_login"
+	h.sessionKey, h.stateKey, h.returnKey = "feeds_session", "feeds_login", "feeds_return"
 	if h.secure {
-		h.sessionKey, h.stateKey = "__Host-feeds_session", "__Host-feeds_login"
+		h.sessionKey, h.stateKey, h.returnKey = "__Host-feeds_session", "__Host-feeds_login", "__Host-feeds_return"
 	}
 	return h, nil
+}
+
+// returnCookie remembers, while a login is under way, the page it should come back to. It is set
+// and cleared together with the state cookie, and holds only a path from cfg.Returns.
+func (h *Handler) returnCookie(value string, maxAge int) *http.Cookie {
+	return &http.Cookie{Name: h.returnKey, Value: value, Path: "/", MaxAge: maxAge,
+		HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode}
+}
+
+// allowedReturn is path when it is one of cfg.Returns, else "".
+func (h *Handler) allowedReturn(path string) string {
+	if path != "" && slices.Contains(h.cfg.Returns, path) {
+		return path
+	}
+	return ""
+}
+
+// landing is where this request's login comes back to: the page it started from, if it was one
+// of cfg.Returns, else Home.
+func (h *Handler) landing(r *http.Request) string {
+	if c, err := r.Cookie(h.returnKey); err == nil {
+		if to := h.allowedReturn(c.Value); to != "" {
+			return to
+		}
+	}
+	return h.cfg.Home
 }
 
 // stateCookie is the cookie that ties a login to the browser that started it (an empty value
@@ -138,9 +170,10 @@ func (h *Handler) ServeMetadata(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(h.cfg.Metadata)
 }
 
-// home redirects to the home page, reporting a problem if there was one.
+// home redirects to the page the login started from (see landing), or the home page, reporting a
+// problem if there was one.
 func (h *Handler) home(w http.ResponseWriter, r *http.Request, problem string) {
-	to := h.cfg.Home
+	to := h.landing(r)
 	if problem != "" {
 		to += "?signin=" + url.QueryEscape(problem)
 	}
@@ -232,6 +265,12 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// The login is tied to this browser, so a link that finishes someone else's login can't
 	// sign this browser in as them.
 	http.SetCookie(w, h.stateCookie(state, int(pendingTTL.Seconds())))
+	// Where to come back to. A path that isn't allowed clears any left from an earlier login.
+	if back := h.allowedReturn(r.PostForm.Get("return")); back != "" {
+		http.SetCookie(w, h.returnCookie(back, int(pendingTTL.Seconds())))
+	} else {
+		http.SetCookie(w, h.returnCookie("", -1))
+	}
 	if wantsJSON(r) {
 		replyJSON(w, http.StatusOK, map[string]string{"redirect": redirect})
 		return
@@ -247,6 +286,7 @@ func (h *Handler) ServeCallback(w http.ResponseWriter, r *http.Request) {
 	// The login is over either way: this browser is done with its state cookie.
 	bound, err := r.Cookie(h.stateKey)
 	http.SetCookie(w, h.stateCookie("", -1))
+	http.SetCookie(w, h.returnCookie("", -1)) // read from the request by home, below
 	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(bound.Value), []byte(state)) != 1 {
 		// Say which: a browser that never sent the cookie (it was refused, or blocked) is a very
 		// different problem from one that sent a cookie for another login.

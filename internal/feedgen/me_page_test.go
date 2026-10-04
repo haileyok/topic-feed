@@ -116,7 +116,7 @@ func TestHomePageLinksToTheMePage(t *testing.T) {
 }
 
 // scriptsOfTheMePage are the scripts the page at /me is made of.
-var scriptsOfTheMePage = []string{"me.js", "header.js", "tuning.js", "dom.js", "draft.js", "knobs.js", "scores.js", "stats.js", "posts.js"}
+var scriptsOfTheMePage = []string{"me.js", "header.js", "signin-form.js", "tuning.js", "dom.js", "draft.js", "knobs.js", "scores.js", "stats.js", "posts.js"}
 
 func TestEveryScriptOfTheMePageIsServedAndWhatItImportsExists(t *testing.T) {
 	s := testServer(t)

@@ -134,12 +134,25 @@ test("signed out: the sign-in prompt is shown and nothing is asked about any pos
   const p = await open({ me: { status: 401, body: { error: "not signed in" } } });
   assert.deepEqual(p.visible(), ["signed-out"]);
   assert.deepEqual(p.calls.map((c) => c.url), ["/api/me"]);
-  assert.equal(p.q("#signed-out a").getAttribute("href"), "/me");
+  // The same sign-in form as every page that needs someone signed in (signin-form.js), right here.
+  assert.ok(p.q("#signed-out form#login input#handle"));
+  assert.equal(p.$("login-button").textContent, "Sign in with Bluesky");
+  assert.equal(p.$("signin-notice").hidden, true);
 });
 
-test("a server without the sign-in answers 404 to /api/me: the same prompt", async () => {
+test("a sign-in that came back with a problem says what it was, once", async () => {
+  const p = await open({ search: "?signin=denied", me: { status: 401, body: { error: "not signed in" } } });
+  assert.deepEqual(p.visible(), ["signed-out"]);
+  assert.equal(p.$("signin-notice").textContent, "Sign-in was cancelled.");
+  assert.equal(p.$("signin-notice").hidden, false);
+  assert.equal(p.win.location.search, "", "kept out of the address bar");
+});
+
+test("a server without the sign-in answers 404 to /api/me: the prompt says so, and the form is off", async () => {
   const p = await open({ me: { status: 404 } });
   assert.deepEqual(p.visible(), ["signed-out"]);
+  assert.match(p.$("signin-notice").textContent, /isn't turned on/);
+  assert.equal(p.$("login-button").disabled, true);
 });
 
 test("not being able to tell who you are is said, and the form still works", async () => {

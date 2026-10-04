@@ -71,7 +71,10 @@ test("signed out: the sign-in prompt, and nothing is asked about feeds", async (
   const p = await open({ meAnswer: { status: 401, body: { error: "not signed in" } } });
   assert.deepEqual(p.visible(), ["signed-out"]);
   assert.deepEqual(p.calls.map((c) => c.url), ["/api/me"]);
-  assert.equal(p.win.document.querySelector("#signed-out a").getAttribute("href"), "/me");
+  // The same sign-in form as every page that needs someone signed in (signin-form.js), right here.
+  assert.ok(p.win.document.querySelector("#signed-out form#login input#handle"));
+  assert.equal(p.$("login-button").textContent, "Sign in with Bluesky");
+  assert.equal(p.$("signin-notice").hidden, true);
 });
 
 test("feeds that can't be read are said so, and nothing is drawn", async () => {

@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { open, interestsBody, interest, signedIn, tuningBody } from "./harness.mjs";
 
-const noticeText = (p) => (p.$("notice").hidden ? null : p.$("notice").textContent);
+const noticeText = (p) => (p.$("signin-notice").hidden ? null : p.$("signin-notice").textContent);
 
 test("signed out: the sign-in form is shown, with no complaint", async () => {
   const p = await open();
@@ -29,7 +29,7 @@ test("signing in: the handle is sent as JSON-asking form data, then the browser 
   assert.equal(call.method, "POST");
   assert.equal(call.headers.Accept, "application/json");
   assert.equal(call.headers["Content-Type"], "application/x-www-form-urlencoded");
-  assert.equal(call.body, "handle=Alice.bsky.social");
+  assert.equal(call.body, "handle=Alice.bsky.social&return=%2Fme"); // and comes back to this page
   assert.equal(p.$("login-button").disabled, true, "no second click while the browser is leaving");
   assert.equal(p.$("login-button").textContent, "Opening Bluesky…");
   // Coming back with the back button restores the page as it was left: usable again.

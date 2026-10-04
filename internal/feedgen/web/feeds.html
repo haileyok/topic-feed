@@ -26,7 +26,6 @@
       <a class="sitenav-link" href="/me">For you</a>
       <a class="sitenav-link" id="nav-inspect" href="/inspect" hidden>Post inspector</a>
     </nav>
-    <a class="byline" href="https://bsky.app/profile/hailey.at" target="_blank" rel="noopener">by @hailey.at</a>
     <div class="account" id="account" data-state="checking">
       <span class="account-problem" id="account-problem" role="alert" hidden></span>
       <a class="btn btn-ghost" id="account-signin" href="/me" hidden>Sign in</a>
@@ -43,7 +42,16 @@
     <section class="me-card" id="signed-out" hidden>
       <h1>Your feeds</h1>
       <p class="me-lead">Sign in with your Bluesky account to make feeds of your own and publish them.</p>
-      <p><a class="btn btn-primary" href="/me">Sign in</a></p>
+      <p class="me-note" id="signin-notice" role="alert" hidden></p>
+      <form id="login" class="me-form">
+        <label for="handle">Your Bluesky handle</label>
+        <div class="me-row">
+          <input id="handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="username" maxlength="300" required>
+          <button class="btn btn-primary" id="login-button" type="submit">Sign in with Bluesky</button>
+        </div>
+      </form>
+      <p class="me-fine">You'll approve this on your own Bluesky server. We only learn which account is yours: we get no password, and we keep no access to your account.</p>
     </section>
 
     <section id="feeds-main" hidden>

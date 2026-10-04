@@ -11,7 +11,7 @@ import (
 )
 
 // scriptsOfTheInspectPage are the scripts the page at /inspect is made of.
-var scriptsOfTheInspectPage = []string{"inspect.js", "header.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js"}
+var scriptsOfTheInspectPage = []string{"inspect.js", "header.js", "signin-form.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js"}
 
 func TestInspectPageIsServedWithTheSitesSecurityHeaders(t *testing.T) {
 	s := testServer(t)
@@ -170,9 +170,9 @@ func TestEveryElementTheInspectPageScriptsUseIsInThePage(t *testing.T) {
 		}
 	}
 	// And the other way: a part of the page that no script knows about is never shown or filled.
-	header := headerIDs(t) // the shared header's, filled in by header.js (TestEveryPageHasTheSameHeader)
+	shared := sharedIDs(t) // the shared header and sign-in form (TestEveryPageHasTheSameHeader, TestEveryPageThatNeedsSignInHasTheSameForm)
 	for id := range have {
-		if !strings.Contains(string(src), `("`+id+`")`) && !slicesContain(states, id) && !header[id] {
+		if !strings.Contains(string(src), `("`+id+`")`) && !slicesContain(states, id) && !shared[id] {
 			t.Errorf("the page has #%s, which inspect.js never uses", id)
 		}
 	}

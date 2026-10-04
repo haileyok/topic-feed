@@ -12,7 +12,7 @@ import (
 
 // scriptsOfTheFeedsPage are the scripts the page at /feeds is made of (those it imports; the vendored OAuth
 // client is loaded by feeds-page.js with import()).
-var scriptsOfTheFeedsPage = []string{"feeds-page.js", "header.js", "feeds.js", "publish.js", "mine.js", "posts.js", "dom.js"}
+var scriptsOfTheFeedsPage = []string{"feeds-page.js", "header.js", "signin-form.js", "feeds.js", "publish.js", "mine.js", "posts.js", "dom.js"}
 
 const vendoredClient = "vendor/atproto-oauth-client-browser.js"
 
@@ -219,8 +219,8 @@ func TestEveryElementTheFeedsPageScriptsUseIsInThePage(t *testing.T) {
 			t.Errorf("feeds.js never shows #%s", id)
 		}
 	}
-	for id := range headerIDs(t) {
-		used[id] = true // the shared header's, filled in by header.js (TestEveryPageHasTheSameHeader)
+	for id := range sharedIDs(t) {
+		used[id] = true // the shared header and sign-in form (TestEveryPageHasTheSameHeader, TestEveryPageThatNeedsSignInHasTheSameForm)
 	}
 	for id := range have {
 		if !used[id] {

@@ -77,8 +77,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
 .brand:hover { text-decoration: none; }
-/* The same links on every page; the nav takes the free space, which keeps the byline and the account
-   part at the right. On a narrow screen the links scroll sideways rather than wrap. */
+/* The same links on every page; the nav takes the free space, which keeps the account part at the
+   right. On a narrow screen the links scroll sideways rather than wrap. */
 .sitenav {
   flex: 1 1 auto; min-width: 0;
   display: flex; gap: 2px;
@@ -91,7 +91,6 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 }
 .sitenav-link:hover { text-decoration: none; color: var(--text); background: var(--bg-sunk); }
 .sitenav-link[aria-current="page"] { color: var(--text); background: var(--bg-sunk); }
-.byline { flex-shrink: 0; color: var(--text-3); font-size: 14px; white-space: nowrap; }
 .account { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 .account-who {
   max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -423,10 +422,7 @@ input[type="range"].neg::-moz-range-thumb { border-color: var(--danger); }
 
 .customize-btn { display: none; }
 
-/* When the header gets crowded the byline gives way first, then the handle (Sign out stays). */
-@media (max-width: 1180px) {
-  .byline { display: none; }
-}
+/* When the header gets crowded the handle gives way (Sign out stays). */
 @media (max-width: 560px) {
   .account-who { display: none; }
 }

@@ -8,6 +8,7 @@ import { $, str } from "./dom.js";
 import { el } from "./posts.js";
 import { fetchMe, fetchMine, problemText } from "./mine.js";
 import { createPublisher, statusOf, PublishError } from "./publish.js";
+import { setupSignInForm, showSignInProblem } from "./signin-form.js";
 
 export const STATUS_TEXT = {
   draft: "Not published",
@@ -63,9 +64,11 @@ const messageOf = (err) => (err instanceof PublishError ? err.message : "Somethi
  * connection to Bluesky (if there is one) has been looked at.
  */
 export async function main({ ClientClass = null, confirm = (m) => globalThis.confirm(m), origin = globalThis.location.origin } = {}) {
+  const problem = setupSignInForm(); // a problem the last sign-in came back with, if any
   const me = await fetchMe();
   if (!me) {
     show("signed-out");
+    showSignInProblem(problem);
     return;
   }
   const mine = await fetchMine();
