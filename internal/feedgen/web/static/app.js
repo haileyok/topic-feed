@@ -481,7 +481,7 @@ async function load(reset) {
     view.total = body.total;
     const removed = Object.values(body.removed).reduce((a, b) => a + b, 0);
     document.getElementById("preview-stats").textContent =
-      `${body.total.toLocaleString()} posts from the last 48 hours · built in ${body.took_ms} ms` + (removed ? ` · ${removed} deleted or hidden` : "");
+      `${body.total.toLocaleString()} posts from the last 24 hours · built in ${body.took_ms} ms` + (removed ? ` · ${removed} deleted or hidden` : "");
     document.getElementById("posts-end").textContent = view.loaded >= view.total ? (view.total ? "That's everything for now." : "") : "";
   } catch (e) {
     if (e.name === "AbortError" || id !== view.reqId) return;

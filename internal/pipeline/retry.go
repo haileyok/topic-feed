@@ -13,7 +13,7 @@ import (
 // RetryConfig controls the picture retry worker.
 type RetryConfig struct {
 	Every       time.Duration   // how often to sweep for failures and run due retries
-	Window      time.Duration   // how far back to look for posts missing pictures (feeds show 48h)
+	Window      time.Duration   // how far back to look for posts missing pictures (feeds show 24h)
 	Batch       int             // posts retried per round
 	MaxAttempts int             // give up after this many failed retries
 	Backoff     []time.Duration // wait before retry n+1 after n failed retries; the last repeats
@@ -22,7 +22,7 @@ type RetryConfig struct {
 
 // DefaultRetry retries after about 2 min, 10 min, 30 min, 2 h, and 6 h, then gives up.
 var DefaultRetry = RetryConfig{
-	Every: 2 * time.Minute, Window: 48 * time.Hour, Batch: 200, MaxAttempts: 5, Workers: 4,
+	Every: 2 * time.Minute, Window: 24 * time.Hour, Batch: 200, MaxAttempts: 5, Workers: 4,
 	Backoff: []time.Duration{2 * time.Minute, 10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour},
 }
 

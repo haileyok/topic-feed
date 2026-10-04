@@ -58,7 +58,7 @@ type visitor struct {
 
 // NewPreviewer makes a previewer; call Run to prune its caches.
 func NewPreviewer(b Builder, tax *taxonomy.Taxonomy, log *slog.Logger) *Previewer {
-	return &Previewer{Builder: b, Tax: tax, Log: log, Window: 48 * time.Hour, MaxPosts: 5000, CacheFor: 30 * time.Second,
+	return &Previewer{Builder: b, Tax: tax, Log: log, Window: 24 * time.Hour, MaxPosts: 5000, CacheFor: 30 * time.Second,
 		paths: TaxonomyPaths(tax), slots: make(chan struct{}, 3),
 		cache: map[string]*previewBuild{}, visitors: map[string]*visitor{}}
 }

@@ -38,7 +38,7 @@ func main() {
 
 func run(log *slog.Logger) error {
 	fromModel := flag.String("from-model", "", "re-classify rows this model classified (required)")
-	afterS := flag.String("after", "", "only posts indexed at or after this time, RFC 3339 (default: from the first one; feeds only show the last 48h)")
+	afterS := flag.String("after", "", "only posts indexed at or after this time, RFC 3339 (default: from the first one; feeds only show the last 24h)")
 	beforeS := flag.String("before", "", "only posts indexed before this time, RFC 3339 (required)")
 	window := flag.Duration("window", 10*time.Minute, "posts per step, by indexed_at")
 	flag.Parse()

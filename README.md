@@ -69,7 +69,7 @@ GPU. The model is on Hugging Face (private for now):
 4. **The classifier service** (`trainer/serve.py`) runs on the host under systemd, serves the
    current model on the GPU at `127.0.0.1:8700`, and answers batches of posts (document text and
    up to two pictures each) with topic, tone, and score probabilities.
-5. **The feed generator** (`cmd/feedgen`) rebuilds every feed every 20 seconds from the last 48
+5. **The feed generator** (`cmd/feedgen`) rebuilds every feed every 20 seconds from the last 24
    hours of `post_pipeline`, ranks it, and serves `app.bsky.feed.getFeedSkeleton` to Bluesky.
    It also records the interactions Bluesky sends back (seen, liked, "show more", "show less")
    and serves the feed builder page.
@@ -173,7 +173,7 @@ field. For example, an AI feed without the angry, anti-AI, or spammy posts:
 
 - **Selection.** A post is a candidate when the model's probability for any of the feed's
   `paths` (subtopics like `sports/american_football`, or whole broad topics like `world_news`)
-  is at least `min_prob`, within the last 48 hours. `paths: ["*"]` matches every topic, for
+  is at least `min_prob`, within the last 24 hours. `paths: ["*"]` matches every topic, for
   feeds chosen by tone or scores alone. `exclude` leaves out posts above a probability for a
   topic. Deleted posts, inactive accounts, and posts the label policy drops are always left out;
   `adult_only` posts only appear with `allow_adult: true`.
@@ -309,7 +309,7 @@ To switch models: put the model folder where the classifier service reads it (`M
 `deploy/systemd/topic-feed-classifier.service`; the picture encoder's weights,
 `google/siglip2-so400m-patch16-512`, must be in the Hugging Face cache because the service runs
 offline), `make install-classifier`, restart the pipeline, then re-score the posts feeds can still
-show with `go run ./cmd/rescore -from-model <old> -after <48 hours ago> -before <switch time>`
+show with `go run ./cmd/rescore -from-model <old> -after <24 hours ago> -before <switch time>`
 (it reuses stored labels and policy decisions and downloads each post's pictures again).
 
 Long jobs (labeling, training, rescoring) should run in `tmux`, a systemd unit, or similar, so

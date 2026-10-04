@@ -17,7 +17,7 @@
 //	FEEDGEN_CONFIG            feed list, default config/feeds.yaml
 //	TAXONOMY                  default taxonomy/v2.1.yaml (feed paths are checked against it)
 //	LABEL_POLICY              default config/label_policy.yaml
-//	FEEDGEN_WINDOW_HOURS      how far back feeds go, default 48
+//	FEEDGEN_WINDOW_HOURS      how far back feeds go, default 24
 //	FEEDGEN_REFRESH_SECONDS   how often feeds are rebuilt, default 20
 //	FEEDGEN_MAX_POSTS         posts per feed, default 3000
 //	HTTP_ADDR                 public listener, default :8710
@@ -150,7 +150,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	every := time.Duration(envInt("FEEDGEN_REFRESH_SECONDS", 20)) * time.Second
 	feeds := feedgen.NewFeeds(s.cfg, &feedgen.Store{Conn: conn, Policy: policy}, log,
-		time.Duration(envInt("FEEDGEN_WINDOW_HOURS", 48))*time.Hour, every, envInt("FEEDGEN_MAX_POSTS", 3000))
+		time.Duration(envInt("FEEDGEN_WINDOW_HOURS", 24))*time.Hour, every, envInt("FEEDGEN_MAX_POSTS", 3000))
 	feeds.Start(ctx)
 
 	srv := feedgen.NewServer(feedgen.ServerConfig{

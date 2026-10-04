@@ -9,7 +9,7 @@
 //	LABEL_POLICY             default config/label_policy.yaml
 //	IMAGE_RETRY              "off" disables retrying posts whose pictures didn't download (image_retry_queue), default on
 //	IMAGE_RETRY_EVERY_SECONDS  how often to queue failures and run due retries, default 120
-//	IMAGE_RETRY_WINDOW_HOURS   how far back failures are queued, default 48
+//	IMAGE_RETRY_WINDOW_HOURS   how far back failures are queued, default 24 (what feeds show)
 //	IMAGE_RETRY_MAX_ATTEMPTS   retries before giving up on a post, default 5
 //	IMAGE_RETRY_WORKERS        posts retried at once, default 4
 //	CLASSIFIER_URL           classifier service, default http://127.0.0.1:8700 ("none" disables)

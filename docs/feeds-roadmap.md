@@ -16,7 +16,7 @@ what's still open.
   config; `make feeds-publish` writes the feed records (interactive; asks for the emailed
   sign-in code when needed).
 - **Selection:** a post is a candidate when the model's probability for any of the feed's
-  subtopic paths is at least `min_prob`, within the last 48 hours (`post_pipeline`, written
+  subtopic paths is at least `min_prob`, within the last 24 hours (`post_pipeline`, written
   by `cmd/pipeline`). Deleted posts, inactive accounts, and posts the label policy drops are
   left out at serve time; `allow_adult` admits adult-only posts.
 - **Ranking** (`internal/feedgen/rank.go`): `(prior + weighted likes, reposts, replies,

@@ -47,7 +47,7 @@
 #     author_gap: 10      # 0: no limit
 #     promo_penalty: 1    # 0: promotional posts aren't penalized
 #
-# Feeds cover the last FEEDGEN_WINDOW_HOURS (48). Thresholds were
+# Feeds cover the last FEEDGEN_WINDOW_HOURS (24). Thresholds were
 # picked from the first hour of live predictions (2026-09-29): at 0.5, NFL matched ~40
 # posts/hour on a Monday night; at 0.6, AI matched ~90/hour.
 
