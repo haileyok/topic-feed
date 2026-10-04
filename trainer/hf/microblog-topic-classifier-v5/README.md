@@ -55,6 +55,11 @@ out = clf.predict([{"text": render_post(post, with_pictures=True), "pictures": [
 print(out[0]["top_broad"], out[0]["broad"], out[0]["signals"]["meme"])
 ```
 
+`pictures` may be file paths, PIL images or encoded image bytes; a picture that cannot be read is skipped.
+`predict_arrays(items)` returns NumPy arrays instead of dicts, plus `pictures_used` (how many of each post's
+pictures could be read). `config.json` records the post document version (`postdoc_version`, `pd2`) that the
+code rendering the text (`render_post`, or the Go `internal/postdoc` in the project that uses this model) must follow.
+
 Needs `torch`, `transformers` (tested with 5.17.0), `safetensors`, `pillow`, `huggingface_hub`. `render_post` documents the post fields it reads
 (`text`, `tags`, `media_kinds`, `labels`, `media_alts`, `link_domain`/`link_title`/`link_description`, `quote_text`, ...). For a post with pictures,
 pass `with_pictures=True` and the pictures: text a description service found in the pictures is then left out, as in training.
