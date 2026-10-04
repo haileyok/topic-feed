@@ -279,6 +279,10 @@ func ModelInput(ps post, r Row, hasPictures bool) (string, bool) {
 	return doc.Student(), true
 }
 
+// classifyInFlight is how many /classify requests are sent at once. The service runs one GPU batch at a
+// time, but reading the next request's JSON and pictures while the GPU works keeps the GPU busy.
+const classifyInFlight = 2
+
 // classify fills in predictions for every post not dropped by the label policy, sending each post's
 // pictures (pics[i], when given) with its text. A failed classifier call is retried; if it keeps
 // failing the batch fails and is retried.
@@ -304,46 +308,81 @@ func (p *Pipeline) classify(ctx context.Context, posts []post, rows []Row, pics 
 		idx = append(idx, i)
 		items = append(items, Item{Text: text, Pictures: pp})
 	}
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+		sem      = make(chan struct{}, classifyInFlight)
+	)
 	for _, c := range chunkItems(items) {
-		s, e := c[0], c[1]
-		var (
-			model string
-			preds []Prediction
-			err   error
-		)
-		t0 := time.Now()
-		for attempt := 0; attempt < 6; attempt++ {
-			cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-			model, preds, err = p.Classifier.Classify(cctx, items[s:e])
-			cancel()
-			if err == nil || ctx.Err() != nil {
-				break
-			}
-			metricErrors.WithLabelValues("classify").Inc()
-			p.Log.Warn("classifier call failed; retrying", "err", err, "attempt", attempt+1)
-			p.sleep(ctx, time.Duration(1<<attempt)*time.Second)
+		sem <- struct{}{}
+		if cctx.Err() != nil {
+			<-sem
+			break
 		}
-		if err != nil {
-			return fmt.Errorf("classify: %w", err)
-		}
-		metricClassifySeconds.Observe(time.Since(t0).Seconds())
-		for k, pr := range preds {
-			r := &rows[idx[s+k]]
-			r.Model, r.BroadProbs, r.PathProbs, r.Signals, r.Tone = model, pr.Broad, pr.Paths, pr.Signals, pr.Tone
-			r.TopBroad, _ = top(pr.Broad)
-			r.TopPath, r.TopPathP = top(pr.Paths)
-			r.PicturesUsed = 0
-			if sent := len(items[s+k].Pictures); sent > 0 {
-				r.PicturesUsed = uint8(min(pr.PicturesUsed, sent)) // the service may not read every file
+		wg.Add(1)
+		go func(s, e int) {
+			defer func() { <-sem; wg.Done() }()
+			// Each chunk fills in its own rows, so chunks need no locking between them.
+			if err := p.classifyChunk(cctx, items, idx, rows, s, e); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+					cancel()
+				}
+				mu.Unlock()
 			}
-			if r.PicturesUsed == 0 {
-				// The meme score only means something for a post whose picture the model saw (it was
-				// never trained on text-only posts), so it isn't stored for the others. Feeds treat a
-				// missing score as 0.
-				delete(r.Signals, "meme")
-			}
-			metricClassified.WithLabelValues(r.TopBroad).Inc()
+		}(c[0], c[1])
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return fmt.Errorf("classify: %w", firstErr)
+	}
+	return ctx.Err()
+}
+
+// classifyChunk classifies items[s:e] (retrying failed calls) and writes the predictions into the rows
+// those items came from (rows[idx[k]] for item k).
+func (p *Pipeline) classifyChunk(ctx context.Context, items []Item, idx []int, rows []Row, s, e int) error {
+	var (
+		model string
+		preds []Prediction
+		err   error
+	)
+	t0 := time.Now()
+	for attempt := 0; attempt < 6; attempt++ {
+		cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		model, preds, err = p.Classifier.Classify(cctx, items[s:e])
+		cancel()
+		if err == nil || ctx.Err() != nil {
+			break
 		}
+		metricErrors.WithLabelValues("classify").Inc()
+		p.Log.Warn("classifier call failed; retrying", "err", err, "attempt", attempt+1)
+		p.sleep(ctx, time.Duration(1<<attempt)*time.Second)
+	}
+	if err != nil {
+		return err
+	}
+	metricClassifySeconds.Observe(time.Since(t0).Seconds())
+	for k, pr := range preds {
+		r := &rows[idx[s+k]]
+		r.Model, r.BroadProbs, r.PathProbs, r.Signals, r.Tone = model, pr.Broad, pr.Paths, pr.Signals, pr.Tone
+		r.TopBroad, _ = top(pr.Broad)
+		r.TopPath, r.TopPathP = top(pr.Paths)
+		r.PicturesUsed = 0
+		if sent := len(items[s+k].Pictures); sent > 0 {
+			r.PicturesUsed = uint8(min(pr.PicturesUsed, sent)) // the service may not read every file
+		}
+		if r.PicturesUsed == 0 {
+			// The meme score only means something for a post whose picture the model saw (it was
+			// never trained on text-only posts), so it isn't stored for the others. Feeds treat a
+			// missing score as 0.
+			delete(r.Signals, "meme")
+		}
+		metricClassified.WithLabelValues(r.TopBroad).Inc()
 	}
 	return nil
 }

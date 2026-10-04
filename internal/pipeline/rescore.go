@@ -38,11 +38,52 @@ func (r rescoreRow) row() Row {
 	return out
 }
 
+// rescoreWindow is one time window of posts, read and with its pictures downloaded, ready to classify.
+type rescoreWindow struct {
+	start time.Time
+	posts []post
+	rows  []Row
+	pics  [][][]byte
+}
+
+// prepareWindow reads the posts the old model classified in [lo, end) and downloads their pictures.
+func (p *Pipeline) prepareWindow(ctx context.Context, start, lo, end time.Time, oldModel string) (rescoreWindow, error) {
+	w := rescoreWindow{start: start}
+	var rs []rescoreRow
+	if err := p.Conn.Select(ctx, &rs, rescoreSelect+`
+		FROM (SELECT * FROM post_pipeline FINAL WHERE indexed_at >= ? AND indexed_at < ? AND model = ?) AS pp
+		INNER JOIN (SELECT * FROM posts FINAL WHERE indexed_at >= ? AND indexed_at < ?) AS p ON p.uri = pp.uri`,
+		lo, end, oldModel, lo, end); err != nil {
+		return w, fmt.Errorf("select %s: %w", start, err)
+	}
+	w.posts = make([]post, len(rs))
+	w.rows = make([]Row, len(rs))
+	w.pics = make([][][]byte, len(rs))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 64)
+	for i, r := range rs {
+		w.posts[i], w.rows[i] = r.post, r.row()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer func() { <-sem; wg.Done() }()
+			refs := pictureRefs(w.posts[i], p.Cfg.MaxPictures)
+			w.pics[i], _ = p.fetchPictures(ctx, w.posts[i].DID, refs)
+			w.rows[i].PicturesWanted, w.rows[i].PicturesUsed = uint8(len(refs)), uint8(len(w.pics[i]))
+		}(i)
+	}
+	wg.Wait()
+	return w, ctx.Err()
+}
+
 // Rescore re-classifies posts that model oldModel classified between `after` and `before` (by
 // indexed_at; a zero `after` means from the first one), with the current classifier, reusing the
 // labels and label policy decision the pipeline already stored but downloading each post's pictures
 // again (the model looks at them). A post whose pictures are gone is classified without them. Only
 // rows still on oldModel are picked, so a rerun resumes.
+//
+// The next window is read and its pictures downloaded while the current one is being classified, so
+// the GPU isn't left waiting for the network.
 func (p *Pipeline) Rescore(ctx context.Context, oldModel string, after, before time.Time, window time.Duration) error {
 	if after.IsZero() {
 		after = time.Unix(0, 0).UTC()
@@ -58,69 +99,68 @@ func (p *Pipeline) Rescore(ctx context.Context, oldModel string, after, before t
 		return nil
 	}
 	p.Log.Info("rescoring", "from_model", oldModel, "posts", n, "from", first, "before", before, "max_pictures", p.Cfg.MaxPictures)
+
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	windows := make(chan rescoreWindow, 1) // one ready window waits while the next is being prepared
+	prepErr := make(chan error, 1)
+	go func() {
+		defer close(windows)
+		for t := first.Truncate(window); t.Before(before); t = t.Add(window) {
+			end := t.Add(window)
+			if end.After(before) {
+				end = before
+			}
+			lo := t // the first window may start before `after`
+			if after.After(lo) {
+				lo = after
+			}
+			w, err := p.prepareWindow(pctx, t, lo, end, oldModel)
+			if err != nil {
+				prepErr <- err
+				return
+			}
+			if len(w.posts) == 0 {
+				continue
+			}
+			select {
+			case windows <- w:
+			case <-pctx.Done():
+				return
+			}
+		}
+	}()
+
 	done, start := 0, time.Now()
-	for t := first.Truncate(window); t.Before(before); t = t.Add(window) {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		end := t.Add(window)
-		if end.After(before) {
-			end = before
-		}
-		lo := t // the first window may start before `after`
-		if after.After(lo) {
-			lo = after
-		}
-		var rs []rescoreRow
-		if err := p.Conn.Select(ctx, &rs, rescoreSelect+`
-			FROM (SELECT * FROM post_pipeline FINAL WHERE indexed_at >= ? AND indexed_at < ? AND model = ?) AS pp
-			INNER JOIN (SELECT * FROM posts FINAL WHERE indexed_at >= ? AND indexed_at < ?) AS p ON p.uri = pp.uri`,
-			lo, end, oldModel, lo, end); err != nil {
-			return fmt.Errorf("select %s: %w", t, err)
-		}
-		if len(rs) == 0 {
-			continue
-		}
-		posts := make([]post, len(rs))
-		rows := make([]Row, len(rs))
-		pics := make([][][]byte, len(rs))
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, 64)
-		for i, r := range rs {
-			posts[i], rows[i] = r.post, r.row()
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(i int) {
-				defer func() { <-sem; wg.Done() }()
-				refs := pictureRefs(posts[i], p.Cfg.MaxPictures)
-				pics[i], _ = p.fetchPictures(ctx, posts[i].DID, refs)
-				rows[i].PicturesWanted, rows[i].PicturesUsed = uint8(len(refs)), uint8(len(pics[i]))
-			}(i)
-		}
-		wg.Wait()
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := p.classify(ctx, posts, rows, pics); err != nil {
+	for w := range windows {
+		if err := p.classify(ctx, w.posts, w.rows, w.pics); err != nil {
 			return err
 		}
 		// Keep only rows the new model classified; anything it skipped keeps its old row.
-		out := rows[:0]
-		for _, r := range rows {
+		out := w.rows[:0]
+		for _, r := range w.rows {
 			if r.Model != "" && r.Model != oldModel {
 				out = append(out, r)
 			}
 		}
-		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		wctx, wcancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		err := chdb.Insert(wctx, p.Conn, "post_pipeline", out)
-		cancel()
+		wcancel()
 		if err != nil {
-			return fmt.Errorf("insert %s: %w", t, err)
+			return fmt.Errorf("insert %s: %w", w.start, err)
 		}
 		done += len(out)
 		rate := float64(done) / time.Since(start).Seconds()
-		p.Log.Info("rescored", "window", t.Format(time.RFC3339), "posts", len(out), "done", done, "of", n,
+		p.Log.Info("rescored", "window", w.start.Format(time.RFC3339), "posts", len(out), "done", done, "of", n,
 			"per_second", int(rate), "eta", (time.Duration(float64(int(n)-done)/max(rate, 1e-9)) * time.Second).Round(time.Minute).String())
+	}
+	select {
+	case err := <-prepErr:
+		return err
+	default:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	p.Log.Info("rescore done", "posts", done)
 	return nil

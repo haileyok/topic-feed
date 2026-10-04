@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -90,6 +92,71 @@ func TestClassifyStoresMemeOnlyWhenThePictureWasSeen(t *testing.T) {
 	}
 	if rows[0].Signals["news"] != 0.1 {
 		t.Errorf("other signals are kept: %v", rows[0].Signals)
+	}
+}
+
+func TestClassifyChunksRunTwoAtATimeAndKeepAnswersWithTheirPosts(t *testing.T) {
+	var inFlight, peak, calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := inFlight.Add(1)
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		calls.Add(1)
+		time.Sleep(40 * time.Millisecond)
+		inFlight.Add(-1)
+		var req struct {
+			Posts []Item `json:"posts"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		results := make([]map[string]any, len(req.Posts))
+		for i, p := range req.Posts {
+			// The answer names the post it was for, so a mix-up between chunks shows.
+			results[i] = map[string]any{"broad": map[string]float64{p.Text: 0.9}, "paths": map[string]float64{p.Text + "/x": 0.5},
+				"signals": map[string]float64{}, "tone": map[string]float64{"other": 1}, "pictures_used": 0}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"model": "v5", "results": results})
+	}))
+	defer srv.Close()
+	p := &Pipeline{Classifier: &Classifier{URL: srv.URL, Client: srv.Client()}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	const n = maxRequestPosts*3 + 100 // four chunks
+	posts := make([]post, n)
+	rows := make([]Row, n)
+	for i := range posts {
+		posts[i] = post{Text: fmt.Sprintf("post%d", i)}
+		rows[i] = newRow(posts[i].Text, "d", time.Now(), "ok", nil)
+	}
+	if err := p.classify(context.Background(), posts, rows, nil); err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range rows {
+		if r.TopBroad != posts[i].Text {
+			t.Fatalf("row %d got the answer for %q", i, r.TopBroad)
+		}
+	}
+	if calls.Load() != 4 {
+		t.Errorf("%d requests, want 4 chunks", calls.Load())
+	}
+	if peak.Load() != classifyInFlight {
+		t.Errorf("at most %d requests should be in flight at once, saw %d", classifyInFlight, peak.Load())
+	}
+}
+
+func TestClassifyStopsAtTheFirstChunkThatFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	p := &Pipeline{Classifier: &Classifier{URL: srv.URL, Client: srv.Client()}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond) // the retries back off, so cut them short
+	defer cancel()
+	posts := []post{{Text: "a"}}
+	rows := []Row{newRow("a", "d", time.Now(), "ok", nil)}
+	if err := p.classify(ctx, posts, rows, nil); err == nil {
+		t.Error("a failing classifier should fail the batch")
 	}
 }
 

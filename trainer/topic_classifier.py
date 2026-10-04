@@ -26,6 +26,7 @@ Probabilities for the broad topic and subtopic heads are temperature scaled (con
 temperature_path), fitted on held-out validation posts so that the confidence is not over- or under-stated.
 """
 
+import concurrent.futures as cf
 import json
 import os
 from pathlib import Path
@@ -172,7 +173,9 @@ class FusionModel(nn.Module):
 
 
 class TopicClassifier:
-    def __init__(self, folder, device=None, image_encoder=None):
+    def __init__(self, folder, device=None, image_encoder=None, decode_threads=None, prefetch=True):
+        """decode_threads: threads that decode pictures (default the TOPIC_DECODE_THREADS environment variable, else 8;
+        1 decodes on the calling thread). prefetch: decode the next batch while the current one runs on the GPU."""
         from safetensors.torch import load_file
         from transformers import AutoConfig, AutoModel, AutoProcessor, AutoTokenizer
 
@@ -188,16 +191,19 @@ class TopicClassifier:
         self._image_model = self._image_processor = None
         self._AutoModel, self._AutoProcessor = AutoModel, AutoProcessor
         self.t_broad, self.t_path = self.cfg["temperature_broad"], self.cfg["temperature_path"]
+        n = decode_threads if decode_threads is not None else int(os.environ.get("TOPIC_DECODE_THREADS", "8"))
+        self._decode_pool = cf.ThreadPoolExecutor(n, thread_name_prefix="decode") if n > 1 else None
+        self._prefetch = prefetch
 
     @classmethod
-    def from_pretrained(cls, path_or_repo, device=None, image_encoder=None):
+    def from_pretrained(cls, path_or_repo, device=None, image_encoder=None, **kwargs):
         """A local folder with the repository's files, or a Hugging Face repository id."""
         folder = path_or_repo
         if not os.path.isdir(folder):
             from huggingface_hub import snapshot_download
 
             folder = snapshot_download(path_or_repo)
-        return cls(folder, device, image_encoder)
+        return cls(folder, device, image_encoder, **kwargs)
 
     # -- pictures
     def _load_image_encoder(self):
@@ -231,59 +237,93 @@ class TopicClassifier:
         except Exception:  # noqa: BLE001  broken, truncated or hostile files must not fail a whole batch
             return None
 
-    @torch.no_grad()
     def embed_pictures(self, ims):
         """One embedding per PIL RGB image, as float16 (the encoder's pooled output, as stored in training)."""
         self._load_image_encoder()
-        px = self._image_processor(images=ims, return_tensors="pt")["pixel_values"].to(self.device, self._image_model.dtype)
+        return self._embed_pixels(self._image_processor(images=ims, return_tensors="pt")["pixel_values"])
+
+    @torch.no_grad()
+    def _embed_pixels(self, pixel_values):
+        """The picture encoder on the GPU, for pictures the image processor has already resized and normalised."""
+        px = pixel_values.to(self.device, self._image_model.dtype)
         out = self._image_model.get_image_features(pixel_values=px)
         emb = out if torch.is_tensor(out) else out.pooler_output
         return emb.float().cpu().numpy().astype(np.float16)
 
     # -- predictions
-    def _batch(self, items):
-        n, max_images, dim = len(items), self.cfg["max_images"], self.cfg["image_features"]["dim"]
+    def _prepare(self, items):
+        """The CPU part of a batch: tokenize the texts, decode the pictures (on the decode threads) and resize and
+        normalise them. It can run for the next batch while the current one is on the GPU."""
+        max_images = self.cfg["max_images"]
         enc = self.tok([(it["text"] or "")[:MAX_CHARS] for it in items], truncation=True, max_length=self.cfg["max_len"])["input_ids"]
+        refs, sources = [], []
+        for b, it in enumerate(items):
+            for p in list(it.get("pictures") or [])[:max_images]:
+                refs.append(b)
+                sources.append(p)
+        if self._decode_pool is not None and len(sources) > 1:
+            decoded = list(self._decode_pool.map(self._open, sources))
+        else:
+            decoded = [self._open(p) for p in sources]
+        readable = [im for im in decoded if im is not None]
+        px = None
+        if readable:
+            self._load_image_encoder()
+            px = self._image_processor(images=readable, return_tensors="pt")["pixel_values"]  # resize and normalise on the CPU
+        return enc, refs, decoded, px
+
+    def _finish(self, n, prepared):
+        """The GPU part: embed the decoded pictures and build the model's input tensors."""
+        max_images, dim = self.cfg["max_images"], self.cfg["image_features"]["dim"]
+        enc, refs, decoded, px = prepared
         L = max(len(x) for x in enc)
         ids = torch.full((n, L), self.tok.pad_token_id, dtype=torch.long)
         att = torch.zeros((n, L), dtype=torch.long)
-        img = np.zeros((n, max_images, dim), np.float16)
-        have = np.zeros((n, max_images), bool)
-        ims, where = [], []
-        for b, (x, it) in enumerate(zip(enc, items)):
+        for b, x in enumerate(enc):
             ids[b, : len(x)] = torch.tensor(x)
             att[b, : len(x)] = 1
-            k = 0
-            for p in list(it.get("pictures") or [])[:max_images]:
-                im = self._open(p)
-                if im is None:  # a picture that cannot be read is skipped, as in training
-                    continue
-                ims.append(im)
-                where.append((b, k))
-                k += 1
-        if ims:
-            for (b, k), e in zip(where, self.embed_pictures(ims)):
+        img = np.zeros((n, max_images, dim), np.float16)
+        have = np.zeros((n, max_images), bool)
+        where, slot = [], [0] * n
+        for b, im in zip(refs, decoded):
+            if im is None:  # a picture that cannot be read is skipped, as in training
+                continue
+            where.append((b, slot[b]))
+            slot[b] += 1
+        if px is not None:
+            for (b, k), e in zip(where, self._embed_pixels(px)):
                 img[b, k] = e
                 have[b, k] = True
         d = self.device
         return (ids.to(d), att.to(d), torch.from_numpy(img).to(d), torch.from_numpy(have).to(d)), have.sum(1)
+
+    def _batch(self, items):
+        return self._finish(len(items), self._prepare(items))
 
     @torch.no_grad()
     def predict_arrays(self, items, batch_size=32):
         """Arrays in the input order: broad [n, 25], paths [n, 118], signals [n, 11], tone [n, 6] (all
         probabilities) and pictures_used [n] (how many of each post's pictures could be read and were used)."""
         order = np.argsort([len(it["text"] or "") for it in items], kind="stable")  # similar lengths together
+        batches = [[items[i] for i in order[s:s + batch_size]] for s in range(0, len(items), batch_size)]
         parts, used = [[], [], [], []], []
-        for s in range(0, len(items), batch_size):
-            batch = [items[i] for i in order[s:s + batch_size]]
-            inputs, n_used = self._batch(batch)
-            with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
-                lb, lp, ls, lt = self.model(*inputs)
-            probs = (torch.softmax(lb.float() / self.t_broad, -1), torch.softmax(lp.float() / self.t_path, -1),
-                     torch.sigmoid(ls.float()), torch.softmax(lt.float(), -1))
-            for k in range(4):
-                parts[k].append(probs[k].cpu().numpy())
-            used.append(n_used)
+        ahead = cf.ThreadPoolExecutor(1, thread_name_prefix="prefetch") if self._prefetch and len(batches) > 1 else None
+        try:
+            nxt = ahead.submit(self._prepare, batches[0]) if ahead else None
+            for k, batch in enumerate(batches):
+                prepared = nxt.result() if ahead else self._prepare(batch)
+                nxt = ahead.submit(self._prepare, batches[k + 1]) if ahead and k + 1 < len(batches) else None
+                inputs, n_used = self._finish(len(batch), prepared)
+                with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
+                    lb, lp, ls, lt = self.model(*inputs)
+                probs = (torch.softmax(lb.float() / self.t_broad, -1), torch.softmax(lp.float() / self.t_path, -1),
+                         torch.sigmoid(ls.float()), torch.softmax(lt.float(), -1))
+                for j in range(4):
+                    parts[j].append(probs[j].cpu().numpy())
+                used.append(n_used)
+        finally:
+            if ahead:
+                ahead.shutdown(wait=True)
         inv = np.empty(len(order), int)
         inv[order] = np.arange(len(order))
         out = {name: np.concatenate(p)[inv] for name, p in zip(("broad", "paths", "signals", "tone"), parts)}
