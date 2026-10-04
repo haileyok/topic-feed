@@ -2,6 +2,7 @@
 import "./header.js"; // the header every page shares
 import { hydrate, renderPost, el, compact, setShowAdult } from "./posts.js";
 import { fetchMe, fetchMine, savePanel } from "./mine.js";
+import { setupSignInForm, showSignInProblem } from "./signin-form.js";
 
 const TONES = {
   informative: ["📰", "Informative", "facts, news, how-tos"],
@@ -364,18 +365,46 @@ const ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 1
 
 function renderActions(notice = null) {
   document.getElementById("actions").replaceChildren(
-    // Signed in: the feed can be saved as one's own (and published from /feeds).
-    ME && MINE ? savePanel({
-      me: ME, mine: MINE, state, spec, notice, adult: () => state.adult,
+    // The feed can be saved as one's own (and published from /feeds); signed out, saving asks to sign in.
+    savePanel({
+      me: ME, mine: MINE, state, spec, notice, adult: () => state.adult, onSignIn: askToSignIn,
       onSaved: (feed, n) => {
         history.replaceState(null, "", "?edit=" + encodeURIComponent(feed.rkey) + location.hash);
         renderActions(n);
       },
-    }) : null,
+    }),
     el("div", { class: "btn-row" },
-      el("button", { class: "btn", onclick: copyLink, text: "Copy link" }),
-      el("button", { class: "btn btn-primary", onclick: copyYAML, text: "Copy as feeds.yaml" })),
+      el("button", { class: "btn", onclick: copyLink, text: "Copy link" })),
     el("button", { class: "btn btn-ghost", text: "Start over", onclick: () => { state = blankState(); ui.open.clear(); renderControls(); changed(); } }));
+}
+
+// ---------- signing in to save ----------
+
+// Signing in leaves for the person's own server and comes back to /, without the address's #s= that
+// holds the feed being built: it is kept in this tab's session storage meanwhile, and put back.
+const DRAFT_KEY = "topic-feeds:builder-draft";
+
+function stashDraft() {
+  saveHash();
+  try { sessionStorage.setItem(DRAFT_KEY, location.hash); } catch { /* storage off: the draft is lost */ }
+}
+
+/** restoreDraft puts a stashed draft back in the address, unless it already holds one. True if it did. */
+function restoreDraft() {
+  let hash = null;
+  try {
+    hash = sessionStorage.getItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch { return false; }
+  if (!hash || !/^#s=[\w-]+$/.test(hash) || location.hash) return false;
+  history.replaceState(null, "", location.pathname + location.search + hash);
+  return true;
+}
+
+function askToSignIn() {
+  const dialog = document.getElementById("signin-dialog");
+  if (!dialog.open) dialog.showModal();
+  document.getElementById("handle").focus();
 }
 
 async function copy(text, msg) {
@@ -383,38 +412,6 @@ async function copy(text, msg) {
   catch { toast("Couldn't copy: your browser blocked it"); }
 }
 function copyLink() { saveHash(); copy(location.href, "Link copied"); }
-
-function copyYAML() {
-  const s = spec();
-  const rkey = (state.name || "my-feed").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 15).replace(/-+$/, "") || "my-feed";
-  const map = (o) => "{" + Object.entries(o).map(([k, v]) => `${k}: ${v}`).join(", ") + "}";
-  const lines = [
-    `  - rkey: ${rkey}`,
-    `    display_name: ${JSON.stringify((state.name || "My feed").slice(0, 24))}`,
-    `    description: ${JSON.stringify(`${state.name || "My feed"}, picked by a topic classifier. No keyword lists.`)}`,
-    `    paths: [${s.paths.map((p) => (p === "*" ? '"*"' : p)).join(", ")}]`,
-    `    min_prob: ${s.min_prob}`,
-  ];
-  const exclude = state.adult ? { ...s.exclude } : { ...s.exclude, adult_content: 0.2 };
-  if (Object.keys(exclude).length) lines.push(`    exclude: ${map(exclude)}`);
-  if (state.adult) lines.push("    allow_adult: true");
-  for (const [name, r] of [["tone", s.tone], ["signals", s.signals]]) {
-    const parts = ["max", "min", "weights"].filter((k) => Object.keys(r[k]).length);
-    if (!parts.length) continue;
-    lines.push(`    ${name}:`);
-    for (const k of parts) lines.push(`      ${k}: ${map(r[k])}`);
-  }
-  const d = DEFAULT_RANKING, r = s.ranking;
-  const changedKeys = ["gravity", "fresh_every", "author_gap", "promo_penalty"].filter((k) => r[k] !== d[k]);
-  const w = Object.entries(r.weights).filter(([k, v]) => v !== d.weights[k]);
-  if (changedKeys.length || w.length) {
-    lines.push("    ranking:");
-    for (const k of changedKeys) lines.push(`      ${k}: ${r[k]}`);
-    if (w.length) lines.push(`      weights: ${map(Object.fromEntries(w))}`);
-  }
-  if (state.any || s.paths.some((p) => !p.includes("/"))) lines.push("    max_posts: 10000");
-  copy(lines.join("\n") + "\n", "Copied: paste it into config/feeds.yaml");
-}
 
 // ---------- preview ----------
 
@@ -654,6 +651,9 @@ async function main() {
     NAMES.set(t.id, t.name);
     for (const s of t.subtopics || []) NAMES.set(s.id, s.name);
   }
+  const signInProblem = setupSignInForm({ beforeLeave: stashDraft });
+  document.getElementById("signin-close").addEventListener("click", () => document.getElementById("signin-dialog").close());
+  const backFromSignIn = restoreDraft();
   ME = await fetchMe();
   MINE = ME ? await fetchMine() : null;
   state = loadHash() || blankState();
@@ -709,7 +709,12 @@ async function main() {
   }, { rootMargin: "600px" }).observe(document.getElementById("posts-end"));
 
   renderControls();
-  renderActions();
+  // Back from signing in to save: say so where the save button is, or say what went wrong.
+  renderActions(backFromSignIn && ME ? { text: "You're signed in. Save the feed to keep it.", tone: "ok" } : null);
+  if (signInProblem && !ME) {
+    askToSignIn();
+    showSignInProblem(signInProblem);
+  }
   renderSummary();
   refresh();
   // The other pages link to the browse view as /?view=browse.

@@ -161,13 +161,48 @@ const me = { did: "did:plc:bob", handle: "bob.test" };
 const stateOf = (over = {}) => ({ name: "Cats", description: "", rkey: "", editing: "", ...over });
 const panelOf = (over = {}) => {
   const saved = [];
-  const m = over.mine ?? { owner: false, feeds: [], limits: { maxFeeds: 5, maxPosts: 3000 } };
+  const signIns = [];
+  const m = "mine" in over ? over.mine : { owner: false, feeds: [], limits: { maxFeeds: 5, maxPosts: 3000 } };
   const state = over.state ?? stateOf();
-  const el = mine.savePanel({ me, mine: m, state, spec: over.spec ?? (() => spec()), adult: () => !!over.adult, onSaved: (...a) => saved.push(a), notice: over.notice ?? null });
+  const el = mine.savePanel({
+    me: "me" in over ? over.me : me, mine: m, state, spec: over.spec ?? (() => spec()), adult: () => !!over.adult,
+    onSaved: (...a) => saved.push(a), onSignIn: () => signIns.push(1), notice: over.notice ?? null,
+  });
   win.document.body.replaceChildren(el);
   const q = (s) => el.querySelector(s);
-  return { el, q, saved, state, mine: m, button: q("button.btn-primary"), msg: q(".mine-msg"), click: async () => { q("button.btn-primary").click(); await new Promise((r) => setTimeout(r, 10)); } };
+  return { el, q, saved, signIns, state, mine: m, button: q("button.btn-primary"), msg: q(".mine-msg"), click: async () => { q("button.btn-primary").click(); await new Promise((r) => setTimeout(r, 10)); } };
 };
+
+test("signed out: the same panel and button, and saving asks to sign in instead of sending anything", async () => {
+  reply({ status: 201, body: { feed: feedView("cats"), created: true } }); // what it would get, if it asked
+  const p = panelOf({ me: null, mine: null });
+  assert.equal(p.q(".section-title").textContent, "Save as my feed");
+  assert.equal(p.button.textContent, "Save as my feed");
+  assert.match(p.q(".section-hint").textContent, /Sign in to save this feed as yours/);
+  assert.ok(p.q("#mine-rkey") && p.q("#mine-description"), "the same fields to fill in");
+  assert.ok(!p.el.textContent.includes("null"), "nothing says null");
+  await p.click();
+  assert.equal(p.signIns.length, 1);
+  assert.equal(calls.length, 0, "nothing was sent");
+  assert.equal(p.msg.hidden, true);
+});
+
+test("a save the server refuses as signed out (the session ended) asks to sign in again", async () => {
+  reply({ status: 401, body: { error: "not signed in" } });
+  const p = panelOf();
+  await p.click();
+  assert.equal(p.signIns.length, 1);
+  assert.equal(p.saved.length, 0);
+});
+
+test("signed in but the list of feeds couldn't be read: saving still works", async () => {
+  reply({ status: 201, body: { feed: feedView("cats"), created: true } });
+  const p = panelOf({ mine: null });
+  assert.equal(p.q(".section-hint").textContent, "Signed in as bob.test.");
+  await p.click();
+  assert.equal(calls[0].url, "/api/me/feeds/cats");
+  assert.equal(p.saved.length, 1);
+});
 
 test("the panel says who is signed in and how many feeds they have of how many they may", () => {
   const p = panelOf({ mine: { owner: false, feeds: [feedView("a"), feedView("b")], limits: { maxFeeds: 5 } } });

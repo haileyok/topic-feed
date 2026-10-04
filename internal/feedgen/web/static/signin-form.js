@@ -60,9 +60,10 @@ async function startLogin(handle) {
 /**
  * setupSignInForm makes the form work, and takes a problem the last sign-in came back with (?signin=...)
  * out of the address bar. It returns that problem's code, or null: the page shows it with
- * showSignInProblem once it knows nobody is signed in.
+ * showSignInProblem once it knows nobody is signed in. beforeLeave is called just before the browser
+ * goes to the person's server, for a page to keep what it would otherwise lose.
  */
-export function setupSignInForm() {
+export function setupSignInForm({ beforeLeave = () => {} } = {}) {
   const problem = new URLSearchParams(location.search).get("signin");
   if (problem !== null) {
     const q = new URLSearchParams(location.search);
@@ -88,7 +89,9 @@ export function setupSignInForm() {
     button.disabled = true;
     button.textContent = "Opening Bluesky…";
     try {
-      location.assign(await startLogin(handle));
+      const to = await startLogin(handle);
+      beforeLeave();
+      location.assign(to);
     } catch (err) {
       notice(messageFor(err.message));
       reset();

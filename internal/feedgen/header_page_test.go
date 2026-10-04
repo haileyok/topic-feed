@@ -41,18 +41,20 @@ func headerIDs(t *testing.T) map[string]bool { return idsUsedBy(t, "header.js") 
 // sharedIDs are the elements of what several pages share: the header and the sign-in form.
 func sharedIDs(t *testing.T) map[string]bool { return idsUsedBy(t, "header.js", "signin-form.js") }
 
-// The pages that need someone signed in, and the script each starts from.
+// The pages that need someone signed in, and the script each starts from. (The builder needs it only
+// to save a feed, and shows the form in a dialog then.)
 var pagesWithTheSignInForm = []struct{ file, script string }{
 	{"web/me.html", "me.js"},
 	{"web/feeds.html", "feeds.js"},
 	{"web/inspect.html", "inspect.js"},
+	{"web/index.html", "app.js"},
 }
 
-var signedOutSection = regexp.MustCompile(`(?s)<section class="me-card" id="signed-out" hidden>.*?</section>`)
+var signedOutSection = regexp.MustCompile(`(?s)<section class="me-card" id="signed-out"(?: hidden)?>.*?</section>`)
 
 func TestEveryPageThatNeedsSignInHasTheSameForm(t *testing.T) {
 	// Only the heading and the line under it, which say what the page is for, differ.
-	pagesOwn := regexp.MustCompile(`(?s)<h1>.*?</h1>\s*<p class="me-lead">.*?</p>`)
+	pagesOwn := regexp.MustCompile(`(?s)<h1[^>]*>.*?</h1>\s*<p class="me-lead">.*?</p>`)
 	var first string
 	for _, p := range pagesWithTheSignInForm {
 		raw, err := webFS.ReadFile(p.file)
@@ -64,7 +66,8 @@ func TestEveryPageThatNeedsSignInHasTheSameForm(t *testing.T) {
 			t.Errorf("%s has no signed-out section with a heading and a line under it", p.file)
 			continue
 		}
-		same := pagesOwn.ReplaceAllString(section, "")
+		// (The builder's card is in a dialog, which is what hides it until it's wanted.)
+		same := strings.Replace(pagesOwn.ReplaceAllString(section, ""), `id="signed-out" hidden>`, `id="signed-out">`, 1)
 		if first == "" {
 			first = same
 		} else if same != first {
@@ -79,7 +82,7 @@ func TestEveryPageThatNeedsSignInHasTheSameForm(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(js), `from "./signin-form.js";`) || !strings.Contains(string(js), "setupSignInForm()") {
+		if !strings.Contains(string(js), `from "./signin-form.js";`) || !strings.Contains(string(js), "setupSignInForm(") {
 			t.Errorf("%s doesn't set up the sign-in form", p.script)
 		}
 	}

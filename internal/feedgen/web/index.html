@@ -27,6 +27,7 @@
   <meta name="twitter:image:alt" content="Topic Feeds: build your own Bluesky feed.">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
   <script type="module" src="/static/v/__V__/app.js"></script>
 </head>
 <body>
@@ -101,5 +102,24 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Saving a feed needs someone signed in: the same sign-in as every other page, over the builder. -->
+  <dialog class="me signin-dialog" id="signin-dialog" aria-labelledby="signin-title">
+    <section class="me-card" id="signed-out">
+      <h1 id="signin-title">Save your feed</h1>
+      <p class="me-lead">Sign in with your Bluesky account to save this feed as yours and publish it.</p>
+      <p class="me-note" id="signin-notice" role="alert" hidden></p>
+      <form id="login" class="me-form">
+        <label for="handle">Your Bluesky handle</label>
+        <div class="me-row">
+          <input id="handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="username" maxlength="300" required>
+          <button class="btn btn-primary" id="login-button" type="submit">Sign in with Bluesky</button>
+        </div>
+      </form>
+      <p class="me-fine">You'll approve this on your own Bluesky server. We only learn which account is yours: we get no password, and we keep no access to your account.</p>
+    </section>
+    <button class="btn btn-ghost signin-dialog-close" id="signin-close" type="button">Not now</button>
+  </dialog>
 </body>
 </html>

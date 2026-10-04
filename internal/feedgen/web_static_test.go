@@ -70,7 +70,7 @@ func TestPagesNameTheirScriptsAndStylesByVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for page, want := range map[string]int{"/": 2, "/me": 3} {
+	for page, want := range map[string]int{"/": 3, "/me": 3} {
 		body := serve(s, "GET", page, nil).Body.String()
 		if strings.Contains(body, "__V__") || strings.Contains(body, "__ORIGIN__") {
 			t.Errorf("%s still has a placeholder", page)

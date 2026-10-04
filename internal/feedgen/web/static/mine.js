@@ -46,9 +46,9 @@ export async function fetchMine() {
 }
 
 /**
- * feedBody is what is sent to save the feed the builder describes (spec is its settings): the same
- * feed that "Copy as feeds.yaml" writes. Posts about adult topics are left out unless the owner has
- * switched adult content on, and a feed of whole topics reaches back further, which needs more candidates.
+ * feedBody is what is sent to save the feed the builder describes (spec is its settings). Posts about
+ * adult topics are left out unless the owner has switched adult content on, and a feed of whole topics
+ * reaches back further, which needs more candidates.
  */
 export function feedBody(spec, { name, description, adult = false, owner = false, maxPosts = 0 } = {}) {
   const exclude = adult ? { ...spec.exclude } : { ...spec.exclude, adult_content: 0.2 };
@@ -113,8 +113,11 @@ const left = (mine) => {
  * name) and editing (the key of the feed being changed, "" for a new one); spec() is the builder's
  * settings. onSaved(feed, notice) is told when the feed is saved, with what to tell the person; the
  * panel is made anew then, and shows notice ({text, tone}) when given it.
+ *
+ * Someone signed out (me is null) gets the same panel, and saving asks them to sign in instead
+ * (onSignIn). mine, their feeds, is null when it couldn't be read: saving still works.
  */
-export function savePanel({ me, mine, state, spec, adult = () => false, onSaved = () => {}, notice = null }) {
+export function savePanel({ me, mine, state, spec, adult = () => false, onSaved = () => {}, onSignIn = () => {}, notice = null }) {
   const msg = el("p", { class: "mine-msg", role: "status", "aria-live": "polite", hidden: true });
   const say = (text, tone) => {
     msg.textContent = text || "";
@@ -140,6 +143,11 @@ export function savePanel({ me, mine, state, spec, adult = () => false, onSaved 
   description.value = state.description || "";
 
   button.addEventListener("click", async () => {
+    if (!me) {
+      say("", "");
+      onSignIn();
+      return;
+    }
     const name = (state.name || "").trim();
     const s = spec();
     if (!name) return say("Give the feed a name first.", "error");
@@ -154,10 +162,15 @@ export function savePanel({ me, mine, state, spec, adult = () => false, onSaved 
     });
     const r = await saveFeed(rkey, body);
     button.disabled = false;
-    if (!r.ok) return say(r.message, "error");
-    const i = mine.feeds.findIndex((f) => f.rkey === r.feed.rkey);
-    if (i >= 0) mine.feeds[i] = r.feed;
-    else mine.feeds.push(r.feed);
+    if (!r.ok) {
+      if (r.status === 401) return onSignIn(); // signed out since the page loaded
+      return say(r.message, "error");
+    }
+    if (mine) {
+      const i = mine.feeds.findIndex((f) => f.rkey === r.feed.rkey);
+      if (i >= 0) mine.feeds[i] = r.feed;
+      else mine.feeds.push(r.feed);
+    }
     state.editing = r.feed.rkey;
     const text = r.created ? "Saved. It's yours now: publish it from your feeds." : "Changes saved. Publish them from your feeds to update Bluesky.";
     say(text, "ok");
@@ -166,7 +179,10 @@ export function savePanel({ me, mine, state, spec, adult = () => false, onSaved 
 
   return el("div", { class: "section", id: "mine" },
     el("div", { class: "section-title", text: editing ? "Your feed" : "Save as my feed" }),
-    el("p", { class: "section-hint", text: `Signed in as ${me.handle || me.did}. ${left(mine)}` }),
+    el("p", {
+      class: "section-hint",
+      text: me ? `Signed in as ${me.handle || me.did}.${mine ? " " + left(mine) : ""}` : "Sign in to save this feed as yours and publish it on Bluesky.",
+    }),
     description, key, msg,
     el("div", { class: "btn-row" }, button, el("a", { class: "btn btn-ghost", href: "/feeds", text: "My feeds" })));
 }

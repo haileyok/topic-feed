@@ -64,7 +64,7 @@ func newSignIn(origin, owner string, log *slog.Logger) (*signin.Handler, func(ct
 		Origin: origin, Auth: auth, Metadata: auth.Metadata(), Sessions: sessions,
 		Handle: handle, Owner: owner, Allow: logins.AllowRequest, Log: log,
 		// The pages with the sign-in form: signing in comes back to the one it was started from.
-		Returns: []string{"/me", "/feeds", "/inspect"},
+		Returns: []string{"/me", "/feeds", "/inspect", "/"},
 	})
 	if err != nil {
 		return nil, nil, err

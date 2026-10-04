@@ -99,6 +99,16 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .account-problem { color: #b42318; font-size: 13px; }
 @media (prefers-color-scheme: dark) { .account-problem { color: #ff9b9b; } }
 
+/* The sign-in card (me.css) over the builder, when saving needs someone signed in. */
+dialog.signin-dialog {
+  width: min(480px, calc(100vw - 24px)); max-width: none; margin: auto; padding: 0;
+  border: 0; background: transparent; color: var(--text); overflow: visible;
+}
+dialog.signin-dialog::backdrop { background: rgb(8 12 20 / .45); backdrop-filter: blur(2px); }
+dialog.signin-dialog #signed-out { margin: 0; max-width: none; box-shadow: var(--shadow-lg); }
+dialog.signin-dialog .signin-dialog-close { display: block; margin: 10px auto 0; color: #fff; }
+dialog.signin-dialog .signin-dialog-close:hover { background: rgb(255 255 255 / .12); }
+
 /* ---------- builder layout ---------- */
 
 .view-build {
