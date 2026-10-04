@@ -11,7 +11,7 @@ import (
 )
 
 // scriptsOfTheInspectPage are the scripts the page at /inspect is made of.
-var scriptsOfTheInspectPage = []string{"inspect.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js"}
+var scriptsOfTheInspectPage = []string{"inspect.js", "header.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js"}
 
 func TestInspectPageIsServedWithTheSitesSecurityHeaders(t *testing.T) {
 	s := testServer(t)
@@ -75,7 +75,7 @@ func TestInspectPageNeedsNothingTheSecurityPolicyForbids(t *testing.T) {
 	if regexp.MustCompile(`(?i)\son[a-z]+\s*=`).MatchString(html) {
 		t.Error("an inline event handler")
 	}
-	if regexp.MustCompile(`(?i)(href|src|action)\s*=\s*"(?:https?:)?//`).MatchString(html) {
+	if loadsFromAnotherSite(html) {
 		t.Error("the page loads something from another site")
 	}
 	if !strings.Contains(html, `name="robots" content="noindex"`) {
@@ -170,8 +170,9 @@ func TestEveryElementTheInspectPageScriptsUseIsInThePage(t *testing.T) {
 		}
 	}
 	// And the other way: a part of the page that no script knows about is never shown or filled.
+	header := headerIDs(t) // the shared header's, filled in by header.js (TestEveryPageHasTheSameHeader)
 	for id := range have {
-		if !strings.Contains(string(src), `("`+id+`")`) && !slicesContain(states, id) {
+		if !strings.Contains(string(src), `("`+id+`")`) && !slicesContain(states, id) && !header[id] {
 			t.Errorf("the page has #%s, which inspect.js never uses", id)
 		}
 	}

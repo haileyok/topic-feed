@@ -593,6 +593,34 @@ func TestMe(t *testing.T) {
 	}
 }
 
+func TestMeSaysWhetherTheOwnerIsSignedIn(t *testing.T) {
+	r := newRig(t, func(c *Config) { c.Owner = testDID })
+	other := "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb"
+	for _, tc := range []struct {
+		did   string
+		owner bool
+	}{{testDID, true}, {other, false}} {
+		w := r.do(req{method: "GET", target: "/api/me", cookies: []*http.Cookie{{Name: sessionCookieName, Value: r.sess.Issue(tc.did)}}})
+		var got map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != 200 {
+			t.Fatalf("%s: %d %s", tc.did, w.Code, w.Body.String())
+		}
+		owner, said := got["owner"]
+		if tc.owner && owner != true {
+			t.Errorf("the owner: %v", got)
+		}
+		if !tc.owner && said {
+			t.Errorf("someone else is told about owner at all: %v", got)
+		}
+	}
+	// With no owner set, nobody is the owner.
+	r = newRig(t, nil)
+	w := r.do(req{method: "GET", target: "/api/me", cookies: []*http.Cookie{{Name: sessionCookieName, Value: r.sess.Issue(testDID)}}})
+	if strings.Contains(w.Body.String(), "owner") {
+		t.Errorf("no owner configured: %s", w.Body.String())
+	}
+}
+
 func TestViewerComesOnlyFromTheCookie(t *testing.T) {
 	r := newRig(t, nil)
 	cookie := &http.Cookie{Name: sessionCookieName, Value: r.sess.Issue(testDID)}

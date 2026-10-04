@@ -5,6 +5,7 @@
 // All text is put on the page with textContent, never as HTML: what the page shows includes what
 // other people posted.
 
+import "./header.js"; // the header every page shares
 import { $, make, str, num, safeLink } from "./dom.js";
 import { el, renderPost, hydrate } from "./posts.js";
 import { meter } from "./stats.js";

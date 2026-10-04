@@ -37,8 +37,9 @@ func serviceAuthDirectory() *atmosidentity.Directory {
 // newSignIn sets up signing in with Bluesky for the service at origin. The session cookie is
 // signed with FEEDGEN_SESSION_SECRET; without it sign-in is off and this returns nil, so
 // the service runs without the page. It also returns how to find a handle for a DID, which
-// the pages that show who is signed in use too.
-func newSignIn(origin string, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
+// the pages that show who is signed in use too. owner is the DID of the account that runs the
+// service: /api/me tells the pages when it is the one signed in.
+func newSignIn(origin, owner string, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
 	secret := os.Getenv("FEEDGEN_SESSION_SECRET")
 	if secret == "" {
 		return nil, nil, nil
@@ -61,7 +62,7 @@ func newSignIn(origin string, log *slog.Logger) (*signin.Handler, func(ctx conte
 	handle := handleLookup(dir)
 	h, err := signin.New(signin.Config{
 		Origin: origin, Auth: auth, Metadata: auth.Metadata(), Sessions: sessions,
-		Handle: handle, Allow: logins.AllowRequest, Log: log,
+		Handle: handle, Owner: owner, Allow: logins.AllowRequest, Log: log,
 	})
 	if err != nil {
 		return nil, nil, err

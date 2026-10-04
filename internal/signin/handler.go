@@ -35,6 +35,9 @@ type Config struct {
 	Sessions *Sessions
 	// Handle looks up the handle of a DID for /api/me; nil, or "" back: the DID is all it says.
 	Handle func(ctx context.Context, did string) string
+	// Owner is the DID of the account that runs the service. /api/me says "owner": true when it
+	// is the one signed in, so the pages can offer what only the owner may use. "" for nobody.
+	Owner string
 	// Allow, if set, is asked before a login starts; false answers 429. Use it to limit how
 	// often one visitor can make this service call out to other servers.
 	Allow func(r *http.Request) bool
@@ -297,7 +300,7 @@ func (h *Handler) ServeLogout(w http.ResponseWriter, r *http.Request) {
 	h.home(w, r, "")
 }
 
-// ServeMe says who is signed in: {"did", "handle"}, or 401.
+// ServeMe says who is signed in: {"did", "handle"}, plus "owner": true for the service's owner, or 401.
 func (h *Handler) ServeMe(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -313,5 +316,12 @@ func (h *Handler) ServeMe(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		handle = h.cfg.Handle(ctx, did)
 	}
-	_ = json.NewEncoder(w).Encode(map[string]string{"did": did, "handle": handle})
+	_ = json.NewEncoder(w).Encode(meResponse{DID: did, Handle: handle, Owner: h.cfg.Owner != "" && did == h.cfg.Owner})
+}
+
+// meResponse is what /api/me answers. Owner is left out unless it is true.
+type meResponse struct {
+	DID    string `json:"did"`
+	Handle string `json:"handle"`
+	Owner  bool   `json:"owner,omitempty"`
 }

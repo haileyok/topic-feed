@@ -28,7 +28,7 @@ func TestMePageIsServedWithTheSitesSecurityHeaders(t *testing.T) {
 		}
 	}
 	body := w.Body.String()
-	for _, want := range []string{`/me.js`, `/me.css`, `id="login"`, `name="handle"`, `id="logout"`, `noindex`} {
+	for _, want := range []string{`/me.js`, `/me.css`, `id="login"`, `name="handle"`, `id="account-signout"`, `noindex`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %s", want)
 		}
@@ -73,7 +73,7 @@ func TestMePageNeedsNothingTheSecurityPolicyForbids(t *testing.T) {
 	if regexp.MustCompile(`(?i)\son[a-z]+\s*=`).MatchString(html) {
 		t.Error("an inline event handler")
 	}
-	if regexp.MustCompile(`(?i)(href|src|action)\s*=\s*"(?:https?:)?//`).MatchString(html) {
+	if loadsFromAnotherSite(html) {
 		t.Error("the page loads something from another site")
 	}
 	js, err := webFS.ReadFile("web/static/me.js")
@@ -116,7 +116,7 @@ func TestHomePageLinksToTheMePage(t *testing.T) {
 }
 
 // scriptsOfTheMePage are the scripts the page at /me is made of.
-var scriptsOfTheMePage = []string{"me.js", "tuning.js", "dom.js", "draft.js", "knobs.js", "scores.js", "stats.js", "posts.js"}
+var scriptsOfTheMePage = []string{"me.js", "header.js", "tuning.js", "dom.js", "draft.js", "knobs.js", "scores.js", "stats.js", "posts.js"}
 
 func TestEveryScriptOfTheMePageIsServedAndWhatItImportsExists(t *testing.T) {
 	s := testServer(t)

@@ -136,32 +136,7 @@ test("a handle that is markup is shown as words", async () => {
   }
 });
 
-test("signing out posts the request, then starts again from the sign-in form", async () => {
-  const p = await open({ api: { status: 200, body: { did: "did:plc:alice", handle: "alice.test" } } });
-  p.$("logout").click();
-  await p.until(() => p.reloads.length > 0, "the reload");
-  const call = p.calls.find((c) => c.url === "/oauth/logout");
-  assert.equal(call.method, "POST");
-  assert.equal(call.headers.Accept, "application/json");
-  assert.equal(p.$("signed-in-notice").hidden, true);
-});
-
-test("if signing out fails, you are told, still signed in, and can try again", async () => {
-  const signedIn = { status: 200, body: { did: "did:plc:alice", handle: "alice.test" } };
-  for (const [name, logout] of [
-    ["the request failing", new TypeError("offline")],
-    ["a refusal", { status: 403 }],
-    ["a server error", { status: 500 }],
-  ]) {
-    const p = await open({ api: signedIn, logout });
-    p.$("logout").click();
-    await p.until(() => !p.$("signed-in-notice").hidden, name);
-    assert.match(p.$("signed-in-notice").textContent, /Couldn't sign out/, name);
-    assert.equal(p.reloads.length, 0, `${name}: must not reload as if signed out`);
-    assert.equal(p.$("logout").disabled, false, `${name}: can try again`);
-    assert.deepEqual(p.visible(), ["signed-in"], name);
-  }
-});
+// Signing out is the header's (webtest/header.test.mjs).
 
 test("when the server can't be asked, the page says so and still offers sign-in", async () => {
   for (const api of [{ status: 500, body: {} }, { status: 502 }, new TypeError("Failed to fetch")]) {

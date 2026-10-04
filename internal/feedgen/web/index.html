@@ -35,12 +35,20 @@
       <img src="/static/icon.svg" alt="" width="28" height="28">
       <span class="brand-name">Topic Feeds</span>
     </a>
-    <nav class="tabs" role="tablist">
-      <button class="tab" role="tab" data-view="build" aria-selected="true">Build a feed</button>
-      <button class="tab" role="tab" data-view="browse" aria-selected="false">Browse feeds</button>
+    <nav class="sitenav" aria-label="Pages">
+      <a class="sitenav-link" href="/" data-view="build" aria-current="page">Build a feed</a>
+      <a class="sitenav-link" href="/?view=browse" data-view="browse">Browse feeds</a>
+      <a class="sitenav-link" href="/feeds">Your feeds</a>
+      <a class="sitenav-link" href="/me">For you</a>
+      <a class="sitenav-link" id="nav-inspect" href="/inspect" hidden>Post inspector</a>
     </nav>
     <a class="byline" href="https://bsky.app/profile/hailey.at" target="_blank" rel="noopener">by @hailey.at</a>
-    <a class="btn btn-ghost signin-link" href="/me">Sign in</a>
+    <div class="account" id="account" data-state="checking">
+      <span class="account-problem" id="account-problem" role="alert" hidden></span>
+      <a class="btn btn-ghost" id="account-signin" href="/me" hidden>Sign in</a>
+      <span class="account-who" id="account-who" hidden></span>
+      <button class="btn btn-ghost" id="account-signout" type="button" hidden>Sign out</button>
+    </div>
   </header>
 
   <main>

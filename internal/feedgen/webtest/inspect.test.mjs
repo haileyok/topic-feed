@@ -19,7 +19,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.join(here, "..", "web");
 const { JSDOM } = createRequire(import.meta.url)(process.env.TOPICFEED_JSDOM);
 const scriptURL = pathToFileURL(path.join(webDir, "static", "inspect.js")).href;
-const pageHTML = fs.readFileSync(path.join(webDir, "inspect.html"), "utf8").replace(/<script[^>]*><\/script>/, "");
+const pageHTML = fs.readFileSync(path.join(webDir, "inspect.html"), "utf8")
+  .replace(/<header class="topbar">[\s\S]*?<\/header>/, "") // the shared header has tests of its own (header.test.mjs)
+  .replace(/<script[^>]*><\/script>/, "");
 
 const owner = { status: 200, body: { did: "did:plc:owner", handle: "owner.example" } };
 const BSKY = "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts";

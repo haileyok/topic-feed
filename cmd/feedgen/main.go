@@ -236,7 +236,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 			log.Warn("FEEDGEN_WELCOME_POST is not set: a viewer whose feed is still being built sees an empty feed (make feeds-welcome creates the post)")
 		}
 		// Signing in with Bluesky, for the page where viewers see and tune their feed.
-		signIn, handleOf, err := newSignIn("https://"+s.hostname, log)
+		signIn, handleOf, err := newSignIn("https://"+s.hostname, s.owner.String(), log)
 		if err != nil {
 			stopWriter()
 			iw.Wait()

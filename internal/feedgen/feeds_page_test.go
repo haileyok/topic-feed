@@ -12,7 +12,7 @@ import (
 
 // scriptsOfTheFeedsPage are the scripts the page at /feeds is made of (those it imports; the vendored OAuth
 // client is loaded by feeds-page.js with import()).
-var scriptsOfTheFeedsPage = []string{"feeds-page.js", "feeds.js", "publish.js", "mine.js", "posts.js", "dom.js"}
+var scriptsOfTheFeedsPage = []string{"feeds-page.js", "header.js", "feeds.js", "publish.js", "mine.js", "posts.js", "dom.js"}
 
 const vendoredClient = "vendor/atproto-oauth-client-browser.js"
 
@@ -98,7 +98,7 @@ func TestFeedsPageNeedsNothingTheSecurityPolicyForbids(t *testing.T) {
 	if regexp.MustCompile(`(?i)\son[a-z]+\s*=`).MatchString(html) {
 		t.Error("an inline event handler")
 	}
-	if regexp.MustCompile(`(?i)(href|src|action)\s*=\s*"(?:https?:)?//`).MatchString(html) {
+	if loadsFromAnotherSite(html) {
 		t.Error("the page loads something from another site")
 	}
 	if !strings.Contains(html, `name="robots" content="noindex"`) {
@@ -218,6 +218,9 @@ func TestEveryElementTheFeedsPageScriptsUseIsInThePage(t *testing.T) {
 		if !strings.Contains(string(src), `"`+id+`"`) {
 			t.Errorf("feeds.js never shows #%s", id)
 		}
+	}
+	for id := range headerIDs(t) {
+		used[id] = true // the shared header's, filled in by header.js (TestEveryPageHasTheSameHeader)
 	}
 	for id := range have {
 		if !used[id] {

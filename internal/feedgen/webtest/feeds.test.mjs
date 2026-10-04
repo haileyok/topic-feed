@@ -16,7 +16,9 @@ import { FakeServer, fakeClient, DID, SERVICE, SCOPE, COLLECTION } from "./fakep
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.join(here, "..", "web");
 const { JSDOM } = createRequire(import.meta.url)(process.env.TOPICFEED_JSDOM);
-const pageHTML = fs.readFileSync(path.join(webDir, "feeds.html"), "utf8").replace(/<script[^>]*><\/script>/, "");
+const pageHTML = fs.readFileSync(path.join(webDir, "feeds.html"), "utf8")
+  .replace(/<header class="topbar">[\s\S]*?<\/header>/, "") // the shared header has tests of its own (header.test.mjs)
+  .replace(/<script[^>]*><\/script>/, "");
 const feedsJS = await import(pathToFileURL(path.join(webDir, "static", "feeds.js")).href);
 const { main, topicsText, feedUrl, STATUS_TEXT } = feedsJS;
 

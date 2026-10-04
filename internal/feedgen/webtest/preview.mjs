@@ -266,7 +266,8 @@ http.createServer(async (req, res) => {
   }
   if (p.startsWith("/api/")) {
     if (apiState.slow) await delay(1500);
-    if (p === "/api/me") return apiState.signedOut ? send(res, 401, { error: "not signed in" }) : send(res, 200, { did: "did:plc:alice", handle: "alice.example" });
+    // Alice is the owner (the header shows her the post inspector) unless ?forbidden says she isn't.
+    if (p === "/api/me") return apiState.signedOut ? send(res, 401, { error: "not signed in" }) : send(res, 200, { did: "did:plc:alice", handle: "alice.example", ...(apiState.forbidden ? {} : { owner: true }) });
     if (p === "/api/taxonomy") return send(res, 200, TAXONOMY);
     if (p === "/api/feeds") return send(res, 200, []);
     if (p === "/api/preview" && req.method === "POST") { await readBody(req); return send(res, 200, { posts: [], total: 0, removed: {}, took_ms: 1 }); }

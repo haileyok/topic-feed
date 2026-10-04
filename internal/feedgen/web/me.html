@@ -18,7 +18,20 @@
       <img src="/static/icon.svg" alt="" width="28" height="28">
       <span class="brand-name">Topic Feeds</span>
     </a>
-    <a class="byline" href="/">Feed builder</a>
+    <nav class="sitenav" aria-label="Pages">
+      <a class="sitenav-link" href="/" data-view="build">Build a feed</a>
+      <a class="sitenav-link" href="/?view=browse" data-view="browse">Browse feeds</a>
+      <a class="sitenav-link" href="/feeds">Your feeds</a>
+      <a class="sitenav-link" href="/me" aria-current="page">For you</a>
+      <a class="sitenav-link" id="nav-inspect" href="/inspect" hidden>Post inspector</a>
+    </nav>
+    <a class="byline" href="https://bsky.app/profile/hailey.at" target="_blank" rel="noopener">by @hailey.at</a>
+    <div class="account" id="account" data-state="checking">
+      <span class="account-problem" id="account-problem" role="alert" hidden></span>
+      <a class="btn btn-ghost" id="account-signin" href="/me" hidden>Sign in</a>
+      <span class="account-who" id="account-who" hidden></span>
+      <button class="btn btn-ghost" id="account-signout" type="button" hidden>Sign out</button>
+    </div>
   </header>
 
   <main class="me">
@@ -47,7 +60,6 @@
           <h1>Your For you feed</h1>
           <p class="me-who">Signed in as <strong id="who"></strong></p>
         </div>
-        <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
       </div>
       <p class="me-note" id="signed-in-notice" role="alert" hidden></p>
 

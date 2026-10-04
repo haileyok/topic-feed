@@ -1,4 +1,5 @@
 // Topic Feeds: the feed builder page.
+import "./header.js"; // the header every page shares
 import { hydrate, renderPost, el, compact, setShowAdult } from "./posts.js";
 import { fetchMe, fetchMine, savePanel } from "./mine.js";
 
@@ -610,8 +611,18 @@ async function topPost(f) {
 
 // ---------- shell ----------
 
+// The header's "Build a feed" and "Browse feeds" links are this page's two views: here they switch
+// views without reloading (which would lose the feed being built), and ?view=browse says which.
 function show(name) {
-  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.view === name));
+  for (const a of document.querySelectorAll(".sitenav-link[data-view]")) {
+    if (a.dataset.view === name) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  const q = new URLSearchParams(location.search);
+  if (name === "browse") q.set("view", "browse");
+  else q.delete("view");
+  const query = q.toString();
+  history.replaceState(null, "", location.pathname + (query ? "?" + query : "") + location.hash);
   document.getElementById("view-build").hidden = name !== "build";
   document.getElementById("view-browse").hidden = name !== "browse";
   if (name === "browse") renderBrowse();
@@ -658,7 +669,13 @@ async function main() {
   setShowAdult(state.adult);
   ui.open = new Set(Object.keys(state.topics).map((k) => k.split("/")[0]));
 
-  for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => show(t.dataset.view));
+  for (const a of document.querySelectorAll(".sitenav-link[data-view]")) {
+    a.addEventListener("click", (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // a new tab or window: let it open
+      e.preventDefault();
+      show(a.dataset.view);
+    });
+  }
   document.getElementById("open-panel").addEventListener("click", () => panel(true));
   document.getElementById("close-panel").addEventListener("click", () => panel(false));
   // Tap outside the drawer closes it. composedPath is fixed at dispatch, so it still holds
@@ -695,6 +712,8 @@ async function main() {
   renderActions();
   renderSummary();
   refresh();
+  // The other pages link to the browse view as /?view=browse.
+  if (new URLSearchParams(location.search).get("view") === "browse") show("browse");
 }
 
 main().catch((e) => {

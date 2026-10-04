@@ -15,6 +15,7 @@ const scriptURL = pathToFileURL(path.join(webDir, "static", "me.js")).href;
 // preview again: both are made short here.
 const pageHTML = fs
   .readFileSync(path.join(webDir, "me.html"), "utf8")
+  .replace(/<header class="topbar">[\s\S]*?<\/header>/, "") // the shared header has tests of its own (header.test.mjs)
   .replace(/<script[^>]*><\/script>/, "")
   .replace('data-preview-delay="400"', 'data-preview-delay="5"')
   .replace('data-retry-delay="3000"', 'data-retry-delay="30"');

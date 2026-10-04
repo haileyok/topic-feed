@@ -5,6 +5,7 @@
 // doesn't let a form post away and a script can't read where a redirect leads. All text is put
 // on the page with textContent, never as HTML.
 
+import "./header.js"; // the header every page shares
 import { $, num } from "./dom.js";
 import { createTuner } from "./tuning.js";
 
@@ -99,30 +100,6 @@ function setupLogin() {
   // Coming back with the browser's back button restores this page as it was left.
   addEventListener("pageshow", (ev) => {
     if (ev.persisted) reset();
-  });
-}
-
-function setupLogout() {
-  const button = $("logout");
-  const note = $("signed-in-notice");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    note.hidden = true;
-    let ok = false;
-    try {
-      const res = await fetch("/oauth/logout", { method: "POST", headers: { Accept: "application/json" }, credentials: "same-origin" });
-      ok = res.ok;
-    } catch {
-      // reported below
-    }
-    if (ok) {
-      location.reload(); // signed out: the page starts again from the sign-in form
-      return;
-    }
-    // Still signed in, and the person should know.
-    note.textContent = "Couldn't sign out. Check your connection and try again.";
-    note.hidden = false;
-    button.disabled = false;
   });
 }
 
@@ -248,7 +225,6 @@ export async function main() {
   if (problem !== null) history.replaceState(null, "", location.pathname);
 
   setupLogin();
-  setupLogout();
   setupTabs();
   let me;
   try {
