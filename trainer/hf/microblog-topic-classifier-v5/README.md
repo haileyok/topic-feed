@@ -79,9 +79,13 @@ each post weighted by the teacher's confidence, minimum 0.3).
 
 Clef-flash's probabilities were calibrated to Jev's scale on 5,000 posts both had labelled before training.
 Split by time within each teacher: 125,674 train, 5,674 validation, 11,348 test (the newest 8% of each teacher's posts).
-8 epochs, batch size 32, learning rate 5e-5 for the text encoder and 1e-3 for the rest, bfloat16, one RTX 5090, 2,208 s; the best epoch (7th, by
-validation top pick) was kept. One training run (one seed). The signal head `meme` only saw labels on picture posts: for a post without pictures its output
-means nothing.
+8 epochs, batch size 32, learning rate 5e-5 for the text encoder and 1e-3 for the rest, bfloat16, one RTX 5090, 2,208 s. The epoch kept is the one
+with the best validation broad-topic top pick averaged over the two teachers: the 7th (78.0%, against 77.7% for the 8th). One training run (one seed).
+The signal head `meme` only saw labels on picture posts: for a post without pictures its output means nothing.
+
+![Loss and validation scores per epoch](images/training.png)
+
+![The training labels by broad topic, for each teacher](images/training-data.png)
 
 ## Results
 
@@ -93,10 +97,13 @@ Measured on the held-out test posts, against the teacher that labelled each post
 | broad topic, probability shared with the teacher's list (1 = identical) | 0.758 | 0.781 |
 | broad topic, top pick is among the teacher's main topics (fewest topics holding 80% of its probability) | 90% | 96% |
 | broad topic, top pick equals the teacher's top pick | 75.5% | 78.3% |
+| subtopic, probability shared with the teacher's list | 0.658 | 0.664 |
 | subtopic, top pick equals the teacher's top pick | 65.7% | 69.0% |
 | subtopic, top pick is among the teacher's main subtopics | 84% | 90% |
 | tone, probability shared | 0.791 | 0.811 |
 | meme, ranking score (area under the ROC curve) | n/a | 0.970 |
+
+![Agreement with the teachers on held-out test posts](images/results.png)
 
 For scale: the two teachers agree with each other less than that. Clef-flash (calibrated) and Jev, both labelling the same 5,000 text posts, share 0.683 of
 their broad-topic probability, and Clef's top pick is among Jev's main topics 85% of the time.
@@ -105,7 +112,29 @@ Held-out test posts where the model's top broad topic fell **outside** the teach
 
 Human check of this model (one rater, the project owner): 25 of those picture-post disagreements, shown blind as two unlabelled answers (model vs Clef-flash,
 random order). Model better 6, Clef-flash better 8, both fine 2, neither 1, can't tell 8. Too few posts to separate them; it says the disagreements are not
-mostly the model being wrong. There was no separate human check of this model on text posts. Full numbers, validation history and per-epoch scores: `metrics.json`.
+mostly the model being wrong. There was no separate human check of this model on text posts.
+
+Most of the disagreement is on posts the teacher itself was unsure about. When the teacher gave its top broad topic 80% or more, the model's top pick
+matched it on 91% of text posts and 98% of picture posts; under 50%, on 40% and 49%.
+
+![Agreement by how sure the teacher was](images/teacher-confidence.png)
+
+The model's own probability is a usable guide: the higher it is, the more often the top pick matches the teacher's.
+
+![Agreement by the model's confidence](images/confidence.png)
+
+Per broad topic, and the topic pairs the model and its teachers trade most often (`humor` against `personal_life` leads on text posts, `art` against
+`gaming` on picture posts):
+
+![Agreement per broad topic](images/per-topic.png)
+
+![Topic pairs traded most often](images/swaps.png)
+
+Signal scores (0 to 1) are on average within about 0.01 to 0.12 of the teacher's, closest for `engagement_bait` and `spam`, furthest for `sentiment` and `critical`:
+
+![Signal score differences from the teacher](images/signals.png)
+
+Full numbers, validation history and per-epoch scores: `metrics.json`.
 
 ## Limits
 
@@ -120,8 +149,9 @@ mostly the model being wrong. There was no separate human check of this model on
 ## Files
 
 `model.safetensors` weights · `config.json` labels, temperatures, limits · `topics.json` taxonomy v2.1 (ids, names, descriptions) ·
-`topic_classifier.py` inference code · `text_encoder/`, `tokenizer/` from Ettin-150M · `metrics.json` training and test scores · `NOTICE.md`.
-No posts are included in this repository.
+`topic_classifier.py` inference code · `text_encoder/`, `tokenizer/` from Ettin-150M · `metrics.json` training and test scores · `NOTICE.md` ·
+`images/` the charts on this page, drawn with matplotlib from `metrics.json` and the model's probabilities on the test posts (every chart's numbers are
+checked against `metrics.json` before it is drawn). No posts are included in this repository, and no post text appears in any chart.
 
 ## Licence and sources
 
