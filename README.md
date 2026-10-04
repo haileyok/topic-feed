@@ -99,6 +99,8 @@ override with `ENV_FILE=`):
 | `FEEDGEN_OWNER_DID` | feedgen | the account that owns the feed records |
 | `FEEDGEN_HANDLE`, `FEEDGEN_APP_PASSWORD` | `make feeds-publish` | login for writing feed records |
 | `FEEDGEN_BUILDER_ADULT_KEY` | feedgen | optional; the owner's key for adult content in the feed builder (at least 24 characters) |
+| `FEEDGEN_WELCOME_POST` | feedgen | optional; the `at://` URI of the post a personal feed shows while a viewer's feed is being built (`make feeds-welcome` creates it) |
+| `FEEDGEN_SESSION_SECRET` | feedgen | optional; at least 32 random characters (`openssl rand -base64 36`) that sign the cookie saying who is signed in on the page at `/me`. Without it sign-in is off |
 
 Each command documents its other settings (all with defaults) at the top of its `main.go`;
 for example the pipeline's `CLASSIFIER_URL` and `IMAGE_RETRY_*`, and feedgen's `FEEDGEN_WINDOW_HOURS`, `FEEDGEN_REFRESH_SECONDS`, `FEEDGEN_MAX_POSTS`.
@@ -111,6 +113,7 @@ make schema               # apply schema/*.sql (safe to re-run)
 make install-classifier   # the GPU classifier service (systemd user unit)
 make feeds                # the feed generator (compose profile "feeds")
 make feeds-publish        # write the feed records to the owner's account (asks before writing)
+make feeds-welcome        # once, for a personal feed: post its welcome message (asks first), then set FEEDGEN_WELCOME_POST
 make install-backup       # nightly backup timer
 ```
 
@@ -144,8 +147,10 @@ Every Go service exposes Prometheus metrics at `/metrics` and logs JSON to stdou
 | `make schema` | apply the schema |
 | `make ch` | interactive ClickHouse client |
 | `make test` | Go tests |
-| `make feeds` | rebuild and restart the feed generator with `config/feeds.yaml` |
-| `make feeds-publish` | write feed records (`DRY=1` to only print, `CODE=` for an emailed sign-in code) |
+| `make feeds` | rebuild and restart the feed generator (feeds are kept in the database, see `docs/web-feeds.md`) |
+| `make feeds-publish` | write the owner's feed records (`DRY=1` to only print, `CODE=` for an emailed sign-in code) |
+| `make feeds-welcome` | post the welcome message a personal feed shows first, dated 90 days back so it sorts far down followers' timelines (`DRY=1`, `TEXT="..."`, `DAYS_AGO=`, `CODE=`) |
+| `make profile-web` | serve a page of what a viewer's likes say they're into, on the local network at `:8720` (`ADDR=`, `ACTOR=`) |
 | `make label` | start or resume the Jev labeling run over the labeling windows |
 | `make export` | export a training set (`LABEL_CONFIG=`, `FULL_CONTEXT=`, `EXPORT=`) |
 | `make train` | train a model (`EXPORT=`, `RUN=`, `EPOCHS=`, `TRAIN_ARGS=`) |
@@ -155,8 +160,9 @@ Every Go service exposes Prometheus metrics at `/metrics` and logs JSON to stdou
 
 ## Feeds
 
-Feeds are defined in `config/feeds.yaml`; the comment at the top of the file documents every
-field. For example, an AI feed without the angry, anti-AI, or spammy posts:
+Feeds are kept in the database and made on the web (`docs/web-feeds.md`); `config/feeds.yaml`
+documents every field of a feed and seeds the database the first time. For example, an AI feed
+without the angry, anti-AI, or spammy posts:
 
 ```yaml
   - rkey: upbeat-ai
@@ -191,20 +197,76 @@ field. For example, an AI feed without the angry, anti-AI, or spammy posts:
   skips posts even as it's rebuilt. Every served post carries a `feedContext` with its top
   subtopics, tone, and scores, and every page a request ID, so interactions map back to what
   was shown.
-- **Changing feeds.** Edit `config/feeds.yaml`, then `make feeds` (settings take effect
-  immediately) and, for new feeds or changed names and descriptions, `make feeds-publish`.
-  Changing a feed's `rkey` makes a new feed.
+- **Changing feeds.** On the web: sign in at `/me`, build or open a feed at `/`, save it, and publish
+  it from `/feeds` (docs/web-feeds.md). Settings take effect within seconds; names and
+  descriptions are written to Bluesky when you publish. Editing the topic feeds in
+  `config/feeds.yaml` changes nothing once the database has been seeded. Changing a feed's key makes
+  a new feed.
 
-There are 13 feeds today: NFL, Baseball, AI, Video Games, Cats & Pets, Anime & Manga, Software
-Dev, Tabletop Games, Photography, Art, Calm World News, Chill Tech, and Funny.
+There are 13 topic feeds today: NFL, Baseball, AI, Video Games, Cats & Pets, Anime & Manga, Software
+Dev, Tabletop Games, Photography, Art, Calm World News, Chill Tech, and Funny, and one personal
+feed, For you (below).
+
+### Personal feeds
+
+A feed with `personal: {}` instead of `paths` is built for each viewer from the posts they liked
+and reposted (`rkey: for-you` in the config; the settings are documented at the top of
+`config/feeds.yaml`).
+
+- **Interests.** The model's probability for each subtopic, summed over the viewer's liked
+  posts, each like worth half as much for every 7 days it is older. Posts the model couldn't
+  place ("unclear") don't count, and neither do likes of replies and non-English posts, which
+  aren't classified. A viewer needs `min_likes` classified likes (5) to get their own mix; with
+  fewer they get an even mix of the busiest subtopics.
+- **The feed.** Sorting every recent post by how well it matches would collapse into the viewer's
+  single biggest interest, so each interest gets slots in proportion to its share instead, taking
+  that subtopic's best-ranked recent posts (the usual ranking, under `ranking`). An author's posts
+  stay `author_gap` slots apart across the whole feed.
+- **Seen posts.** Posts the viewer liked, reposted, or wrote are never shown. A post Bluesky
+  reports as seen (or liked, shared, or marked "show less"), in any of our feeds, isn't shown
+  again. Bluesky reports only some of what it shows (about 8 posts per request when 30 or more are
+  sent), so a post that was sent but never reported gets one more showing (`max_serves: 2`) before
+  it counts as seen; `max_serves: 1` never repeats a post but loses the ones that were sent and not
+  scrolled to. What was sent is kept in `viewer_served` for 30 days.
+- **First load.** A viewer's likes and history are read the first time they open the feed, which
+  takes under a second; if it takes longer than 1.5 seconds, or the viewer isn't signed in, the
+  feed is the welcome post (`FEEDGEN_WELCOME_POST`), then their feed on the next refresh. At most 8
+  viewers are read at once.
+- **Trying it.** `go run ./cmd/profile -did did:plc:... [-feed for-you] [-pages 3]` prints a
+  viewer's interests and the first posts of their feed, and with `-pages` asks for the feed
+  repeatedly as the app does. It only reads. `make profile-web` serves a page on the local
+  network (`:8720`) showing any account's interests as share bars, with the liked posts behind
+  each one and how many of their likes could be placed in a topic at all; it starts on the owner's
+  account.
+- **Limits.** Reading a viewer's history scans `feed_interactions`, which isn't sorted by viewer;
+  that is cheap at today's size and will need an index or a per-viewer view when there are many
+  viewers. Candidates are, for each subtopic, the newest `per_topic` posts and the `top_per_topic`
+  most engaged for their age (likes, reposts, replies and quotes, weighted as in `ranking`, over the
+  last `window_hours`). The newest alone aren't enough: a busy subtopic gets thousands of posts an
+  hour, so its newest 200 are only minutes old and a feed built from them shows nothing older (on
+  2026-10-01 the median post served was 11 minutes old). Both groups together are about 36,000
+  posts, read once a minute (about 2 s) and kept in memory. Only posts with some engagement can be
+  chosen for being engaged, so a subtopic's quiet posts reach the feed only while they are among its
+  newest. The engaged posts are chosen at the "popular" setting's gravity, so a viewer who sets their
+  own gravity below that still can't reach posts the pool doesn't hold.
+- **Minimum engagement.** A post is shown only once people have reacted to it: `min_engagement`
+  (default 5) is counted in likes' worth, with reposts, replies and quotes at the feed's `ranking`
+  weights (never a viewer's own, so a viewer who makes every kind count for nothing in their ranking
+  still has posts that can qualify). Posts below it are left out even when nothing else is left to
+  show: a subtopic that has run out of posts people have reacted to gives its slots to the others, and
+  when all have, the feed ends instead of filling up with the newest posts, which have no reactions
+  yet. Without this a viewer who reads one subtopic heavily (on 2026-10-01 AI was over half of one
+  viewer's feed) used up its well-liked posts within a few refreshes, and from then on that half of
+  the feed was posts only minutes old. Viewers can change it on the sign-in page (0 turns it off). The
+  newest posts reach the feed once they have the reactions, usually within minutes of posting.
 
 ## The feed builder
 
 `https://feeds.hailey.at/` is a public page for building feeds without editing YAML. It
 previews a feed from live data as you pick topics, move tone and score sliders ("Allowed"
 ranges are cutoffs, "Boost" is a nudge), and adjust ranking; it lists the served feeds for
-browsing or remixing; and **Copy YAML** produces the entry for `config/feeds.yaml`. A link to
-the page reproduces the exact settings.
+browsing or remixing; and, when you are signed in, **Save as my feed** keeps the feed as one of
+yours (see below). A link to the page reproduces the exact settings.
 
 With **Scores** on, each post shows why it's there: its top subtopics and how well it matches
 the feed, every signal and tone as a bar (with the ones the current settings use highlighted),
@@ -217,6 +279,34 @@ and adds `allow_adult: true` to copied YAML. `/adult-access?off=1` removes the c
 
 Previews look at the newest 5,000 matching posts; the builder rate-limits each visitor and
 caches repeated settings for 30 seconds.
+
+## Your For you feed
+
+`https://feeds.hailey.at/me` (the **Sign in** link on the home page) is where someone signs in
+with their Bluesky account, sees what their likes say they're into with the liked posts behind
+each interest, and **tunes** their personal feed. Every setting of the feed has a control: turn each
+interest up or down or mute it, add topics, fresh or popular, author variety, how far back and how
+fast likes fade, how new and how sure a post's topic must be, how long the feed is, cutoffs and
+boosts on every tone and quality score the model gives, and the numbers the ranking uses. A
+preview shows the first posts the changes would pick as Bluesky shows them, with what the feed
+knows about each (why it was picked, the scores, the slot) and each interest's new share of the
+feed, before anything is saved. Signing in only tells us which account is yours: we get no password
+and keep no access to it. It needs `FEEDGEN_SESSION_SECRET`; see `docs/tuning-page.md`.
+
+## Your own feeds
+
+Anyone can sign in at `/me`, build a feed at `/`, **save it as theirs**, and publish it to their own
+Bluesky account from `https://feeds.hailey.at/feeds`: five feeds each (no limit for the owner), no
+adult feeds. Publishing happens in the browser, with an OAuth connection that never leaves it: the
+service holds nothing that could write to anyone's account. See `docs/web-feeds.md`.
+
+## The post inspector
+
+`https://feeds.hailey.at/inspect` is for the owner of the feeds only (it needs the same sign-in).
+Paste the link to a post and it shows the post, how the topic model scored it, and for every feed
+which rules the post meets or fails, where it stands in the feed now, and its ranking score. A post we
+hold nothing of is explained (a reply, not tagged English, deleted, not yet processed). See
+`docs/post-inspector.md`.
 
 ## The classifier
 
@@ -335,6 +425,28 @@ Everything is in ClickHouse, database `topicfeed` (`make ch`):
 Tables that are re-written (`posts`, `post_pipeline`, …) are `ReplacingMergeTree`s: read them
 with `FINAL` to get one row per post.
 
+### Image archive
+
+The pictures of every post Jev labeled, downloaded once and kept on disk so a relabel (a vision
+model) and classifier training can read the same pixels as often as they like (posts rot, so
+the archive grabs them while they're still there). It lives under `/data/images`:
+
+- `raw/<sha256[:2]>/<sha256>.<jpg|png|gif>` — the bytes as the CDN served them, named by their
+  SHA-256, so a picture posted twice is stored once.
+- `1000/<sha256[:2]>/<sha256>.jpg` — derived copies for training (`trainer/prepare_images.py`:
+  EXIF-transposed, RGB, long side at most 1000 px, JPEG quality 90).
+
+ClickHouse tracks it all: `post_image_resolve` (one row per post: found, no_images, or gone)
+and `post_images` (one row per picture: status `ok`, `gone`, `bad_image`, `error`, or
+`purged`; read both with `FINAL`).
+
+Run it with `make images-resolve`, `make images-fetch`, `make images-purge`, and
+`make images-stats` (all resumable; `LIMIT=300` for a pilot). The feed policy
+(`config/label_policy.yaml`) applies: pictures of posts whose policy is `drop` are listed
+but never fetched (`skipped_policy`); `adult_only` posts' pictures are fetched like any
+other. Purge marks the pictures of posts that were deleted (or whose author deactivated)
+`purged` and deletes their files, but only when no other kept picture needs the same file.
+
 ## Operations
 
 - **Backups.** `topic-feed-backup.timer` runs `deploy/backup.sh` nightly at 03:30 UTC: Jev
@@ -365,25 +477,3 @@ with `FINAL` to get one row per post.
 - `docs/feeds-roadmap.md`: planned feed features (interaction dashboard, learning from "show
   less", ranking tuning).
 - The header comments of `config/feeds.yaml`, `config/label_policy.yaml`, and each `cmd/*/main.go`.
-### Image archive
-
-The pictures of every post Jev labeled, downloaded once and kept on disk so a relabel (a vision
-model) and classifier training can read the same pixels as often as they like (posts rot, so
-the archive grabs them while they're still there). It lives under `/data/images`:
-
-- `raw/<sha256[:2]>/<sha256>.<jpg|png|gif>` — the bytes as the CDN served them, named by their
-  SHA-256, so a picture posted twice is stored once.
-- `1000/<sha256[:2]>/<sha256>.jpg` — derived copies for training (`trainer/prepare_images.py`:
-  EXIF-transposed, RGB, long side at most 1000 px, JPEG quality 90).
-
-ClickHouse tracks it all: `post_image_resolve` (one row per post: found, no_images, or gone)
-and `post_images` (one row per picture: status `ok`, `gone`, `bad_image`, `error`, or
-`purged`; read both with `FINAL`).
-
-Run it with `make images-resolve`, `make images-fetch`, `make images-purge`, and
-`make images-stats` (all resumable; `LIMIT=300` for a pilot). The feed policy
-(`config/label_policy.yaml`) applies: pictures of posts whose policy is `drop` are listed
-but never fetched (`skipped_policy`); `adult_only` posts' pictures are fetched like any
-other. Purge marks the pictures of posts that were deleted (or whose author deactivated)
-`purged` and deletes their files, but only when no other kept picture needs the same file.
-

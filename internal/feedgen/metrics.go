@@ -79,6 +79,63 @@ var (
 		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
 
+	metricPersonalPages = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_personal_pages_total",
+		Help: "Pages of personal feeds, by feed and what the viewer got (personal, generic, welcome).",
+	}, []string{"feed", "state"})
+
+	metricPersonalViewers = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "feedgen_personal_viewers",
+		Help: "Viewers whose personal feeds are held in memory.",
+	})
+
+	metricPersonalBuildSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "feedgen_personal_viewer_build_seconds",
+		Help:    "Time to read a new viewer's likes and what they have been shown.",
+		Buckets: []float64{.05, .1, .25, .5, 1, 1.5, 2.5, 5, 10, 30},
+	})
+
+	metricPersonalBuildErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_personal_viewer_build_errors_total",
+		Help: "Viewers whose likes or seen posts couldn't be read (they see the welcome post, then a retry).",
+	})
+
+	metricPersonalTuningErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_personal_tuning_errors_total",
+		Help: "Failed reads of a viewer's saved tuning (their feed is untuned until a retry succeeds).",
+	})
+
+	metricPersonalPoolSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "feedgen_personal_pool_seconds",
+		Help:    "Time to read the posts personal feeds draw on.",
+		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10},
+	}, []string{"feed"})
+
+	metricPersonalPoolErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_personal_pool_errors_total",
+		Help: "Failed reads of a personal feed's posts (the previous ones keep being used).",
+	}, []string{"feed"})
+
+	metricPersonalPoolPosts = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "feedgen_personal_pool_posts",
+		Help: "Posts a personal feed draws on after the latest read.",
+	}, []string{"feed"})
+
+	metricServedWritten = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_served_written_total",
+		Help: "Served-post rows written to ClickHouse.",
+	})
+
+	metricServedDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_served_dropped_total",
+		Help: "Served-post rows dropped: the write queue was full, or ClickHouse was down too long.",
+	})
+
+	metricServedWriteErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feedgen_served_write_errors_total",
+		Help: "Failed served-post writes (retried on the next flush).",
+	})
+
 	metricLastRefresh = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "feedgen_last_refresh_timestamp_seconds",
 		Help: "Unix time of each feed's latest successful rebuild.",

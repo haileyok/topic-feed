@@ -6,19 +6,38 @@ import (
 	"time"
 )
 
+// ScoreParts is how a post's ranking score is made: (Prior + Engagement) / Decay, where Decay is
+// (age in hours + 2) to the power of the feed's gravity.
+type ScoreParts struct {
+	// Prior is what a post is worth before anyone has reacted: 1, plus the model's substance and
+	// general-interest scores, less the feed's penalty for promotional posts, plus the feed's tone
+	// and signal nudges; never under 0.1.
+	Prior float64 `json:"prior"`
+	// Engagement is its likes, reposts, replies and quotes, each at the feed's weight.
+	Engagement float64 `json:"engagement"`
+	AgeHours   float64 `json:"ageHours"`
+	Decay      float64 `json:"decay"`
+	Score      float64 `json:"score"`
+}
+
+// ScoreBreakdown is a post's ranking score in the feed, with what it is made of. Score uses it, so
+// what is explained is what is ranked.
+func ScoreBreakdown(p Post, f Feed, now time.Time) ScoreParts {
+	r := f.Ranking
+	s := p.Signals
+	prior := max(0.1, 1+float64(s["substance"])+float64(s["general_interest"])-r.PromoPenalty*float64(s["promo"])+
+		f.Tone.Nudge(p.Tone)+f.Signals.Nudge(s))
+	eng := p.Engagement(r.Weights)
+	age := max(0, now.Sub(p.IndexedAt).Hours())
+	decay := math.Pow(age+2, r.Gravity)
+	return ScoreParts{Prior: prior, Engagement: eng, AgeHours: age, Decay: decay, Score: (prior + eng) / decay}
+}
+
 // Score sets each post's ranking score (see Ranking), including the feed's tone and
 // signal nudges.
 func Score(posts []Post, f Feed, now time.Time) {
-	r := f.Ranking
-	w := r.Weights
 	for i := range posts {
-		p := &posts[i]
-		s := p.Signals
-		prior := max(0.1, 1+float64(s["substance"])+float64(s["general_interest"])-r.PromoPenalty*float64(s["promo"])+
-			f.Tone.Nudge(p.Tone)+f.Signals.Nudge(s))
-		eng := w.Like*float64(p.Likes) + w.Repost*float64(p.Reposts) + w.Reply*float64(p.Replies) + w.Quote*float64(p.Quotes)
-		age := max(0, now.Sub(p.IndexedAt).Hours())
-		p.Score = (prior + eng) / math.Pow(age+2, r.Gravity)
+		posts[i].Score = ScoreBreakdown(posts[i], f, now).Score
 	}
 }
 

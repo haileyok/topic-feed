@@ -14,8 +14,9 @@ import (
 	"github.com/haileyok/topic-feed/internal/labelpolicy"
 )
 
-// maxQuerySize allows IN lists of up to 20,000 post URIs (the max_posts limit).
-const maxQuerySize = 4 << 20
+// maxQuerySize allows IN lists of up to 50,000 post URIs with their authors: the most a
+// personal feed's pool holds (maxPoolPosts). A feed's max_posts is at most 20,000.
+const maxQuerySize = 16 << 20
 
 // perPartitionFinal ends a query that reads post_pipeline FINAL over a window of time. It makes
 // FINAL merge each daily partition on its own, not every part of the whole table, so ClickHouse
@@ -106,11 +107,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
 	err := s.Conn.Select(ctx, &cands, `
-		SELECT uri, did, indexed_at, feed_policy, labels, `+scoreExpr+` AS score,
-		       signals, top_path, top_path_p,
-		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
-		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps,
-		       tone
+		SELECT `+candidateColumns(scoreExpr)+`
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+where.String()+`
 		ORDER BY indexed_at DESC, uri DESC
@@ -118,6 +115,22 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
+	return s.finish(ctx, f, cands)
+}
+
+// candidateColumns lists the post_pipeline columns a candidate is read from, with scoreExpr
+// as its match score.
+func candidateColumns(scoreExpr string) string {
+	return `uri, did, indexed_at, feed_policy, labels, ` + scoreExpr + ` AS score,
+		       signals, top_path, top_path_p,
+		       arrayMap(kv -> kv.1, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_paths,
+		       arrayMap(kv -> kv.2, arraySlice(arraySort(kv -> -kv.2, arrayZip(mapKeys(path_probs), mapValues(path_probs))), 1, 3)) AS top_ps,
+		       tone`
+}
+
+// finish drops candidates whose post was deleted, whose author is inactive, or that the
+// label policy leaves out, and adds each remaining post's engagement.
+func (s *Store) finish(ctx context.Context, f Feed, cands []candidate) ([]Post, Removed, error) {
 	var rm Removed
 	if len(cands) == 0 {
 		return []Post{}, rm, nil

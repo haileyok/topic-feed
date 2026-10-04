@@ -14,10 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/atcrypto"
-	"github.com/bluesky-social/indigo/atproto/auth"
-	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	atmosidentity "github.com/jcalabro/atmos/identity"
 	"gopkg.in/yaml.v3"
 
 	"github.com/haileyok/topic-feed/internal/taxonomy"
@@ -133,16 +131,16 @@ func (b *swapBuilder) Build(context.Context, Feed, time.Time, int) ([]Post, Remo
 func TestPagingStaysOnOneBuild(t *testing.T) {
 	cfg := &Config{Feeds: []Feed{{Rkey: "f", Ranking: Ranking{Gravity: 1.8}}}}
 	fs := NewFeeds(cfg, &swapBuilder{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 48*time.Hour, time.Hour, 100)
-	fs.refresh(context.Background(), cfg.Feeds[0])
-	firstItems, next, _, _ := fs.Page("f", "", 4)
-	fs.refresh(context.Background(), cfg.Feeds[0]) // the order changes
+	fs.buildNow(context.Background(), cfg.Feeds[0])
+	firstItems, next, _, _ := fs.Page(context.Background(), "f", "", 4)
+	fs.buildNow(context.Background(), cfg.Feeds[0]) // the order changes
 	var all []string
 	for _, it := range firstItems {
 		all = append(all, it.URI)
 	}
 	for next != "" {
 		var p []Item
-		p, next, _, _ = fs.Page("f", next, 4)
+		p, next, _, _ = fs.Page(context.Background(), "f", next, 4)
 		for _, it := range p {
 			all = append(all, it.URI)
 		}
@@ -158,12 +156,12 @@ func TestPagingStaysOnOneBuild(t *testing.T) {
 		t.Errorf("paged %d posts, want 10", len(all))
 	}
 	// A cursor from an expired build continues at the same position in the current one.
-	p, _, _, err := fs.Page("f", "12345:8", 4)
+	p, _, _, err := fs.Page(context.Background(), "f", "12345:8", 4)
 	if err != nil || len(p) != 2 {
 		t.Errorf("expired cursor: %v %v", p, err)
 	}
 	for _, c := range []string{"x", "12:", ":3", "-1:2", "5:-1"} {
-		if _, _, _, err := fs.Page("f", c, 4); err == nil {
+		if _, _, _, err := fs.Page(context.Background(), "f", c, 4); err == nil {
 			t.Errorf("cursor %q accepted", c)
 		}
 	}
@@ -230,9 +228,9 @@ func (b fakeBuilder) Build(context.Context, Feed, time.Time, int) ([]Post, Remov
 	return b.posts, Removed{}, nil
 }
 
-func testServer(t *testing.T) *Server { return testServerWith(t, identity.NewMockDirectory()) }
+func testServer(t *testing.T) *Server { return testServerWith(t, testDirectory()) }
 
-func testServerWith(t *testing.T, dir identity.Directory) *Server {
+func testServerWith(t *testing.T, dir *atmosidentity.Directory) *Server {
 	cfg := &Config{Feeds: []Feed{{Rkey: "nfl", DisplayName: "NFL", Paths: []string{"sports/american_football"}, MinProb: 0.5, Ranking: DefaultRanking}}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fs := NewFeeds(cfg, fakeBuilder{posts(5)}, log, 48*time.Hour, time.Hour, 100)
@@ -320,16 +318,8 @@ type fakeSink struct{ rows []InteractionRow }
 func (f *fakeSink) Add(r []InteractionRow) int { f.rows = append(f.rows, r...); return 0 }
 
 func TestSendInteractions(t *testing.T) {
-	priv, err := atcrypto.GeneratePrivateKeyK256()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub, _ := priv.PublicKey()
-	viewer := syntax.DID("did:plc:viewer")
-	dir := identity.NewMockDirectory()
-	dir.Insert(identity.Identity{DID: viewer, Handle: "viewer.test",
-		Keys: map[string]identity.VerificationMethod{"atproto": {Type: "Multikey", PublicKeyMultibase: pub.Multibase()}}})
-	s := testServerWith(t, dir)
+	viewer := newTestViewer(t, "did:plc:viewer")
+	s := testServerWith(t, testDirectory(viewer.doc()))
 	sink := &fakeSink{}
 	s.Interactions = sink
 
@@ -337,11 +327,7 @@ func TestSendInteractions(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/xrpc/app.bsky.feed.sendInteractions", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		if aud != "" {
-			tok, err := auth.SignServiceAuth(viewer, aud, time.Minute, &method, priv)
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Authorization", "Bearer "+tok)
+			req.Header.Set("Authorization", "Bearer "+viewer.credential(t, aud, method))
 		}
 		rec := httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)

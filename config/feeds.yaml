@@ -1,5 +1,14 @@
-# Topic feeds served by cmd/feedgen. After adding or changing a feed, restart feedgen and
-# run `make feeds-publish` so Bluesky shows the new name and description.
+# Topic feeds served by cmd/feedgen.
+#
+# THE TOPIC FEEDS IN THIS FILE ARE ONLY A STARTING POINT. The feeds served are kept in the database
+# (schema/014_user_feeds.sql) and are made and changed on the web (the page at /feeds, and the builder at
+# /): the first time feedgen starts with that table, the feeds below are copied into it under the
+# owner's account, and from then on this file's topic feeds are not looked at. Editing one here changes
+# nothing; a feed taken down on the web is not brought back by a restart. What is still read from this
+# file: the `personal:` feed (made from each viewer's likes), and the layout of every feed's fields,
+# documented below. See docs/web-feeds.md.
+#
+# `make feeds-publish` still writes the owner's feeds (those in the database) to the owner's account.
 #
 #   rkey          record key: the last part of the feed's at:// URI (max 15 characters;
 #                 changing it makes a new feed and orphans the old one)
@@ -31,6 +40,41 @@
 #                                               # nudge: weight * probability is added
 #                                               # to the ranking prior; nothing removed
 #
+#   personal      makes the feed a different one for each viewer, built from the posts they
+#                 liked and reposted; paths, min_prob and exclude then don't apply (use
+#                 `personal: {}` for the defaults). A viewer's interests are the subtopics of
+#                 what they liked, newer likes counting more; the feed gives each interest
+#                 slots in proportion to its share, taking the best-ranked recent posts of
+#                 that subtopic (`ranking` below orders them), and leaves out posts the viewer
+#                 already liked, wrote, or has seen. Settings (defaults in brackets):
+#
+#                   personal:
+#                     lookback_days: 30     # how far back likes count (the likes table keeps 14)
+#                     half_life_days: 7     # a like's weight halves every this many days
+#                     min_likes: 5          # classified liked posts needed; fewer: a mix of every topic
+#                     topics: 20            # interests used, strongest first
+#                     window_hours: 24      # only posts at most this old
+#                     per_topic: 200        # newest posts kept per subtopic
+#                     top_per_topic: 150    # more kept per subtopic: the most engaged for their age,
+#                                           # from the whole window (a busy subtopic's newest 200
+#                                           # are only minutes old; these reach back hours)
+#                     min_engagement: 5     # likes' worth of reactions a post needs before it is shown
+#                                           # (a repost or reply counts as 2 likes, a quote as 3, per
+#                                           # `ranking`). Posts below it are left out even when nothing
+#                                           # else is left, so a feed that runs out of well-liked posts
+#                                           # gets shorter instead of filling up with new ones nobody
+#                                           # has reacted to yet (0: no minimum)
+#                     min_topic_prob: 0.5   # a post belongs to its top subtopic at this probability
+#                     max_serves: 2         # times a post may be sent before it counts as seen
+#                                           # even if Bluesky never reports a view (1: never repeats)
+#                     list_size: 300        # posts in a viewer's feed at a time
+#                     author_gap: 10        # slots between one author's posts (0: no limit)
+#
+#                 Viewers' likes are read the first time they open the feed (about a second);
+#                 until then, and for anyone not signed in, the feed shows the post named by
+#                 FEEDGEN_WELCOME_POST (`make feeds-welcome` creates it). Needs
+#                 schema/009_viewer_served.sql (`make schema`).
+#
 # Ranking (internal/feedgen/config.go, DefaultRanking). Each post scores
 #
 #   (prior + like*likes + repost*reposts + reply*replies + quote*quotes) / (age_hours + 2)^gravity
@@ -53,12 +97,15 @@
 
 feeds:
   - rkey: nfl
-    display_name: NFL
-    description: Posts about the NFL and American football, picked by a topic classifier. No keyword lists.
-    # Tuned by Hailey in the feed builder (2026-09-29): only clear football posts, no politics.
+    display_name: "NFL on Bluesky"
+    description: "Keep up with the NFL on Bluesky"
     paths: [sports/american_football]
-    min_prob: 0.85
-    exclude: {world_news: 0.15, us_politics: 0.15, adult_content: 0.2}
+    min_prob: 0.5
+    exclude: {us_politics: 0.15, world_news: 0.15, adult_content: 0.2}
+    ranking:
+      gravity: 2.6
+      fresh_every: 7
+      author_gap: 3
 
   - rkey: mlb   # "baseball" is taken by the peruse Baseball Feed on hailey.at
     display_name: Baseball
@@ -76,13 +123,23 @@ feeds:
       promo_penalty: 3.5
     max_posts: 10000   # ~2,800 posts in 48 hours at 0.85 during the playoffs
 
+  # Tuned in the feed builder (2026-10-01); keeps the original `ai` rkey so the
+  # published feed isn't orphaned.
   - rkey: ai
-    display_name: AI
-    description: Posts about artificial intelligence (models, products, research, and the arguments about them), picked by a topic classifier. No keyword lists.
+    display_name: "AI remix"
+    description: "AI remix, picked by a topic classifier. No keyword lists."
     paths: [technology/ai]
-    min_prob: 0.6
+    min_prob: 0.3
+    exclude: {adult_content: 0.2}
     tone:
-      max: {outraged: 0.5}   # no angry posts (about 7% of AI posts on 2026-09-29)
+      max: {humorous: 0.45}
+    signals:
+      max: {critical: 0.15, spam: 0.05}
+    ranking:
+      gravity: 2
+      fresh_every: 0
+      author_gap: 0
+      weights: {like: 3.5}
 
   - rkey: video-games
     display_name: Video Games
@@ -175,3 +232,9 @@ feeds:
     min_prob: 0.6
     tone:
       min: {humorous: 0.5}
+
+  # Built for each viewer from the posts they liked (see `personal` above). Needs FEEDGEN_WELCOME_POST.
+  - rkey: for-you
+    display_name: For you
+    description: Built for you from the posts you have liked, in the mix of topics you like. Leaves out posts you have already seen. Picked by a topic classifier. No keyword lists.
+    personal: {}

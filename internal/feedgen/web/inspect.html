@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Post inspector · Topic Feeds</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0f18">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
+  <link rel="stylesheet" href="/static/v/__V__/inspect.css">
+  <script type="module" src="/static/v/__V__/inspect.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <a class="byline" href="/me">Your feed</a>
+  </header>
+
+  <main class="me inspect">
+    <section class="me-card" id="loading" aria-live="polite">
+      <p class="me-lead">Loading…</p>
+    </section>
+
+    <section class="me-card" id="signed-out" hidden>
+      <h1>Post inspector</h1>
+      <p class="me-lead">Sign in with your Bluesky account to use this page.</p>
+      <p><a class="btn btn-primary" href="/me">Sign in</a></p>
+    </section>
+
+    <section class="me-card" id="forbidden" hidden>
+      <h1>Post inspector</h1>
+      <p class="me-lead">This page is for the owner of these feeds. The account you're signed in with isn't.</p>
+      <p><a class="btn" href="/me">Back to your feed</a></p>
+    </section>
+
+    <section id="inspector" hidden>
+      <div class="me-head">
+        <div class="me-title">
+          <h1>Post inspector</h1>
+          <p class="me-who">How a post was scored, and which feeds would take it.</p>
+        </div>
+      </div>
+
+      <form id="inspect-form" class="insp-form" novalidate>
+        <label for="post">A link to a post on bsky.app, or its at:// address</label>
+        <div class="me-row">
+          <input id="post" name="post" type="text" inputmode="url" placeholder="https://bsky.app/profile/…/post/…" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="off" maxlength="600">
+          <button class="btn btn-primary" id="inspect-button" type="submit">Inspect</button>
+        </div>
+      </form>
+      <p class="me-note" id="inspect-error" role="alert" hidden></p>
+      <p class="me-lead insp-status" id="inspect-status" role="status" hidden>Looking…</p>
+
+      <div id="result" hidden>
+        <div class="insp-verdict" id="verdict" data-tone="neutral">
+          <p class="insp-verdict-title" id="verdict-title"></p>
+          <p class="insp-verdict-text" id="verdict-text"></p>
+        </div>
+        <div class="me-info insp-why" id="why" hidden></div>
+
+        <div class="insp-grid">
+          <div class="insp-left">
+            <section class="me-col">
+              <h2 class="me-h2">The post</h2>
+              <div id="post-card" class="insp-post"></div>
+              <ul class="insp-facts" id="post-facts"></ul>
+            </section>
+            <section class="me-col" id="scores-panel" hidden>
+              <h2 class="me-h2">What the model saw</h2>
+              <p class="me-fine insp-tip">The model's scores for the post, as the pipeline stored them. The feeds' rules are checked against these.</p>
+              <div id="scores"></div>
+            </section>
+          </div>
+          <section class="me-col insp-right" id="feeds-panel" hidden>
+            <h2 class="me-h2">Feeds</h2>
+            <p class="me-fine insp-tip" id="feeds-tip"></p>
+            <div id="feed-groups"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

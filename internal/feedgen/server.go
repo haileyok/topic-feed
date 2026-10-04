@@ -13,12 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth"
-	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jcalabro/atmos"
+	atmosidentity "github.com/jcalabro/atmos/identity"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+
+	"github.com/haileyok/topic-feed/internal/signin"
 )
 
 const (
@@ -52,21 +54,40 @@ type Server struct {
 	feeds *Feeds
 	log   *slog.Logger
 	// Viewer credentials may name the service DID with or without the #bsky_fg fragment.
-	validators []*auth.ServiceAuthValidator
-	echo       *echo.Echo
+	audiences []string
+	// dir finds the keys that viewers' credentials are signed with.
+	dir  *atmosidentity.Directory
+	echo *echo.Echo
 
 	// Interactions stores what sendInteractions receives; nil answers 501.
 	Interactions InteractionSink
 	// Preview backs the feed builder page's API; nil answers 404.
 	Preview *Previewer
+	// Personal serves the feeds configured with `personal:`; nil leaves them empty.
+	Personal *Personal
+	// SignIn serves sign-in with Bluesky (/oauth/... and /api/me); nil answers 404.
+	SignIn *signin.Handler
+	// Me serves a signed-in viewer's own data (/api/me/...); nil answers 404.
+	Me *MeAPI
+	// Inspect serves the post inspector (/api/inspect) to the owner of the feeds; nil answers 404.
+	Inspect *InspectAPI
+	// FeedsAPI serves a signed-in account's own feeds (/api/me/feeds) and the client metadata of the
+	// page that publishes them; nil answers 404.
+	FeedsAPI *FeedsAPI
+	// ResolveHandle answers the handle lookups of that page; nil answers 404.
+	ResolveHandle *ResolveHandleAPI
 }
 
-// NewServer builds the HTTP server. dir resolves viewers' DIDs to check their credentials.
-func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog.Logger) *Server {
-	s := &Server{cfg: cfg, feeds: feeds, log: log}
-	for _, aud := range []string{cfg.ServiceDID, cfg.ServiceDID + "#bsky_fg"} {
-		s.validators = append(s.validators, &auth.ServiceAuthValidator{Audience: aud, Dir: dir, TimestampLeeway: 30 * time.Second})
-	}
+// NewServer builds the HTTP server. dir resolves viewers' DIDs to the keys their credentials
+// are checked with. Viewers' handles aren't needed for that, so it can skip verifying them.
+//
+// Credentials are checked with the atmos library (serviceauth), the same one that signs people
+// in. Two libraries can't both check these JWTs in one program: each registers its own
+// ES256 and ES256K signing methods in a table the JWT library shares, and the one that is
+// registered last would silently break the other.
+func NewServer(cfg ServerConfig, feeds *Feeds, dir *atmosidentity.Directory, log *slog.Logger) *Server {
+	s := &Server{cfg: cfg, feeds: feeds, log: log, dir: dir,
+		audiences: []string{cfg.ServiceDID, cfg.ServiceDID + "#bsky_fg"}}
 	e := echo.New()
 	e.HideBanner, e.HidePort = true, true
 	e.Use(middleware.Recover(), s.observe)
@@ -94,9 +115,79 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir identity.Directory, log *slog
 		}
 		return s.Preview.HandleAdultAccess(c)
 	})
+	e.GET("/oauth/client-metadata.json", s.signInRoute((*signin.Handler).ServeMetadata))
+	e.POST("/oauth/login", s.signInRoute((*signin.Handler).ServeLogin))
+	e.GET("/oauth/callback", s.signInRoute((*signin.Handler).ServeCallback))
+	e.POST("/oauth/logout", s.signInRoute((*signin.Handler).ServeLogout))
+	e.GET("/api/me", s.signInRoute((*signin.Handler).ServeMe))
+	e.GET("/api/me/interests", s.meRoute((*MeAPI).ServeInterests))
+	e.GET("/api/me/tuning", s.meRoute((*MeAPI).ServeTuning))
+	e.PUT("/api/me/tuning", s.meRoute((*MeAPI).SaveTuning))
+	e.POST("/api/me/preview", s.meRoute((*MeAPI).ServePreview))
+	e.GET("/api/inspect", s.inspectRoute((*InspectAPI).ServeInspect))
+	e.GET("/api/me/feeds", s.feedsRoute((*FeedsAPI).ServeList))
+	e.PUT("/api/me/feeds/:rkey", s.feedsRoute((*FeedsAPI).ServeSave))
+	e.DELETE("/api/me/feeds/:rkey", s.feedsRoute((*FeedsAPI).ServeDelete))
+	e.GET("/oauth/browser-client-metadata.json", s.feedsRoute((*FeedsAPI).ServeClientMetadata))
+	e.GET("/xrpc/com.atproto.identity.resolveHandle", func(c echo.Context) error {
+		if s.ResolveHandle == nil {
+			return echo.ErrNotFound
+		}
+		s.ResolveHandle.ServeResolve(c.Response(), c.Request())
+		return nil
+	})
 	addWebRoutes(e, "https://"+cfg.Hostname)
 	s.echo = e
 	return s
+}
+
+// signInRoute serves one of the sign-in handler's routes, or 404 while sign-in is off.
+func (s *Server) signInRoute(serve func(*signin.Handler, http.ResponseWriter, *http.Request)) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if s.SignIn == nil {
+			return echo.ErrNotFound
+		}
+		serve(s.SignIn, c.Response(), c.Request())
+		return nil
+	}
+}
+
+// meRoute serves one of the signed-in viewer's routes, or 404 while they are off.
+func (s *Server) meRoute(serve func(*MeAPI, http.ResponseWriter, *http.Request)) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if s.Me == nil {
+			return echo.ErrNotFound
+		}
+		serve(s.Me, c.Response(), c.Request())
+		return nil
+	}
+}
+
+// inspectRoute serves the post inspector, or 404 while it is off.
+func (s *Server) inspectRoute(serve func(*InspectAPI, http.ResponseWriter, *http.Request)) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if s.Inspect == nil {
+			return echo.ErrNotFound
+		}
+		serve(s.Inspect, c.Response(), c.Request())
+		return nil
+	}
+}
+
+// feedsRoute serves one of the routes for people's own feeds, or 404 while they are off. The rkey in the
+// address is handed on as a path value of the request.
+func (s *Server) feedsRoute(serve func(*FeedsAPI, http.ResponseWriter, *http.Request)) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if s.FeedsAPI == nil {
+			return echo.ErrNotFound
+		}
+		r := c.Request()
+		if rkey := c.Param("rkey"); rkey != "" {
+			r.SetPathValue("rkey", rkey)
+		}
+		serve(s.FeedsAPI, c.Response(), r)
+		return nil
+	}
 }
 
 // Start serves on addr until Shutdown.
@@ -161,50 +252,91 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 		metricRequests.WithLabelValues(feed, strconv.Itoa(status)).Inc()
 		return c.JSON(status, xrpcError{Error: name, Message: msg})
 	}
-	rkey, ok := s.feedRkey(c.QueryParam("feed"))
+	key, ok := s.feedKey(c.QueryParam("feed"))
 	if !ok {
 		return fail(http.StatusBadRequest, "unknown", "UnknownFeed", "unknown feed")
 	}
-	if _, _, ok := s.feeds.Posts(rkey); !ok {
+	if _, _, ok := s.feeds.Posts(key); !ok {
 		return fail(http.StatusBadRequest, "unknown", "UnknownFeed", "unknown feed")
 	}
+	label := feedLabel(key)
 	limit := defaultLimit
 	if v := c.QueryParam("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > maxLimit {
-			return fail(http.StatusBadRequest, rkey, "InvalidRequest", "limit must be 1-100")
+			return fail(http.StatusBadRequest, label, "InvalidRequest", "limit must be 1-100")
 		}
 		limit = n
 	}
-	items, next, ready, err := s.feeds.Page(rkey, c.QueryParam("cursor"), limit)
+	if s.Personal != nil && s.Personal.Serves(key) {
+		return s.personalSkeleton(c, key, limit, fail)
+	}
+	items, next, ready, err := s.feeds.Page(c.Request().Context(), key, c.QueryParam("cursor"), limit)
 	if err != nil {
-		return fail(http.StatusBadRequest, rkey, "InvalidRequest", err.Error())
+		return fail(http.StatusBadRequest, label, "InvalidRequest", err.Error())
 	}
 	if !ready {
-		return fail(http.StatusServiceUnavailable, rkey, "NotReady", "feed is still loading")
+		return fail(http.StatusServiceUnavailable, label, "NotReady", "feed is still loading")
 	}
 	if viewer := s.viewer(c); viewer != "" {
-		s.log.Debug("skeleton", "feed", rkey, "viewer", viewer, "posts", len(items))
+		s.log.Debug("skeleton", "feed", key, "viewer", viewer, "posts", len(items))
 	}
-	resp := skeletonResponse{Feed: make([]skeletonItem, len(items)), Cursor: next, ReqID: newReqID(rkey)}
+	resp := skeletonResponse{Feed: make([]skeletonItem, len(items)), Cursor: next, ReqID: newReqID(label)}
 	for i, it := range items {
 		resp.Feed[i] = skeletonItem{Post: it.URI, FeedContext: it.Context}
 	}
+	metricRequests.WithLabelValues(label, "200").Inc()
+	return c.JSON(http.StatusOK, resp)
+}
+
+// feedLabel names a feed in metrics and in request IDs. The service owner's feeds are named by their
+// rkey; everyone else's share one name, since there is no limit to how many there can be (and a key
+// with a DID in it would not fit the rkey-dash-hex form of a request ID).
+func feedLabel(key string) string {
+	if strings.Contains(key, "/") {
+		return "user"
+	}
+	return key
+}
+
+// personalSkeleton answers a request for a personal feed: the viewer's own feed, or the
+// welcome post while it is being built or when there is no viewer.
+func (s *Server) personalSkeleton(c echo.Context, rkey string, limit int, fail func(int, string, string, string) error) error {
+	page, err := s.Personal.Page(c.Request().Context(), rkey, s.viewer(c), c.QueryParam("cursor"), limit)
+	switch {
+	case errors.Is(err, errBadCursor):
+		return fail(http.StatusBadRequest, rkey, "InvalidRequest", err.Error())
+	case errors.Is(err, errNotReady):
+		return fail(http.StatusServiceUnavailable, rkey, "NotReady", "feed is still loading")
+	case err != nil:
+		s.log.Warn("personal skeleton", "feed", rkey, "err", err)
+		return fail(http.StatusInternalServerError, rkey, "InternalServerError", "could not build the feed")
+	}
+	resp := skeletonResponse{Feed: make([]skeletonItem, len(page.Items)), Cursor: page.Cursor, ReqID: newReqID(rkey)}
+	for i, it := range page.Items {
+		resp.Feed[i] = skeletonItem{Post: it.URI, FeedContext: it.Context}
+	}
+	metricPersonalPages.WithLabelValues(rkey, page.State).Inc()
 	metricRequests.WithLabelValues(rkey, "200").Inc()
 	return c.JSON(http.StatusOK, resp)
 }
 
-// feedRkey returns the rkey of a feed URI that names one of this owner's generator records.
-func (s *Server) feedRkey(feed string) (string, bool) {
+// feedKey returns the key (Feed.Key) of the feed a feed URI names: a generator record in anyone's repo,
+// which is the rkey alone when the repo is the service owner's. Whether there is such a feed is for the
+// caller to see.
+func (s *Server) feedKey(feed string) (string, bool) {
 	u, err := syntax.ParseATURI(feed)
 	if err != nil {
 		return "", false
 	}
 	did, err := u.Authority().AsDID()
-	if err != nil || did != s.cfg.OwnerDID || u.Collection().String() != generatorCollection {
+	if err != nil || u.Collection().String() != generatorCollection {
 		return "", false
 	}
-	return u.RecordKey().String(), true
+	if did == s.cfg.OwnerDID {
+		return u.RecordKey().String(), true
+	}
+	return did.String() + "/" + u.RecordKey().String(), true
 }
 
 var errNoCredential = errors.New("no credential")
@@ -218,11 +350,11 @@ func (s *Server) authenticate(c echo.Context, method syntax.NSID) (string, error
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 	defer cancel()
 	var err error
-	for _, v := range s.validators {
-		var did syntax.DID
-		did, err = v.Validate(ctx, token, &method)
+	for _, aud := range s.audiences {
+		var did atmos.DID
+		did, err = verifyCredential(ctx, token, aud, atmos.NSID(method.String()), s.dir)
 		if err == nil {
-			return did.String(), nil
+			return string(did), nil
 		}
 		if !errors.Is(err, jwt.ErrTokenInvalidAudience) {
 			break
@@ -278,7 +410,11 @@ func (s *Server) handleInteractions(c echo.Context) error {
 	if len(in.Interactions) > maxInteractions {
 		return fail(http.StatusBadRequest, "InvalidRequest", fmt.Sprintf("at most %d interactions per call", maxInteractions))
 	}
-	feed, _ := s.feedRkey(in.Feed)
+	// Only a feed we serve is named: what anyone sends must not make up new metric labels or rows.
+	feed, _ := s.feedKey(in.Feed)
+	if _, _, known := s.feeds.Posts(feed); !known {
+		feed = ""
+	}
 	now := time.Now().UTC()
 	rows := make([]InteractionRow, 0, len(in.Interactions))
 	for _, it := range in.Interactions {
@@ -296,9 +432,17 @@ func (s *Server) handleInteractions(c echo.Context) error {
 		ev := strings.TrimPrefix(it.Event, "app.bsky.feed.defs#")
 		rows = append(rows, InteractionRow{ReceivedAt: now, ViewerDID: viewer, Feed: f,
 			Item: clip(it.Item, 512), Event: clip(ev, 100), FeedContext: clip(it.FeedContext, 2000), ReqID: clip(it.ReqID, 100)})
-		metricInteractions.WithLabelValues(orUnknown(f), knownEvent(ev)).Inc()
+		metricInteractions.WithLabelValues(orUnknown(feedLabel(f)), knownEvent(ev)).Inc()
 	}
 	s.Interactions.Add(rows)
+	if s.Personal != nil {
+		// Whatever the viewer met in any of our feeds is not shown to them again.
+		met := make([]string, len(rows))
+		for i, r := range rows {
+			met[i] = r.Item
+		}
+		s.Personal.NoteInteractions(viewer, met)
+	}
 	metricInteractionRequests.WithLabelValues("200").Inc()
 	return c.JSON(http.StatusOK, map[string]any{})
 }
@@ -339,9 +483,15 @@ func (s *Server) handleDescribe(c echo.Context) error {
 	type feed struct {
 		URI string `json:"uri"`
 	}
-	feeds := make([]feed, 0, len(s.feeds.List()))
-	for _, f := range s.feeds.List() {
+	// The owner's feeds, and some of everyone else's: there is no limit to how many people make.
+	owners := s.feeds.List()
+	others := s.feeds.UserFeeds(maxDescribedUserFeeds)
+	feeds := make([]feed, 0, len(owners)+len(others))
+	for _, f := range owners {
 		feeds = append(feeds, feed{URI: s.FeedURI(f.Rkey)})
+	}
+	for _, f := range others {
+		feeds = append(feeds, feed{URI: "at://" + f.Owner + "/" + generatorCollection + "/" + f.Rkey})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"did": s.cfg.ServiceDID, "feeds": feeds})
 }
@@ -373,7 +523,16 @@ func (s *Server) handleHealth(c echo.Context) error {
 	for _, f := range s.feeds.List() {
 		posts, builtAt, _ := s.feeds.Posts(f.Rkey)
 		st := status{Posts: len(posts), AgeSeconds: -1}
-		if posts != nil {
+		built := posts != nil
+		if f.Personal != nil { // the posts its viewers' feeds draw on
+			var n int
+			n, builtAt, built = 0, time.Time{}, false
+			if s.Personal != nil {
+				n, builtAt, built = s.Personal.Status(f.Rkey)
+			}
+			st.Posts = n
+		}
+		if built {
 			st.AgeSeconds = time.Since(builtAt).Round(time.Second).Seconds()
 			st.OK = time.Since(builtAt) <= s.cfg.MaxAge
 		}
@@ -407,7 +566,8 @@ type publishedFeed struct {
 func (s *Server) handleFeeds(c echo.Context) error {
 	out := []publishedFeed{}
 	for _, f := range s.feeds.List() {
-		if f.AllowAdult {
+		// Adult feeds aren't listed, and a personal feed has no settings to remix.
+		if f.AllowAdult || f.Personal != nil {
 			continue
 		}
 		posts, _, _ := s.feeds.Posts(f.Rkey)

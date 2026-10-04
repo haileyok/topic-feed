@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your feeds · Topic Feeds</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0f18">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
+  <link rel="stylesheet" href="/static/v/__V__/feeds.css">
+  <script type="module" src="/static/v/__V__/feeds-page.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <a class="byline" href="/">Feed builder</a>
+  </header>
+
+  <main class="me feeds">
+    <section class="me-card" id="loading" aria-live="polite">
+      <p class="me-lead">Loading…</p>
+    </section>
+
+    <section class="me-card" id="signed-out" hidden>
+      <h1>Your feeds</h1>
+      <p class="me-lead">Sign in with your Bluesky account to make feeds of your own and publish them.</p>
+      <p><a class="btn btn-primary" href="/me">Sign in</a></p>
+    </section>
+
+    <section id="feeds-main" hidden>
+      <div class="me-head">
+        <div class="me-title">
+          <h1>Your feeds</h1>
+          <p class="me-who">Signed in as <strong id="who"></strong>. <span id="count"></span></p>
+        </div>
+        <a class="btn btn-primary" href="/">New feed</a>
+      </div>
+
+      <section class="me-col feeds-connection" id="connection" data-state="checking" aria-labelledby="connection-title">
+        <h2 class="me-h2" id="connection-title">Publishing on Bluesky</h2>
+        <p class="me-fine" id="connection-text">Checking…</p>
+        <form id="connect-form" class="me-form" hidden novalidate>
+          <label for="connect-handle">Your Bluesky handle</label>
+          <div class="me-row">
+            <input id="connect-handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none" autocorrect="off"
+                   spellcheck="false" autocomplete="username" maxlength="300">
+            <button class="btn btn-primary" id="connect-button" type="submit">Connect to publish</button>
+          </div>
+        </form>
+        <p><button class="btn" id="disconnect-button" type="button" hidden>Disconnect</button></p>
+      </section>
+
+      <p class="me-note" id="notice" role="alert" hidden></p>
+      <p class="me-lead" id="empty" hidden>You haven't made a feed yet. <a href="/">Build one</a>: pick topics, dial in the vibe, and save it as yours.</p>
+      <ul class="feeds-list" id="feeds-list"></ul>
+    </section>
+  </main>
+</body>
+</html>

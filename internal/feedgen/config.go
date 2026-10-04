@@ -19,6 +19,10 @@ import (
 
 // Feed is one feed from config/feeds.yaml.
 type Feed struct {
+	// Owner is the DID of the account whose repo holds the feed's record, when that isn't the
+	// owner of the service: the feeds people make on the web. Empty means the service owner's,
+	// which is every feed in the config file.
+	Owner string `yaml:"-" json:"-"`
 	// Rkey is the record key of the feed's app.bsky.feed.generator record, and the last
 	// part of its at:// URI.
 	Rkey        string `yaml:"rkey"`
@@ -48,6 +52,126 @@ type Feed struct {
 	// MaxPosts caps the feed's candidates, newest first (0: FEEDGEN_MAX_POSTS). Busy
 	// topics need more to reach back as far as quiet ones.
 	MaxPosts int `yaml:"max_posts"`
+	// Personal makes this a feed built for each viewer from the posts they liked, rather
+	// than from topic paths: paths, min_prob, exclude, tone and signals don't apply. Use
+	// `personal: {}` for the defaults. See PersonalConfig.
+	Personal *PersonalConfig `yaml:"personal"`
+}
+
+// PersonalConfig tunes a personal feed. A viewer's interests are the subtopics of the posts
+// they liked and reposted, newer likes counting more; the feed fills its slots in
+// proportion to those interests, taking the best-ranked recent posts of each subtopic, and
+// leaves out what the viewer has already seen.
+type PersonalConfig struct {
+	// LookbackDays is how far back likes and reposts count (default 30; the likes table
+	// itself keeps 14 days).
+	LookbackDays int `yaml:"lookback_days"`
+	// HalfLifeDays: a like's weight halves every this many days (default 7).
+	HalfLifeDays float64 `yaml:"half_life_days"`
+	// MinLikes is how many liked, classified posts a viewer needs for their own interests
+	// to be used; with fewer they get a mix of every topic (default 5).
+	MinLikes int `yaml:"min_likes"`
+	// Topics is how many interests are used, strongest first (default 20).
+	Topics int `yaml:"topics"`
+	// WindowHours: only posts at most this old are shown (default 24).
+	WindowHours int `yaml:"window_hours"`
+	// PerTopic is how many of the newest posts are kept for each subtopic (default 200).
+	PerTopic int `yaml:"per_topic"`
+	// TopPerTopic is how many more are kept for each subtopic: the posts with the most
+	// engagement for their age from anywhere in the window (default 150). A busy subtopic gets
+	// thousands of posts an hour, so its newest PerTopic cover only minutes: without these the
+	// feed would show nothing older than that, however well liked.
+	TopPerTopic int `yaml:"top_per_topic"`
+	// MinTopicProb: a post belongs to its most likely subtopic when the model gives it at
+	// least this probability (default 0.5).
+	MinTopicProb float32 `yaml:"min_topic_prob"`
+	// MaxServes is how many times a post may be shown before it counts as seen even though
+	// Bluesky never reported a view (default 2; 1 never repeats a post, but loses the posts
+	// that were sent and not scrolled to).
+	MaxServes int `yaml:"max_serves"`
+	// ListSize is how many posts a viewer's feed holds at a time (default 300).
+	ListSize int `yaml:"list_size"`
+	// AuthorGap keeps an author's posts at least this many slots apart (default 10; 0: no limit).
+	AuthorGap *int `yaml:"author_gap"`
+	// MinEngagement is how much engagement a post needs before the feed shows it: its likes,
+	// reposts, replies, and quotes counted at the feed's ranking weights (default 5; 0: none).
+	// Posts below it are left out, even when nothing else is left to show: a subtopic that has
+	// run out of posts people have reacted to gives its slots to the others, and when they all
+	// have, the feed ends rather than filling up with posts nobody has reacted to yet.
+	MinEngagement *float64 `yaml:"min_engagement"`
+}
+
+// PersonalConfigDefaults is the configuration of `personal: {}`.
+func PersonalConfigDefaults() PersonalConfig {
+	var c PersonalConfig
+	c.applyDefaults()
+	return c
+}
+
+func (c *PersonalConfig) applyDefaults() {
+	set := func(v *int, def int) {
+		if *v == 0 {
+			*v = def
+		}
+	}
+	set(&c.LookbackDays, 30)
+	set(&c.MinLikes, 5)
+	set(&c.Topics, 20)
+	set(&c.WindowHours, 24)
+	set(&c.PerTopic, 200)
+	set(&c.TopPerTopic, 150)
+	set(&c.MaxServes, 2)
+	set(&c.ListSize, 300)
+	if c.HalfLifeDays == 0 {
+		c.HalfLifeDays = 7
+	}
+	if c.MinTopicProb == 0 {
+		c.MinTopicProb = 0.5
+	}
+	if c.AuthorGap == nil {
+		gap := 10
+		c.AuthorGap = &gap
+	}
+	if c.MinEngagement == nil {
+		minEngagement := DefaultMinEngagement
+		c.MinEngagement = &minEngagement
+	}
+}
+
+// DefaultMinEngagement is what `min_engagement` is when a personal feed doesn't set it.
+const DefaultMinEngagement = 5.0
+
+// MaxMinEngagement is the most a feed or a viewer can ask of a post.
+const MaxMinEngagement = 200.0
+
+func (c PersonalConfig) validate() error {
+	switch {
+	case c.LookbackDays < 1 || c.LookbackDays > 365:
+		return fmt.Errorf("lookback_days must be 1-365")
+	case c.HalfLifeDays <= 0 || c.HalfLifeDays > 365:
+		return fmt.Errorf("half_life_days must be above 0 and at most 365")
+	case c.MinLikes < 1:
+		return fmt.Errorf("min_likes must be at least 1")
+	case c.Topics < 1 || c.Topics > 100:
+		return fmt.Errorf("topics must be 1-100")
+	case c.WindowHours < 1 || c.WindowHours > 168:
+		return fmt.Errorf("window_hours must be 1-168")
+	case c.PerTopic < 1 || c.PerTopic > 1000:
+		return fmt.Errorf("per_topic must be 1-1000")
+	case c.TopPerTopic < 1 || c.TopPerTopic > 1000:
+		return fmt.Errorf("top_per_topic must be 1-1000")
+	case c.MinTopicProb <= 0 || c.MinTopicProb > 1:
+		return fmt.Errorf("min_topic_prob must be in (0, 1]")
+	case c.MaxServes < 1 || c.MaxServes > 20:
+		return fmt.Errorf("max_serves must be 1-20")
+	case c.ListSize < 1 || c.ListSize > 2000:
+		return fmt.Errorf("list_size must be 1-2000")
+	case c.AuthorGap != nil && *c.AuthorGap < 0:
+		return fmt.Errorf("author_gap can't be negative")
+	case c.MinEngagement != nil && !(*c.MinEngagement >= 0 && *c.MinEngagement <= MaxMinEngagement):
+		return fmt.Errorf("min_engagement must be 0-%g", MaxMinEngagement)
+	}
+	return nil
 }
 
 // Tones are the model's tone labels; a post's tone probabilities sum to 1.
@@ -152,6 +276,14 @@ type Ranking struct {
 	PromoPenalty float64 `yaml:"promo_penalty" json:"promo_penalty"` // 0: promotional posts aren't penalized
 }
 
+func (r Ranking) validate() error {
+	if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
+		r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
+		return fmt.Errorf("ranking values can't be negative")
+	}
+	return nil
+}
+
 // Weights are engagement units per like, repost, reply, and quote.
 type Weights struct {
 	Like   float64 `yaml:"like" json:"like"`
@@ -175,6 +307,9 @@ func (f *Feed) UnmarshalYAML(n *yaml.Node) error {
 	p := plain{Ranking: DefaultRanking, AcceptsInteractions: true}
 	if err := n.Decode(&p); err != nil {
 		return err
+	}
+	if p.Personal != nil {
+		p.Personal.applyDefaults()
 	}
 	*f = Feed(p)
 	return nil
@@ -217,58 +352,79 @@ func (c *Config) Validate(paths map[string]bool) error {
 	}
 	seen := map[string]bool{}
 	for _, f := range c.Feeds {
-		if !rkeyPattern.MatchString(f.Rkey) {
-			return fmt.Errorf("feed %q: rkey must be 1-15 lowercase letters, digits, or dashes", f.Rkey)
+		if err := f.validate(paths); err != nil {
+			return err
 		}
 		if seen[f.Rkey] {
 			return fmt.Errorf("feed %q: duplicate rkey", f.Rkey)
 		}
 		seen[f.Rkey] = true
-		if n := utf8.RuneCountInString(f.DisplayName); n == 0 || n > maxDisplayName {
-			return fmt.Errorf("feed %q: display_name must be 1-%d characters", f.Rkey, maxDisplayName)
+	}
+	return nil
+}
+
+// validate checks one feed against the lexicon limits and the known subtopic paths. The errors
+// name the rkey and are worded for the person who wrote the feed.
+func (f Feed) validate(paths map[string]bool) error {
+	if !rkeyPattern.MatchString(f.Rkey) {
+		return fmt.Errorf("feed %q: rkey must be 1-15 lowercase letters, digits, or dashes", f.Rkey)
+	}
+	if n := utf8.RuneCountInString(f.DisplayName); n == 0 || n > maxDisplayName {
+		return fmt.Errorf("feed %q: display_name must be 1-%d characters", f.Rkey, maxDisplayName)
+	}
+	if utf8.RuneCountInString(f.Description) > maxDescription {
+		return fmt.Errorf("feed %q: description is over %d characters", f.Rkey, maxDescription)
+	}
+	if f.Personal != nil {
+		// A personal feed has no topic paths: the viewer's likes choose them.
+		if len(f.Paths) > 0 || f.MinProb != 0 || len(f.Exclude) > 0 {
+			return fmt.Errorf("feed %q: a personal feed takes its topics from the viewer's likes; remove paths, min_prob and exclude", f.Rkey)
 		}
-		if utf8.RuneCountInString(f.Description) > maxDescription {
-			return fmt.Errorf("feed %q: description is over %d characters", f.Rkey, maxDescription)
+		if err := f.Personal.validate(); err != nil {
+			return fmt.Errorf("feed %q: personal: %w", f.Rkey, err)
 		}
-		if len(f.Paths) == 0 {
-			return fmt.Errorf("feed %q: no paths", f.Rkey)
-		}
-		if f.anyTopic() && len(f.Paths) > 1 {
-			return fmt.Errorf("feed %q: %q (any topic) can't be combined with other paths", f.Rkey, AnyTopic)
-		}
-		for _, p := range f.Paths {
-			if p != AnyTopic && !paths[p] {
-				return fmt.Errorf("feed %q: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
-			}
-		}
-		for p, v := range f.Exclude {
-			if !paths[p] {
-				return fmt.Errorf("feed %q: exclude: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
-			}
-			if v < 0 || v > 1 {
-				return fmt.Errorf("feed %q: exclude %s: must be a probability in [0, 1]", f.Rkey, p)
-			}
-		}
-		if f.MinProb <= 0 || f.MinProb > 1 {
-			return fmt.Errorf("feed %q: min_prob must be in (0, 1]", f.Rkey)
-		}
-		r := f.Ranking
-		if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
-			r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
-			return fmt.Errorf("feed %q: ranking values can't be negative", f.Rkey)
-		}
-		if f.MaxPosts < 0 || f.MaxPosts > 20000 {
-			return fmt.Errorf("feed %q: max_posts must be 0-20000", f.Rkey)
-		}
-		if err := f.Tone.validate("tone", Tones); err != nil {
+		if err := f.Ranking.validate(); err != nil {
 			return fmt.Errorf("feed %q: %w", f.Rkey, err)
 		}
-		if err := f.Signals.validate("signal", Signals); err != nil {
-			return fmt.Errorf("feed %q: %w", f.Rkey, err)
+		return nil
+	}
+	if len(f.Paths) == 0 {
+		return fmt.Errorf("feed %q: no paths", f.Rkey)
+	}
+	if f.anyTopic() && len(f.Paths) > 1 {
+		return fmt.Errorf("feed %q: %q (any topic) can't be combined with other paths", f.Rkey, AnyTopic)
+	}
+	for _, p := range f.Paths {
+		if p != AnyTopic && !paths[p] {
+			return fmt.Errorf("feed %q: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
 		}
-		if r.FreshEvery == 1 {
-			return fmt.Errorf("feed %q: fresh_every 1 would make every slot fresh; use 0 for none, or 2 or more", f.Rkey)
+	}
+	for p, v := range f.Exclude {
+		if !paths[p] {
+			return fmt.Errorf("feed %q: exclude: %q is not a broad topic or subtopic path in the taxonomy", f.Rkey, p)
 		}
+		if v < 0 || v > 1 {
+			return fmt.Errorf("feed %q: exclude %s: must be a probability in [0, 1]", f.Rkey, p)
+		}
+	}
+	if f.MinProb <= 0 || f.MinProb > 1 {
+		return fmt.Errorf("feed %q: min_prob must be in (0, 1]", f.Rkey)
+	}
+	r := f.Ranking
+	if err := r.validate(); err != nil {
+		return fmt.Errorf("feed %q: %w", f.Rkey, err)
+	}
+	if f.MaxPosts < 0 || f.MaxPosts > 20000 {
+		return fmt.Errorf("feed %q: max_posts must be 0-20000", f.Rkey)
+	}
+	if err := f.Tone.validate("tone", Tones); err != nil {
+		return fmt.Errorf("feed %q: %w", f.Rkey, err)
+	}
+	if err := f.Signals.validate("signal", Signals); err != nil {
+		return fmt.Errorf("feed %q: %w", f.Rkey, err)
+	}
+	if r.FreshEvery == 1 {
+		return fmt.Errorf("feed %q: fresh_every 1 would make every slot fresh; use 0 for none, or 2 or more", f.Rkey)
 	}
 	return nil
 }

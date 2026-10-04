@@ -119,6 +119,13 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   margin-bottom: 10px;
 }
 .section-hint { font-size: 13px; color: var(--text-3); margin: -4px 0 10px; }
+/* saving the feed as one's own (mine.js) */
+.field { display: grid; gap: 4px; margin: 0 0 10px; }
+.field label { font-size: 13px; font-weight: 600; }
+#mine textarea.text-input { display: block; width: 100%; min-height: 72px; margin: 0 0 10px; resize: vertical; font: inherit; }
+.mine-msg { margin: 0 0 10px; font-size: 13px; color: var(--text-2); }
+.mine-msg[data-tone="error"] { color: #b42318; }
+@media (prefers-color-scheme: dark) { .mine-msg[data-tone="error"] { color: #ff9b9b; } }
 details.section > summary { cursor: pointer; list-style: none; }
 details.section > summary::-webkit-details-marker { display: none; }
 details.section > summary .section-title { margin-bottom: 0; }
@@ -403,6 +410,7 @@ input[type="range"].neg::-moz-range-thumb { border-color: var(--danger); }
 
 @media (max-width: 920px) {
   .byline { display: none; }
+  .signin-link { margin-left: auto; } /* the byline pushed it right; without the byline it must do it itself */
   .topbar { gap: 12px; padding: 0 14px; }
   .brand-name { display: none; }
   .view-build { display: block; }

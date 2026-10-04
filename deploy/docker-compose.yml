@@ -225,8 +225,11 @@ services:
       FEEDGEN_HANDLE: ${FEEDGEN_HANDLE:-}
       FEEDGEN_APP_PASSWORD: ${FEEDGEN_APP_PASSWORD:-}
       FEEDGEN_BUILDER_ADULT_KEY: ${FEEDGEN_BUILDER_ADULT_KEY:-}
+      FEEDGEN_WELCOME_POST: ${FEEDGEN_WELCOME_POST:-}
+      FEEDGEN_SESSION_SECRET: ${FEEDGEN_SESSION_SECRET:-}
       HTTP_ADDR: ":8710"
       METRICS_ADDR: ":9104"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     working_dir: /work
     volumes:
       - ../taxonomy:/work/taxonomy:ro

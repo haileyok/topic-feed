@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your feed · Topic Feeds</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0f18">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
+  <script type="module" src="/static/v/__V__/me.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <a class="byline" href="/">Feed builder</a>
+  </header>
+
+  <main class="me">
+    <section class="me-card" id="loading" aria-live="polite">
+      <p class="me-lead">Loading…</p>
+    </section>
+
+    <section class="me-card" id="signed-out" hidden>
+      <h1>Your For you feed</h1>
+      <p class="me-lead">Sign in with your Bluesky account to see what your likes say you're into, and tune your feed.</p>
+      <p class="me-note" id="notice" role="alert" hidden></p>
+      <form id="login" class="me-form">
+        <label for="handle">Your Bluesky handle</label>
+        <div class="me-row">
+          <input id="handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="username" maxlength="300" required>
+          <button class="btn btn-primary" id="login-button" type="submit">Sign in with Bluesky</button>
+        </div>
+      </form>
+      <p class="me-fine">You'll approve this on your own Bluesky server. We only learn which account is yours: we get no password, and we keep no access to your account.</p>
+    </section>
+
+    <section class="me-card me-wide" id="signed-in" hidden data-preview-delay="400" data-retry-delay="3000">
+      <div class="me-head">
+        <div class="me-title">
+          <h1>Your For you feed</h1>
+          <p class="me-who">Signed in as <strong id="who"></strong></p>
+        </div>
+        <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
+      </div>
+      <p class="me-note" id="signed-in-notice" role="alert" hidden></p>
+
+      <ul class="me-stats" id="me-stats" aria-label="What your likes say" hidden>
+        <li><b id="stat-liked"></b><span>liked or reposted</span></li>
+        <li><b id="stat-topics"></b><span>with a topic</span></li>
+        <li><b id="stat-interests"></b><span>interests in your feed</span></li>
+        <li><b id="stat-memory"></b><span>days until a like counts half</span></li>
+      </ul>
+
+      <nav class="me-tabs" id="me-tabs" aria-label="Parts of this page">
+        <button class="me-tab" type="button" data-view="interests" aria-pressed="true">Interests</button>
+        <button class="me-tab" type="button" data-view="settings" aria-pressed="false">Tune</button>
+        <button class="me-tab" type="button" data-view="preview" aria-pressed="false">Preview</button>
+      </nav>
+
+      <div class="me-savebar" id="savebar" data-state="clean" role="status" hidden>
+        <span class="me-savebar-text" id="save-text"></span>
+        <span class="me-savebar-buttons">
+          <a class="link-btn me-jump" id="jump" href="#preview">See the preview ↓</a>
+          <button class="btn" id="discard" type="button" hidden>Discard</button>
+          <button class="btn btn-primary" id="save" type="button" hidden>Save changes</button>
+        </span>
+      </div>
+
+      <div class="me-grid" id="me-grid" data-view="interests">
+        <div class="me-col me-interests-col">
+          <h2 class="me-h2">What your likes say you're into</h2>
+          <p class="me-fine me-tip">Slide a topic to get more or less of it in your feed. Nothing changes until you save.</p>
+          <div id="interests" aria-live="polite">
+            <p class="me-lead" id="interests-loading">Reading your likes…</p>
+            <div id="interests-error" hidden>
+              <p class="me-note" id="interests-error-text" role="alert"></p>
+              <button class="btn" id="interests-retry" type="button">Try again</button>
+            </div>
+            <div id="interests-body" hidden>
+              <p class="me-summary" id="interests-summary"></p>
+              <p class="me-info" id="interests-mix" hidden></p>
+              <ol class="interests" id="interest-list"></ol>
+              <p class="me-fine" id="interests-other"></p>
+            </div>
+          </div>
+
+          <div class="me-add" id="add-topic-row" hidden>
+            <label for="add-topic">Add a topic you haven't liked yet</label>
+            <div class="me-row">
+              <select id="add-topic"></select>
+              <button class="btn" id="add-topic-button" type="button">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="me-col me-settings-col">
+          <p class="me-lead" id="tuning-loading">Loading the controls…</p>
+          <div class="me-error" id="tuning-error" hidden>
+            <p class="me-note" id="tuning-error-text" role="alert"></p>
+            <button class="btn" id="tuning-retry" type="button">Try again</button>
+          </div>
+          <div id="tuning-controls" hidden>
+            <h2 class="me-h2">Tune your feed</h2>
+            <p class="me-fine me-tip">Everything here is a draft until you save it. A setting you haven't touched follows the feed's own.</p>
+            <div id="knobs"></div>
+            <p class="me-fine"><button class="link-btn" id="reset-all" type="button">Reset everything to the defaults</button></p>
+          </div>
+        </div>
+
+        <aside class="me-side" id="preview" aria-labelledby="preview-title" aria-busy="false">
+          <div class="me-preview-head">
+            <h2 class="me-h2" id="preview-title">Preview</h2>
+            <label class="me-check"><input type="checkbox" id="preview-scores"> Show the scores</label>
+          </div>
+          <p class="me-fine me-tip">The first posts these settings would pick right now. It ignores what you've already seen, so it shows what the settings do, not what's left to read.</p>
+          <p class="me-info" id="preview-note" hidden></p>
+          <p class="me-fine" id="preview-status" role="status">Loading the preview…</p>
+          <button class="btn" id="preview-retry" type="button" hidden>Try again</button>
+          <ol class="preview" id="preview-list"></ol>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

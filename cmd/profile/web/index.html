@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What your likes say</title>
+<style>
+  :root { --ink: #1f2430; --muted: #6b7280; --line: #e2e5eb; --panel: #f6f7fa; --accent: #3b3f8c; --bar: #6a6fd6;
+          font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); line-height: 1.45; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; }
+  main { max-width: 52rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; margin: 0 0 .4rem; }
+  h2 { font-size: 1.2rem; margin: 1.6rem 0 .4rem; }
+  .muted { color: var(--muted); }
+  form { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin: 1.2rem 0 .6rem; }
+  label { display: flex; flex-direction: column; font-size: .8rem; color: var(--muted); gap: .2rem; flex: 1; min-width: 14rem; }
+  input { font: inherit; color: var(--ink); padding: .5rem .65rem; border: 1px solid #c7cbd3; border-radius: 8px; }
+  button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: .55rem 1.1rem; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: progress; }
+  #status { min-height: 1.4rem; margin: .2rem 0; }
+  #status.error { color: #b8412e; }
+  .interests { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: .55rem; }
+  .interest { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; }
+  .head { display: flex; gap: .6rem; align-items: baseline; }
+  .name { font-weight: 650; }
+  .broad { color: var(--muted); font-size: .82rem; }
+  .pct { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 650; }
+  .bar { height: 10px; border-radius: 5px; background: var(--line); margin: .45rem 0 .2rem; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--bar); }
+  details { margin-top: .25rem; }
+  summary { cursor: pointer; font-size: .85rem; color: var(--accent); }
+  ul.liked { list-style: none; padding: 0; margin: .5rem 0 .2rem; display: grid; gap: .5rem; }
+  ul.liked li { border-left: 3px solid var(--line); padding-left: .7rem; font-size: .9rem; }
+  ul.liked a { color: var(--ink); text-decoration: none; }
+  ul.liked a:hover { text-decoration: underline; }
+  .meta { color: var(--muted); font-size: .78rem; display: block; }
+  table { border-collapse: collapse; font-size: .9rem; margin-top: .5rem; }
+  td { padding: .25rem 1rem .25rem 0; vertical-align: top; }
+  td:first-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .note { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin-top: .8rem; font-size: .92rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>What your likes say you're into</h1>
+  <p class="muted">These are the interests the "For you" feed is built from: the topics of the posts you liked and reposted, newer likes counting more. Each interest gets slots in your feed in proportion to its share.</p>
+
+  <form id="lookup">
+    <label>Handle or DID
+      <input id="actor" name="actor" value="__DEFAULT_ACTOR__" autocomplete="off" spellcheck="false" placeholder="you.bsky.social">
+    </label>
+    <button id="go" type="submit">Show</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <section id="result" hidden>
+    <h2 id="who"></h2>
+    <p id="summary"></p>
+    <div id="verdict" class="note"></div>
+    <ol id="interests" class="interests"></ol>
+    <p id="rest" class="muted"></p>
+    <h2>Why not every like counts</h2>
+    <p class="muted">Only top-level English posts are classified into topics.</p>
+    <table id="coverage"></table>
+    <p id="settings" class="muted"></p>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+// Build DOM nodes without ever parsing text as HTML: post text is other people's words.
+function el(tag, props = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k === "style") Object.assign(node.style, v);
+    else node.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) node.append(kid);
+  return node;
+}
+
+const pct = (n, digits = 1) => `${(n * 100).toFixed(digits)}%`;
+const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+function ago(iso) {
+  const days = (new Date(iso) - Date.now()) / 86400000;
+  if (days > -1) return rtf.format(Math.round(days * 24), "hour");
+  return rtf.format(Math.round(days), "day");
+}
+const plural = (n, one, many) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
+
+function setStatus(text, isError = false) {
+  const s = $("status");
+  s.textContent = text;
+  s.className = isError ? "error" : "";
+}
+
+function render(d) {
+  const c = d.coverage;
+  $("who").textContent = d.handle && d.handle !== "handle.invalid" ? `@${d.handle}` : d.did;
+  $("summary").textContent =
+    `${c.classified.toLocaleString("en")} of the ${plural(c.total, "post", "posts")} liked or reposted in the last ` +
+    `${plural(d.settings.lookbackDays, "day", "days")} could be placed in a topic.`;
+  const verdict = $("verdict");
+  verdict.textContent = d.personalized
+    ? `That's enough (at least ${d.settings.minLikes}): the feed uses these interests.`
+    : `That's fewer than the ${d.settings.minLikes} needed, so the feed shows an even mix of the busiest topics instead of these.`;
+
+  const max = Math.max(...d.interests.map((i) => i.share), 0.0001);
+  $("interests").replaceChildren(...d.interests.map((i) => {
+    const samples = i.samples.map((s) => el("li", {},
+      // Only ever link into the Bluesky app, whatever the data says.
+      (s.url || "").startsWith("https://bsky.app/")
+        ? el("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.text || "(no text)" })
+        : el("span", { text: s.text || "(no text)" }),
+      el("span", { class: "meta", text: `liked ${ago(s.likedAt)} · ${pct(s.p, 0)} sure of the topic` })));
+    const detail = i.posts > 0
+      ? el("details", {}, el("summary", { text: `${plural(i.posts, "liked post", "liked posts")} filed here` + (i.posts > i.samples.length ? ` (newest ${i.samples.length})` : "") }),
+          el("ul", { class: "liked" }, samples))
+      : el("p", { class: "meta", text: "No liked post is filed here: this comes from posts that are partly about it." });
+    return el("li", { class: "interest" },
+      el("div", { class: "head" },
+        el("span", { class: "name", text: i.name }),
+        i.broad && i.broad !== i.name ? el("span", { class: "broad", text: i.broad }) : null,
+        el("span", { class: "pct", text: pct(i.share) })),
+      el("div", { class: "bar", role: "img", "aria-label": `${pct(i.share)} of your interests` },
+        el("i", { style: { width: `${(i.share / max) * 100}%` } })),
+      detail);
+  }));
+
+  const bits = [];
+  if (d.otherPosts) bits.push(`${plural(d.otherPosts, "liked post is", "liked posts are")} filed under smaller topics than these`);
+  if (d.unclearPosts) bits.push(`${plural(d.unclearPosts, "liked post", "liked posts")} the model couldn't place`);
+  $("rest").textContent = bits.length ? `Also: ${bits.join("; ")}.` : "";
+
+  const rows = [
+    [c.classified, "placed in a topic: these make up the interests"],
+    [c.repliesOrOther, "replies and posts not in English, which aren't classified"],
+    [c.unclassified, "top-level English posts the classifier never scored, mostly from before it was running"],
+    [c.unseen, "posts we never saw: older than our data, or deleted"],
+  ];
+  $("coverage").replaceChildren(...rows.map(([n, what]) => el("tr", {}, el("td", { text: n.toLocaleString("en") }), el("td", { text: what }))));
+  $("settings").textContent =
+    `Likes from the last ${d.settings.lookbackDays} days count, each worth half as much for every ${d.settings.halfLifeDays} days older. ` +
+    `The top ${d.settings.topics} interests are used. Read in ${d.tookMs} ms.`;
+  $("result").hidden = false;
+}
+
+async function load(actor) {
+  const go = $("go");
+  go.disabled = true;
+  setStatus("Reading likes…");
+  $("result").hidden = true;
+  try {
+    const res = await fetch(`/api/profile?actor=${encodeURIComponent(actor)}`, { cache: "no-store" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    render(body);
+    setStatus("");
+    history.replaceState(null, "", `?actor=${encodeURIComponent(actor)}`);
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    go.disabled = false;
+  }
+}
+
+$("lookup").addEventListener("submit", (e) => {
+  e.preventDefault();
+  load($("actor").value.trim());
+});
+
+const fromUrl = new URLSearchParams(location.search).get("actor");
+if (fromUrl) $("actor").value = fromUrl;
+if ($("actor").value.trim()) load($("actor").value.trim());
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+/* The post inspector at /inspect. It uses the panels, fields, badges and colours of me.css. */
+
+.inspect { --warn-text: #8a5a00; max-width: 1500px; }
+@media (prefers-color-scheme: dark) {
+  .inspect { --warn-text: #f0c04a; }
+}
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.insp-form { margin: 0 0 18px; }
+.insp-form label { display: block; margin-bottom: 8px; font-weight: 650; font-size: 14.5px; }
+.insp-status { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+.insp-status::before {
+  content: ""; flex: none; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: me-spin .8s linear infinite;
+}
+
+/* the answer in one line, coloured by how good it is */
+.insp-verdict {
+  margin: 0 0 var(--me-gap); padding: 18px 22px;
+  border: 1px solid var(--line); border-left: 6px solid var(--text-3); border-radius: 16px;
+  background: var(--bg-elev); box-shadow: var(--shadow);
+}
+.insp-verdict[data-tone="good"] { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--bg-elev)); }
+.insp-verdict[data-tone="mid"] { border-left-color: #e0a100; background: color-mix(in srgb, #e0a100 9%, var(--bg-elev)); }
+.insp-verdict-title { margin: 0 0 4px; font-size: 20px; font-weight: 750; letter-spacing: -.01em; }
+.insp-verdict-text { margin: 0; color: var(--muted); }
+.insp-why { margin: calc(-1 * var(--me-gap) + 12px) 0 var(--me-gap); }
+.insp-why p { margin: 0 0 6px; }
+.insp-why p:last-child { margin: 0; }
+
+.insp-grid { display: grid; gap: var(--me-gap); align-items: start; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) {
+  .insp-grid { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+}
+/* A grid's column is as wide as its widest unbroken word unless it is told otherwise: what the page
+   shows includes long handles, topic lists and other people's words. */
+.insp-left { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--me-gap); min-width: 0; }
+.insp-right { min-width: 0; }
+.insp-tip { margin: 0 0 14px; }
+
+/* the post, and what is stored about it */
+.insp-post .post { box-shadow: none; border-radius: 14px; background: var(--bg); }
+/* the post as we hold it has nothing to click on but its link, unlike the card Bluesky's answer makes */
+.insp-post .post.fallback { cursor: default; }
+.insp-post .post.fallback:hover { border-color: var(--line); }
+.insp-post .post-foot a { color: var(--accent-text); font-weight: 600; }
+.insp-facts { display: grid; margin: 16px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.insp-facts li { display: grid; grid-template-columns: minmax(8em, 11em) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.insp-facts .k { color: var(--muted); }
+.insp-facts .v { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.insp-scores { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+
+/* the feeds */
+.insp-group + .insp-group { margin-top: 22px; }
+.insp-group-title { margin: 0 0 10px; color: var(--muted); font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+.insp-feeds-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.insp-feed { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-left: 5px solid var(--line-strong); border-radius: 14px; background: var(--bg); }
+.insp-feed[data-match="yes"] { border-left-color: var(--ok); }
+.insp-feed[data-personal="yes"] { border-left-color: var(--accent); }
+.insp-feed-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.insp-feed-name { min-width: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.insp-feed-key { min-width: 0; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.insp-feed-head .badge { margin-left: auto; }
+.insp-feed-line { margin: 6px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.insp-reason { color: var(--muted); }
+.insp-feed-rank { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.insp-checks > summary { display: flex; align-items: center; min-height: 36px; margin-top: 4px; cursor: pointer; color: var(--accent-text); font-size: 13px; font-weight: 650; }
+.insp-checks ul { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.insp-check { display: grid; grid-template-columns: 1.4em minmax(0, 1fr); gap: 8px; font-size: 13.5px; line-height: 1.4; }
+.insp-check-body { overflow-wrap: anywhere; }
+.insp-check-body span { color: var(--muted); }
+.insp-mark { text-align: center; font-weight: 800; }
+.insp-check[data-state="pass"] .insp-mark { color: var(--ok-text); }
+.insp-check[data-state="fail"] .insp-mark { color: var(--danger-text); }
+.insp-check[data-state="soft"] .insp-mark { color: var(--warn-text); }
+
+@media (max-width: 560px) {
+  .insp-facts li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .insp-verdict { padding: 16px 16px; }
+  .insp-verdict-title { font-size: 18px; }
+  .insp-feed { padding: 12px 12px; }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "topic-feed-webvendor",
+  "private": true,
+  "description": "Builds the one vendored script of the feed service's web pages. Not part of the service: run by hand, the result is committed.",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --minify --target=es2022 --platform=browser --legal-comments=none --outfile=../web/static/vendor/atproto-oauth-client-browser.js && node licenses.mjs > ../web/static/vendor/atproto-oauth-client-browser.LICENSES.txt",
+    "licenses": "node licenses.mjs"
+  },
+  "dependencies": {
+    "@atproto/oauth-client-browser": "0.5.9"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

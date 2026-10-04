@@ -92,7 +92,8 @@ default `max_posts` for cross-topic feeds.
 - Expose the factors in the tuning page (section 5) and in metrics.
 
 **Not in scope:** anything per viewer ("you already saw this", personal preferences). That
-is a separate, personalized feed, planned later.
+is the personal feed ("For you", built 2026-10-01: see the README's "Personal feeds"), which
+keeps its own per-viewer history; these adjustments are per feed.
 
 **Open:** trailing window length; the weight of seen-without-engagement relative to an
 explicit show-less; whether show-less on one feed should affect other feeds.

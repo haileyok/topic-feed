@@ -8,6 +8,13 @@
 //	                           in with the account's main password and email 2FA is on).
 //	                           At a terminal it shows the records, asks before writing,
 //	                           and asks for the sign-in code if Bluesky sends one.
+//	feedgen welcome [-dry-run] [-code C] [-text T] [-days-ago N]
+//	                           post the welcome message personal feeds show while a viewer's
+//	                           feed is being built, as the owner (a real, public post), and
+//	                           print the FEEDGEN_WELCOME_POST line that points feeds at it.
+//	                           The post is dated N days back (default 90) so it sorts that far
+//	                           down followers' timelines rather than at the top. Asks before
+//	                           posting, like publish.
 //
 // Configuration comes from environment variables:
 //
@@ -20,6 +27,10 @@
 //	FEEDGEN_WINDOW_HOURS      how far back feeds go, default 24
 //	FEEDGEN_REFRESH_SECONDS   how often feeds are rebuilt, default 20
 //	FEEDGEN_MAX_POSTS         posts per feed, default 3000
+//	FEEDGEN_WELCOME_POST      at:// URI of the post personal feeds show while a viewer's feed
+//	                          is being built (create it with `feedgen welcome`); unset: an empty feed
+//	FEEDGEN_SESSION_SECRET    at least 32 random characters that sign the cookie saying who is
+//	                          signed in on the page at /me (sign-in with Bluesky); unset: sign-in is off
 //	HTTP_ADDR                 public listener, default :8710
 //	METRICS_ADDR              Prometheus metrics, default :9104
 //	LOG_LEVEL                 debug|info|warn, default info
@@ -65,7 +76,7 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
 	cmd, args := "serve", os.Args[1:]
-	if len(args) > 0 && (args[0] == "serve" || args[0] == "publish") {
+	if len(args) > 0 && (args[0] == "serve" || args[0] == "publish" || args[0] == "welcome") {
 		cmd, args = args[0], args[1:]
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -81,6 +92,14 @@ func main() {
 		code := fs.String("code", "", "emailed sign-in code (email 2FA with the main password; app passwords don't need it)")
 		fs.Parse(args)
 		err = publish(ctx, *dry, *code)
+	case "welcome":
+		fs := flag.NewFlagSet("welcome", flag.ExitOnError)
+		dry := fs.Bool("dry-run", false, "print the post instead of writing it")
+		code := fs.String("code", "", "emailed sign-in code (email 2FA with the main password; app passwords don't need it)")
+		text := fs.String("text", defaultWelcomeText, "the post's text")
+		daysAgo := fs.Int("days-ago", defaultDaysAgo, "date the post this many days back, so it sorts that far down followers' timelines instead of at the top")
+		fs.Parse(args)
+		err = welcome(ctx, *dry, *code, *text, *daysAgo)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("feedgen "+cmd+" failed", "err", err)
@@ -133,6 +152,11 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if os.Getenv("CLICKHOUSE_PASSWORD") == "" {
 		return errors.New("CLICKHOUSE_PASSWORD must be set")
 	}
+	// Refuse to start if viewers' credentials can't be checked, rather than serve every
+	// viewer as if they were anonymous.
+	if err := feedgen.CheckCredentials(); err != nil {
+		return err
+	}
 
 	go func() {
 		mux := http.NewServeMux()
@@ -149,14 +173,36 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	defer conn.Close()
 
 	every := time.Duration(envInt("FEEDGEN_REFRESH_SECONDS", 20)) * time.Second
-	feeds := feedgen.NewFeeds(s.cfg, &feedgen.Store{Conn: conn, Policy: policy}, log,
+	store := &feedgen.Store{Conn: conn, Policy: policy}
+	// The feeds served are the ones in the database (schema/014_user_feeds.sql), which people change
+	// on the web. The first time, those of the config file are copied in; after that the file's
+	// topic feeds are not looked at, only its personal feed (which is made from each viewer's likes).
+	owner := s.owner.String()
+	seeded, err := store.SeedFeeds(ctx, owner, s.cfg.Feeds)
+	if err != nil {
+		return fmt.Errorf("copying the feeds of the config file into the database (apply schema/014_user_feeds.sql with `make schema`): %w", err)
+	}
+	if seeded > 0 {
+		log.Info("copied the feeds of the config file into the database", "feeds", seeded)
+	}
+	taxonomyPaths := feedgen.TaxonomyPaths(s.tax)
+	loadFeeds := func(ctx context.Context) ([]feedgen.Feed, error) {
+		return feedgen.LoadServedFeeds(ctx, store, s.cfg, owner, taxonomyPaths, log)
+	}
+	toServe, err := loadFeeds(ctx)
+	if err != nil {
+		return err
+	}
+	feeds := feedgen.NewFeeds(&feedgen.Config{Feeds: toServe}, store, log,
 		time.Duration(envInt("FEEDGEN_WINDOW_HOURS", 24))*time.Hour, every, envInt("FEEDGEN_MAX_POSTS", 3000))
 	feeds.Start(ctx)
+	// Feeds saved on the web appear within this long (sooner when the service itself saved them).
+	go feeds.SyncFrom(ctx, loadFeeds, 30*time.Second)
 
 	srv := feedgen.NewServer(feedgen.ServerConfig{
 		Hostname: s.hostname, ServiceDID: s.serviceDID, OwnerDID: s.owner,
 		MaxAge: max(5*every, 2*time.Minute),
-	}, feeds, identity.DefaultDirectory(), log)
+	}, feeds, serviceAuthDirectory(), log)
 
 	// Interactions are written in the background and flushed after the server stops.
 	// The feed builder page at "/" previews feeds with the same store.
@@ -173,7 +219,58 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	wctx, stopWriter := context.WithCancel(context.Background())
 	go iw.Run(wctx)
 	srv.Interactions = iw
-	for _, f := range s.cfg.Feeds {
+
+	// Personal feeds (`personal:` in the config): built per viewer from their likes. What
+	// they were sent is stored so a restart doesn't forget it.
+	var served *feedgen.RowWriter[feedgen.ServedRow]
+	if hasPersonal(s.cfg) {
+		personal := feedgen.NewPersonal(s.cfg.Feeds, store, log)
+		personal.Tunings = store // how viewers have tuned their feeds (schema/010_viewer_settings.sql)
+		personal.Welcome = os.Getenv("FEEDGEN_WELCOME_POST")
+		if err := checkWelcomePost(personal.Welcome); err != nil {
+			stopWriter()
+			iw.Wait()
+			return err
+		}
+		if personal.Welcome == "" {
+			log.Warn("FEEDGEN_WELCOME_POST is not set: a viewer whose feed is still being built sees an empty feed (make feeds-welcome creates the post)")
+		}
+		// Signing in with Bluesky, for the page where viewers see and tune their feed.
+		signIn, handleOf, err := newSignIn("https://"+s.hostname, log)
+		if err != nil {
+			stopWriter()
+			iw.Wait()
+			return err
+		}
+		if signIn == nil {
+			log.Info("sign-in is off: FEEDGEN_SESSION_SECRET is not set")
+		} else {
+			srv.SignIn = signIn
+			srv.Me = newMeAPI(s.cfg, s.tax, store, personal, signIn, "https://"+s.hostname, handleOf, log)
+			// The post inspector (/inspect) is the owner's: it is signed in with the same session.
+			srv.Inspect = newInspectAPI(s.owner.String(), signIn, store, feeds, policy, s.tax, handleOf, log)
+			// People's own feeds (/feeds): made and changed here, published from their browsers.
+			srv.FeedsAPI = newFeedsAPI(s.owner.String(), s.serviceDID, "https://"+s.hostname, signIn, store, feeds, taxonomyPaths, log)
+			srv.ResolveHandle = newResolveHandleAPI(log)
+		}
+		served = feedgen.NewServedWriter(conn, log)
+		go served.Run(wctx)
+		personal.Served = served
+		personal.Start(ctx)
+		srv.Personal = personal
+	}
+	stopWriters := func() {
+		stopWriter()
+		iw.Wait()
+		if served != nil {
+			served.Wait()
+		}
+	}
+	for _, f := range feeds.List() {
+		if f.Personal != nil {
+			log.Info("serving personal feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey))
+			continue
+		}
 		log.Info("serving feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey), "paths", f.Paths, "min_prob", f.MinProb)
 	}
 
@@ -184,8 +281,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	select {
 	case err := <-errc:
-		stopWriter()
-		iw.Wait()
+		stopWriters()
 		return err
 	case <-ctx.Done():
 	}
@@ -193,9 +289,29 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	err = srv.Shutdown(sctx)
-	stopWriter()
-	iw.Wait()
+	stopWriters()
 	return err
+}
+
+func hasPersonal(cfg *feedgen.Config) bool {
+	for _, f := range cfg.Feeds {
+		if f.Personal != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// checkWelcomePost accepts "" (no welcome post) or the at:// URI of a post.
+func checkWelcomePost(uri string) error {
+	if uri == "" {
+		return nil
+	}
+	u, err := syntax.ParseATURI(uri)
+	if err != nil || u.Collection().String() != "app.bsky.feed.post" || u.RecordKey().String() == "" {
+		return fmt.Errorf("FEEDGEN_WELCOME_POST must be the at:// URI of a post (at://did:plc:.../app.bsky.feed.post/...), got %q", uri)
+	}
+	return nil
 }
 
 func publish(ctx context.Context, dry bool, code string) error {
@@ -205,8 +321,12 @@ func publish(ctx context.Context, dry bool, code string) error {
 	}
 	dir := identity.DefaultDirectory()
 	p := &feedgen.Publisher{Dir: dir, OwnerDID: s.owner, ServiceDID: s.serviceDID, Out: os.Stdout}
+	feeds, err := ownerFeeds(ctx, s)
+	if err != nil {
+		return err
+	}
 	if dry {
-		return p.Publish(ctx, s.cfg.Feeds, nil)
+		return p.Publish(ctx, feeds, nil)
 	}
 	password := os.Getenv("FEEDGEN_APP_PASSWORD")
 	if password == "" {
@@ -221,7 +341,7 @@ func publish(ctx context.Context, dry bool, code string) error {
 	in := bufio.NewReader(os.Stdin)
 	tty := isTerminal(os.Stdin)
 	if tty {
-		if err := p.Publish(ctx, s.cfg.Feeds, nil); err != nil {
+		if err := p.Publish(ctx, feeds, nil); err != nil {
 			return err
 		}
 		if !strings.EqualFold(prompt(in, "\nPublish these records as "+id.String()+"? [y/N] "), "y") {
@@ -229,20 +349,57 @@ func publish(ctx context.Context, dry bool, code string) error {
 		}
 	}
 
+	login, err := ownerLogin(ctx, dir, id, password, code, in, tty, "make feeds-publish")
+	if err != nil {
+		return err
+	}
+	return p.Publish(ctx, feeds, login)
+}
+
+// ownerFeeds are the feeds the service owner publishes: those in the database that are the owner's
+// (feeds other people made are published by them, from the page at /feeds), then the personal
+// feed of the config file.
+func ownerFeeds(ctx context.Context, s *settings) ([]feedgen.Feed, error) {
+	if os.Getenv("CLICKHOUSE_PASSWORD") == "" {
+		return nil, errors.New("CLICKHOUSE_PASSWORD must be set: the feeds are read from the database")
+	}
+	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	all, err := feedgen.LoadServedFeeds(ctx, &feedgen.Store{Conn: conn}, s.cfg, s.owner.String(),
+		feedgen.TaxonomyPaths(s.tax), slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err != nil {
+		return nil, err
+	}
+	var mine []feedgen.Feed
+	for _, f := range all {
+		if f.Owner == "" {
+			mine = append(mine, f)
+		}
+	}
+	return mine, nil
+}
+
+// ownerLogin logs in as the feeds' owner. When Bluesky emails a sign-in code (email 2FA),
+// it asks for it at a terminal; otherwise it says how to pass it with makeTarget.
+func ownerLogin(ctx context.Context, dir identity.Directory, id syntax.AtIdentifier, password, code string,
+	in *bufio.Reader, tty bool, makeTarget string) (*atclient.APIClient, error) {
 	login, err := atclient.LoginWithPassword(ctx, dir, id, password, code, nil)
 	var apiErr *atclient.APIError
 	if errors.As(err, &apiErr) && apiErr.Name == "AuthFactorTokenRequired" {
 		if !tty {
-			return errors.New("Bluesky emailed a sign-in code (email 2FA): run again at a terminal to be " +
-				"asked for it, or pass -code <code> (make feeds-publish CODE=<code>). App passwords don't need one")
+			return nil, errors.New("Bluesky emailed a sign-in code (email 2FA): run again at a terminal to be " +
+				"asked for it, or pass -code <code> (" + makeTarget + " CODE=<code>). App passwords don't need one")
 		}
 		code = prompt(in, "Bluesky emailed you a sign-in code. Enter it: ")
 		login, err = atclient.LoginWithPassword(ctx, dir, id, password, code, nil)
 	}
 	if err != nil {
-		return fmt.Errorf("log in: %w", err)
+		return nil, fmt.Errorf("log in: %w", err)
 	}
-	return p.Publish(ctx, s.cfg.Feeds, login)
+	return login, nil
 }
 
 func prompt(in *bufio.Reader, question string) string {

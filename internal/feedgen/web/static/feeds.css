@@ -1,0 +1,42 @@
+/* The page at /feeds. It uses the panels, buttons, badges and colours of me.css. */
+
+.feeds { max-width: 1100px; }
+
+/* a good answer is not the red of a complaint */
+.feeds .me-note[data-tone="ok"] { background: var(--accent-soft); color: var(--accent-text); }
+
+/* publishing on Bluesky: whether the account is connected */
+.feeds-connection { margin: 0 0 var(--me-gap); }
+.feeds-connection[data-state="connected"] { border-left: 5px solid var(--ok); }
+.feeds-connection[data-state="declined"], .feeds-connection[data-state="wrong_account"], .feeds-connection[data-state="unavailable"] { border-left: 5px solid var(--danger); }
+.feeds-connection .me-fine { margin: 0 0 12px; overflow-wrap: anywhere; }
+.feeds-connection .me-form { margin: 0 0 4px; }
+.feeds-connection p:last-child { margin: 0; }
+
+/* the feeds */
+.feeds-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.feeds-card {
+  min-width: 0; padding: 18px 20px; border: 1px solid var(--line); border-left: 5px solid var(--line-strong);
+  border-radius: 16px; background: var(--bg-elev); box-shadow: var(--shadow);
+}
+.feeds-card[data-status="published"] { border-left-color: var(--ok); }
+.feeds-card[data-status="changed"] { border-left-color: var(--accent); }
+.feeds-card[data-status="conflict"] { border-left-color: var(--danger); }
+.feeds-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.feeds-name { min-width: 0; margin: 0; font-size: 19px; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.feeds-key { min-width: 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.feeds-status { margin-left: auto; }
+.feeds-card[data-status="published"] .feeds-status { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.feeds-card[data-status="changed"] .feeds-status { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.feeds-card[data-status="conflict"] .feeds-status { background: var(--danger-soft); color: var(--danger-text); border-color: transparent; }
+.feeds-desc { margin: 8px 0 0; overflow-wrap: anywhere; }
+.feeds-topics { margin: 6px 0 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.feeds-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+.feeds .feeds-actions .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
+.feeds .btn:disabled { opacity: .6; cursor: default; }
+
+@media (max-width: 560px) {
+  .feeds-card { padding: 14px 14px; }
+  .feeds-actions .btn { flex: 1 1 auto; min-height: 44px; }
+  .feeds-status { margin-left: 0; }
+}

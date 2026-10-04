@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -344,16 +343,7 @@ func (p *Previewer) visitor(ip string) *rate.Limiter {
 
 // clientIP is the visitor's address: Cloudflare's header when the request came through
 // the tunnel (the server only listens on localhost), else the connection's.
-func clientIP(c echo.Context) string {
-	if ip := c.Request().Header.Get("CF-Connecting-IP"); ip != "" {
-		return ip
-	}
-	host, _, err := net.SplitHostPort(c.Request().RemoteAddr)
-	if err != nil {
-		return c.Request().RemoteAddr
-	}
-	return host
-}
+func clientIP(c echo.Context) string { return requestIP(c.Request()) }
 
 type taxonomyTopic struct {
 	ID          string          `json:"id"`

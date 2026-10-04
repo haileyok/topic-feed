@@ -31,6 +31,12 @@ type Post struct {
 	Score float64 // ranking score when the feed was built
 }
 
+// Engagement is the post's likes, reposts, replies, and quotes, each counted at its weight. It
+// is what ranking adds to a post's score, and what a personal feed's minimum is measured in.
+func (p Post) Engagement(w Weights) float64 {
+	return w.Like*float64(p.Likes) + w.Repost*float64(p.Reposts) + w.Reply*float64(p.Replies) + w.Quote*float64(p.Quotes)
+}
+
 // Item is one entry of a feed page.
 type Item struct {
 	URI string

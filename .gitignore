@@ -14,6 +14,12 @@ models/
 
 # Go
 /bin/
+# Binaries left by a bare `go build ./cmd/<name>` in the checkout root.
+/feedgen
+/images
+
+# The build recipe of the vendored web script (internal/feedgen/webvendor) installs its tools here.
+internal/feedgen/webvendor/node_modules/
 
 # Python
 .venv/

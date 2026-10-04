@@ -1,5 +1,6 @@
 // Topic Feeds: the feed builder page.
 import { hydrate, renderPost, el, compact, setShowAdult } from "./posts.js";
+import { fetchMe, fetchMine, savePanel } from "./mine.js";
 
 const TONES = {
   informative: ["📰", "Informative", "facts, news, how-tos"],
@@ -31,6 +32,8 @@ let TAX = null;          // /api/taxonomy
 let FEEDS = [];          // /api/feeds
 let NAMES = new Map();   // topic id -> display name
 let DEFAULT_RANKING = null;
+let ME = null;           // who is signed in ({did, handle}), or null
+let MINE = null;         // /api/me/feeds: their feeds and limits, or null
 
 const dial = () => ({ w: 0, min: 0, max: 1 });
 function blankState() {
@@ -44,6 +47,9 @@ function blankState() {
     signals: Object.fromEntries(Object.keys(SIGNALS).map((k) => [k, dial()])),
     ranking: structuredClone(DEFAULT_RANKING),
     adult: false,          // owner only: adult topics and posts (needs the adult-access cookie)
+    description: "",       // for saving the feed as one's own (mine.js)
+    rkey: "",              // the key typed for a new saved feed; "" makes one from the name
+    editing: "",           // the key of the saved feed being changed; "" for a new one
   };
 }
 let state = null;
@@ -79,6 +85,8 @@ const round = (x) => Math.round(x * 100) / 100;
 function fromFeed(f) {
   const s = blankState();
   s.name = f.display_name;
+  s.description = typeof f.description === "string" ? f.description : "";
+  s.adult = f.allow_adult === true;
   s.any = f.paths.includes("*");
   for (const p of f.paths) if (p !== "*" && NAMES.has(p)) s.topics[p] = "include";
   const exc = Object.entries(f.exclude || {}).filter(([k]) => k !== "adult_content" && NAMES.has(k));
@@ -353,8 +361,16 @@ function renderControls() {
 }
 const ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0] || "th");
 
-function renderActions() {
+function renderActions(notice = null) {
   document.getElementById("actions").replaceChildren(
+    // Signed in: the feed can be saved as one's own (and published from /feeds).
+    ME && MINE ? savePanel({
+      me: ME, mine: MINE, state, spec, notice, adult: () => state.adult,
+      onSaved: (feed, n) => {
+        history.replaceState(null, "", "?edit=" + encodeURIComponent(feed.rkey) + location.hash);
+        renderActions(n);
+      },
+    }) : null,
     el("div", { class: "btn-row" },
       el("button", { class: "btn", onclick: copyLink, text: "Copy link" }),
       el("button", { class: "btn btn-primary", onclick: copyYAML, text: "Copy as feeds.yaml" })),
@@ -627,7 +643,17 @@ async function main() {
     NAMES.set(t.id, t.name);
     for (const s of t.subtopics || []) NAMES.set(s.id, s.name);
   }
+  ME = await fetchMe();
+  MINE = ME ? await fetchMine() : null;
   state = loadHash() || blankState();
+  state.editing = ""; // a link can't make you the editor of a feed: only ?edit= for one of yours does
+  // /?edit=<key> opens one of the signed-in account's own feeds in the builder.
+  const editKey = new URLSearchParams(location.search).get("edit");
+  const mine = MINE && editKey ? MINE.feeds.find((x) => x.rkey === editKey) : null;
+  if (mine) {
+    state = fromFeed(mine.spec);
+    state.editing = mine.rkey;
+  }
   if (!tax.adult_allowed) state.adult = false;
   setShowAdult(state.adult);
   ui.open = new Set(Object.keys(state.topics).map((k) => k.split("/")[0]));
