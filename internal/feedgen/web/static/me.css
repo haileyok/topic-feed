@@ -191,9 +191,9 @@
 .interest details { margin-top: 2px; }
 .interest summary { display: flex; align-items: center; min-height: 32px; cursor: pointer; color: var(--accent-text); font-size: 14px; font-weight: 600; }
 .samples { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 8px; }
-.sample { padding: 8px 12px; border-radius: 10px; background: var(--bg-sunk); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
-.sample a { color: var(--text); }
-.sample a:hover { color: var(--accent-text); }
+.me .sample { padding: 8px 12px; border-radius: 10px; background: var(--bg-sunk); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.me .sample a { color: var(--text); }
+.me .sample a:hover { color: var(--accent-text); }
 .sample-when { color: var(--muted); font-size: 12px; margin-left: 6px; white-space: nowrap; }
 .sample-more { color: var(--muted); font-size: 13px; padding: 0 4px; }
 
@@ -308,7 +308,7 @@
   border-radius: 999px; background: var(--bg-sunk); color: var(--muted); font-size: 13px;
 }
 #preview-status[hidden] { display: none; }
-.preview { counter-reset: slot; list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.me .preview { counter-reset: slot; list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 .preview-item { counter-increment: slot; position: relative; min-width: 0; }
 .preview-item::before {
   content: counter(slot); position: absolute; z-index: 2; left: -12px; top: -9px;
