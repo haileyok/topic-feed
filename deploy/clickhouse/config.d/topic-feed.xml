@@ -21,4 +21,25 @@
         <allowed_disk>backups</allowed_disk>
         <allowed_path>/backups/</allowed_path>
     </backups>
+
+    <!-- Prometheus metrics at http://127.0.0.1:8123/metrics (the port compose already publishes,
+         localhost only). No credentials needed for this path; queries on / still need them.
+         <defaults/> keeps the built-in handlers (queries, /ping, /play): without it this rule
+         would replace them all. A running server picks this up within seconds, no restart.
+         Errors are off: that adds a series per ClickHouse error code (~1000), and the
+         failed-query counters already cover what matters. -->
+    <http_handlers>
+        <rule>
+            <url>/metrics</url>
+            <methods>GET</methods>
+            <handler>
+                <type>prometheus</type>
+                <metrics>true</metrics>
+                <events>true</events>
+                <asynchronous_metrics>true</asynchronous_metrics>
+                <errors>false</errors>
+            </handler>
+        </rule>
+        <defaults/>
+    </http_handlers>
 </clickhouse>
