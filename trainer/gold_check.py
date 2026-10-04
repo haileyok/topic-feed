@@ -7,16 +7,14 @@ A model's top path is scored four ways:
   +look-alike  it matches an acceptable path through taxonomy/<v>-equivalences.yaml
   broad        its broad topic is the broad topic of an acceptable path
 
-Scores Jev (its label in --export), any other labeler's or model's answers given with --answers
-(a JSON file of {uri: top path}), and optionally an LLM asked fresh with relabel.py's prompt
-(answers cached in /data/relabel/gold-<name>.llm.jsonl).
+Scores Jev (its label in --export) and any other labeler's or model's answers given with --answers
+(a JSON file of {uri: top path}).
 
     uv run python gold_check.py --labels ../reference/gold/v1-gold-100.labels-1.json \
-        --answers fusion=/tmp/fusion-gold.paths.json --llm gpt-6-luna:api
+        --answers fusion=/tmp/fusion-gold.paths.json
 """
 
 import argparse
-import concurrent.futures as cf
 import gzip
 import json
 import math
@@ -61,43 +59,10 @@ def score(answers: dict[str, str], gold: dict[str, dict], eq, pi, texts) -> dict
     return out
 
 
-def llm_answers(model: str, name: str, space, uris, texts) -> tuple[dict[str, str], float]:
-    import relabel
-
-    has_subs = {p.split("/", 1)[0] for p in space.paths if "/" in p}
-    head = relabel.PROMPT_HEAD.format(taxonomy=relabel.taxonomy_text(TAX))
-    cache_path = f"/data/relabel/gold-{name}.llm.jsonl"
-    done = {}
-    if os.path.exists(cache_path):
-        for line in open(cache_path):
-            x = json.loads(line)
-            if "error" not in x["llm"]:
-                done[x["uri"]] = x["llm"]
-    todo = [u for u in uris if u not in done]
-    with open(cache_path, "a") as f, cf.ThreadPoolExecutor(16) as pool:
-        futs = {pool.submit(relabel.label_one, model, head, texts[u], space, has_subs, f"topic-feed-gold-{name}"): u for u in todo}
-        for fut in cf.as_completed(futs):
-            ans = fut.result()
-            f.write(json.dumps({"uri": futs[fut], "llm": ans}) + "\n")
-            if "error" not in ans:
-                done[futs[fut]] = ans
-    cost = sum(relabel.cost(a.get("usage", {})) for a in done.values())
-    out = {}
-    for u, a in done.items():
-        joint = {k: a["broad"].get(k.split("/", 1)[0], 0) * v for k, v in a["sub"].items()}
-        for b, v in a["broad"].items():
-            if b not in has_subs:
-                joint[b] = v
-        if joint:
-            out[u] = max(joint.items(), key=lambda kv: kv[1])[0]
-    return out, cost
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--labels", required=True, help="labels downloaded from the gold page")
     ap.add_argument("--export", default="/data/exports/v1-final", help="export holding Jev's labels")
-    ap.add_argument("--llm", default="", help="also ask this LLM fresh (e.g. gpt-6-luna:api)")
     ap.add_argument("--answers", nargs="*", default=[], metavar="NAME=FILE",
                     help="also score another labeler's answers: FILE is JSON of {uri: top path} "
                          "(clef_labels.py writes <out>.paths.json)")
@@ -137,15 +102,11 @@ def main():
     for spec in a.answers:
         name, _, path = spec.partition("=")
         answers[name] = json.load(open(path))
-    cost = None
-    if a.llm:
-        answers[a.llm], cost = llm_answers(a.llm, os.path.basename(a.labels).split(".")[0], space, uris, texts)
 
     n = len(gold)
     res = {"labels": os.path.basename(a.labels), "posts": n, "models": {}}
     hits = {}
-    print(f"{n} gold posts ({len(doc['labels']) - n} skipped as can't-judge or empty)"
-          + (f"; {a.llm} cost ${cost:.3f} at list price" if cost is not None else "") + "\n")
+    print(f"{n} gold posts ({len(doc['labels']) - n} skipped as can't-judge or empty)\n")
     print(f"{'model':16s} {'best':>14s} {'acceptable':>16s} {'+look-alike':>16s} {'broad':>14s}")
     for name, ans in answers.items():
         h = score(ans, gold, eq, pi, texts)

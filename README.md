@@ -150,7 +150,6 @@ Every Go service exposes Prometheus metrics at `/metrics` and logs JSON to stdou
 | `make export` | export a training set (`LABEL_CONFIG=`, `FULL_CONTEXT=`, `EXPORT=`) |
 | `make train` | train a model (`EXPORT=`, `RUN=`, `EPOCHS=`, `TRAIN_ARGS=`) |
 | `make baseline` | the embedding baseline on an export |
-| `make relabel` / `relabel-load` | relabel uncertain posts with a second model and load the result |
 | `make install-classifier` / `classifier-logs` | the classifier service |
 | `make backup` / `install-backup` | backups |
 

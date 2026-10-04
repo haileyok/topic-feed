@@ -12,14 +12,7 @@ EXPORT       ?= /data/exports/v1-latest
 COMPOSE  := docker compose --env-file $(ENV_FILE) -f deploy/docker-compose.yml
 CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicfeed --password "$$CLICKHOUSE_PASSWORD" --database topicfeed --multiquery'
 
-# Relabeling posts Jev was unsure about with an LLM (trainer/relabel.py), e.g.
-#   make relabel RELABEL=v1-luna-le05 MAX_CONF=0.5 EXPORT=/data/exports/v1-final
-#   make relabel-load RELABEL=v1-luna-le05
-#   make export LABEL_CONFIG=5697660f73fc,<label_config printed by relabel> EXPORT=/data/exports/v1-luna
-RELABEL  ?= v1-luna-le05
-MAX_CONF ?= 0.5
-
-.PHONY: up down ps logs schema ch test backup install-backup label label-logs export relabel relabel-load install-classifier classifier-logs feeds feeds-logs feeds-publish
+.PHONY: up down ps logs schema ch test backup install-backup label label-logs export install-classifier classifier-logs feeds feeds-logs feeds-publish
 
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
@@ -47,16 +40,6 @@ test:
 
 export: ## Export Jev labels to a training set (one label per post, no eval posts)
 	set -a; . $(ENV_FILE); set +a; go run ./cmd/export -taxonomy $(TAXONOMY) -label-configs $(LABEL_CONFIG) -full-context-configs "$(FULL_CONTEXT)" -out $(EXPORT)
-
-relabel: ## Relabel posts in $(EXPORT) with Jev confidence <= $(MAX_CONF) using Luna (resumable)
-	set -a; . $(ENV_FILE); set +a; cd trainer && uv run python relabel.py --export $(EXPORT) \
-		--max-confidence $(MAX_CONF) --name $(RELABEL) 2>&1 | tee -a /data/relabel/$(RELABEL).log
-
-relabel-load: ## Insert /data/relabel/$(RELABEL).rows.jsonl into jev_labels (rerunning replaces the same rows)
-	$(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicfeed --password "$$CLICKHOUSE_PASSWORD" \
-		--database topicfeed --date_time_input_format best_effort -q "INSERT INTO jev_labels FORMAT JSONEachRow"' \
-		< /data/relabel/$(RELABEL).rows.jsonl
-	@echo "loaded $$(wc -l < /data/relabel/$(RELABEL).rows.jsonl) rows from /data/relabel/$(RELABEL).rows.jsonl"
 
 label: ## Start (or resume) the Jev labeling run over the labeling windows
 	$(COMPOSE) --profile labeling up -d --build labeler
