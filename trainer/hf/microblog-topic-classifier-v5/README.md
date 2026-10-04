@@ -8,9 +8,8 @@ tags:
   - topic-classification
   - multimodal
   - bluesky
-base_model:
-  - jhu-clsp/ettin-encoder-150m
-  - google/siglip2-so400m-patch16-512
+base_model: jhu-clsp/ettin-encoder-150m
+base_model_relation: finetune
 ---
 
 # microblog-topic-classifier-v5
