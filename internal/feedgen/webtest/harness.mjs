@@ -50,7 +50,7 @@ export const TOPICS = [
   { path: "technology/ai", name: "AI", broad: "Technology" },
 ];
 export function tuningBody(over = {}) {
-  const ranking = (gravity, freshEvery) => ({ gravity, freshEvery, promoPenalty: 1, like: 1, repost: 2, reply: 2, quote: 3 });
+  const ranking = (gravity, freshEvery) => ({ gravity, freshEvery, promoPenalty: 1, like: 1, repost: 2, reply: 2, quote: 3, engagementPower: 1 });
   return {
     tuning: {},
     defaults: {
@@ -61,6 +61,7 @@ export function tuningBody(over = {}) {
     limits: {
       weight: 5, boost: 10, gravity: 10, freshEvery: 50, promoPenalty: 10, engagement: 20, authorGap: 50, lookbackDays: 30, minLikes: 500,
       interests: 100, windowHours: 24, minTopicProb: 0.5, maxServes: 20, listSize: 300, minEngagement: 200,
+      minWindowHours: 0.5, minEngagementPower: 0.2,
     },
     maxWeight: 5,
     tones: ["informative", "humorous", "personal", "outraged", "supportive", "other"],

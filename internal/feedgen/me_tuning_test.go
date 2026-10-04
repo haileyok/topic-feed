@@ -178,7 +178,7 @@ func TestMeTuningIsTheViewersOwn(t *testing.T) {
 	// The ranking numbers each freshness setting starts from.
 	want := func(r Ranking) RankingValues {
 		return RankingValues{Gravity: r.Gravity, FreshEvery: r.FreshEvery, PromoPenalty: r.PromoPenalty,
-			Like: r.Weights.Like, Repost: r.Weights.Repost, Reply: r.Weights.Reply, Quote: r.Weights.Quote}
+			Like: r.Weights.Like, Repost: r.Weights.Repost, Reply: r.Weights.Reply, Quote: r.Weights.Quote, EngagementPower: 1}
 	}
 	if len(d.Ranking) != 3 || d.Ranking[FreshnessBalanced] != want(DefaultRanking) {
 		t.Errorf("ranking %+v", d.Ranking)
@@ -193,7 +193,8 @@ func TestMeTuningIsTheViewersOwn(t *testing.T) {
 	l := r.Limits
 	if l.Weight != MaxTopicWeight || l.Boost != MaxBoost || l.Gravity != MaxGravity || l.FreshEvery != MaxFreshEvery || l.PromoPenalty != MaxPromoPenalty ||
 		l.Engagement != MaxEngagement || l.AuthorGap != MaxAuthorGap || l.LookbackDays != MaxLookbackDays || l.MinLikes != MaxMinLikes ||
-		l.Interests != MaxInterests || l.MaxServes != MaxServesSetting || l.MinEngagement != MaxMinEngagement {
+		l.Interests != MaxInterests || l.MaxServes != MaxServesSetting || l.MinEngagement != MaxMinEngagement ||
+		l.MinWindowHours != MinWindowHours || l.MinEngagementPower != MinEngagementPower {
 		t.Errorf("limits %+v", l)
 	}
 	if l.WindowHours != cfg.WindowHours || l.ListSize != cfg.ListSize || l.MinTopicProb != float64(cfg.MinTopicProb) {

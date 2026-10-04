@@ -17,14 +17,16 @@ import (
 
 // recordingBuilder remembers the feeds it was asked to build.
 type recordingBuilder struct {
-	mu    sync.Mutex
-	feeds []Feed
+	mu     sync.Mutex
+	feeds  []Feed
+	sinces []time.Time
 }
 
-func (b *recordingBuilder) Build(_ context.Context, f Feed, _ time.Time, _ int) ([]Post, Removed, error) {
+func (b *recordingBuilder) Build(_ context.Context, f Feed, since time.Time, _ int) ([]Post, Removed, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.feeds = append(b.feeds, f)
+	b.sinces = append(b.sinces, since)
 	return posts(3), Removed{}, nil
 }
 

@@ -52,6 +52,8 @@ type RankingValues struct {
 	Repost       float64 `json:"repost"`
 	Reply        float64 `json:"reply"`
 	Quote        float64 `json:"quote"`
+	// EngagementPower is how much popularity counts: 1 in full, down to MinEngagementPower.
+	EngagementPower float64 `json:"engagementPower"`
 }
 
 // TuningDefaults is what each setting is until the viewer changes it.
@@ -85,10 +87,13 @@ type TuningLimits struct {
 	LookbackDays int     `json:"lookbackDays"`
 	MinLikes     int     `json:"minLikes"`
 	Interests    int     `json:"interests"`
-	WindowHours  int     `json:"windowHours"`  // the feed's own, which can't be reached past
-	MinTopicProb float64 `json:"minTopicProb"` // the feed's own, which can't be gone below
-	MaxServes    int     `json:"maxServes"`
-	ListSize     int     `json:"listSize"` // the feed's own, which can't be exceeded
+	WindowHours  int     `json:"windowHours"` // the feed's own, which can't be reached past
+	// MinWindowHours and MinEngagementPower are the least those can be set to.
+	MinWindowHours     float64 `json:"minWindowHours"`
+	MinEngagementPower float64 `json:"minEngagementPower"`
+	MinTopicProb       float64 `json:"minTopicProb"` // the feed's own, which can't be gone below
+	MaxServes          int     `json:"maxServes"`
+	ListSize           int     `json:"listSize"` // the feed's own, which can't be exceeded
 	// MinEngagement is the most a viewer can ask of a post.
 	MinEngagement float64 `json:"minEngagement"`
 }
@@ -250,7 +255,7 @@ func (m *MeAPI) ServeTuning(w http.ResponseWriter, r *http.Request) {
 	for _, f := range []string{FreshnessPopular, FreshnessBalanced, FreshnessFresh} {
 		r := Tuning{Freshness: f}.RankingFor(m.Ranking)
 		rankings[f] = RankingValues{Gravity: r.Gravity, FreshEvery: r.FreshEvery, PromoPenalty: r.PromoPenalty,
-			Like: r.Weights.Like, Repost: r.Weights.Repost, Reply: r.Weights.Reply, Quote: r.Weights.Quote}
+			Like: r.Weights.Like, Repost: r.Weights.Repost, Reply: r.Weights.Reply, Quote: r.Weights.Quote, EngagementPower: r.power()}
 	}
 	meJSON(w, http.StatusOK, TuningResponse{
 		Tuning: t,
@@ -260,7 +265,7 @@ func (m *MeAPI) ServeTuning(w http.ResponseWriter, r *http.Request) {
 		Limits: TuningLimits{Weight: MaxTopicWeight, Boost: MaxBoost, Gravity: MaxGravity, FreshEvery: MaxFreshEvery, PromoPenalty: MaxPromoPenalty,
 			Engagement: MaxEngagement, AuthorGap: MaxAuthorGap, LookbackDays: MaxLookbackDays, MinLikes: MaxMinLikes, Interests: MaxInterests,
 			WindowHours: cfg.WindowHours, MinTopicProb: round3(cfg.MinTopicProb), MaxServes: MaxServesSetting, ListSize: min(cfg.ListSize, MaxListSetting),
-			MinEngagement: MaxMinEngagement},
+			MinEngagement: MaxMinEngagement, MinWindowHours: MinWindowHours, MinEngagementPower: MinEngagementPower},
 		MaxWeight: MaxTopicWeight,
 		Tones:     Tones,
 		Signals:   Signals,

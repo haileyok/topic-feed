@@ -2,6 +2,7 @@ package feedgen
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ const (
 	MaxMinLikes      = 500
 	MaxInterests     = 100
 	MaxWindowHours   = 24 * 30
+	MinWindowHours   = 0.5
 	MaxServesSetting = 20
 	MaxListSetting   = 1000
 	// MaxBoost is the most a tone or signal can lift or sink a post's score.
@@ -77,8 +79,9 @@ type Tuning struct {
 	MinLikes int `json:"minLikes,omitempty"`
 	// Interests is how many interests the feed is built from, strongest first.
 	Interests int `json:"interests,omitempty"`
-	// WindowHours leaves out posts older than this; it can't reach further back than the feed's.
-	WindowHours int `json:"windowHours,omitempty"`
+	// WindowHours leaves out posts older than this, down to MinWindowHours; it can't reach further
+	// back than the feed's.
+	WindowHours float64 `json:"windowHours,omitempty"`
 	// MinTopicProb is how sure the model has to be of a post's topic; it can't go below the feed's.
 	MinTopicProb float64 `json:"minTopicProb,omitempty"`
 	// MaxServes is how many times a post may be sent before it counts as seen.
@@ -110,6 +113,8 @@ type RankingTuning struct {
 	Repost       *float64 `json:"repost,omitempty"`
 	Reply        *float64 `json:"reply,omitempty"`
 	Quote        *float64 `json:"quote,omitempty"`
+	// EngagementPower is how much popularity counts (see Ranking.EngagementPower).
+	EngagementPower *float64 `json:"engagementPower,omitempty"`
 }
 
 func (r *RankingTuning) isZero() bool {
@@ -132,6 +137,7 @@ func (r *RankingTuning) apply(base Ranking) Ranking {
 	set(&base.Weights.Repost, r.Repost)
 	set(&base.Weights.Reply, r.Reply)
 	set(&base.Weights.Quote, r.Quote)
+	set(&base.EngagementPower, r.EngagementPower)
 	if r.FreshEvery != nil {
 		base.FreshEvery = *r.FreshEvery
 	}
@@ -158,6 +164,9 @@ func (r *RankingTuning) check() error {
 	}
 	if r.FreshEvery != nil && (*r.FreshEvery < 0 || *r.FreshEvery > MaxFreshEvery) {
 		return fmt.Errorf("ranking freshEvery must be between 0 and %d", MaxFreshEvery)
+	}
+	if v := r.EngagementPower; v != nil && !(*v >= MinEngagementPower && *v <= 1) {
+		return fmt.Errorf("ranking engagementPower must be between %g and 1", MinEngagementPower)
 	}
 	return nil
 }
@@ -244,11 +253,14 @@ func (t Tuning) check() error {
 		v, limit int
 	}{
 		{"lookbackDays", t.LookbackDays, MaxLookbackDays}, {"minLikes", t.MinLikes, MaxMinLikes}, {"interests", t.Interests, MaxInterests},
-		{"windowHours", t.WindowHours, MaxWindowHours}, {"maxServes", t.MaxServes, MaxServesSetting}, {"listSize", t.ListSize, MaxListSetting},
+		{"maxServes", t.MaxServes, MaxServesSetting}, {"listSize", t.ListSize, MaxListSetting},
 	} {
 		if c.v != 0 && (c.v < 1 || c.v > c.limit) {
 			return fmt.Errorf("%s must be between 1 and %d (0 for the feed's own)", c.name, c.limit)
 		}
+	}
+	if t.WindowHours != 0 && !(t.WindowHours >= MinWindowHours && t.WindowHours <= MaxWindowHours) { // also rejects NaN
+		return fmt.Errorf("windowHours must be between %g and %d (0 for the feed's own)", MinWindowHours, MaxWindowHours)
 	}
 	if t.MinTopicProb != 0 && !(t.MinTopicProb >= 0.05 && t.MinTopicProb <= 0.99) {
 		return fmt.Errorf("minTopicProb must be between 0.05 and 0.99 (0 for the feed's own)")
@@ -393,7 +405,8 @@ func (t Tuning) Config(base PersonalConfig) PersonalConfig {
 		c.Topics = t.Interests
 	}
 	if t.WindowHours != 0 {
-		c.WindowHours = min(c.WindowHours, t.WindowHours)
+		// Whole hours, rounded up: Excludes applies the exact window.
+		c.WindowHours = min(c.WindowHours, int(math.Ceil(t.WindowHours)))
 	}
 	if t.MinTopicProb != 0 {
 		c.MinTopicProb = max(c.MinTopicProb, float32(t.MinTopicProb))
@@ -453,8 +466,11 @@ func (t Tuning) Excludes(p Post, cfg PersonalConfig, now time.Time) bool {
 	if t.Hides(p) {
 		return true
 	}
-	if t.WindowHours != 0 && p.IndexedAt.Before(now.Add(-time.Duration(cfg.WindowHours)*time.Hour)) {
-		return true
+	if t.WindowHours != 0 {
+		window := min(float64(cfg.WindowHours), t.WindowHours)
+		if p.IndexedAt.Before(now.Add(-time.Duration(window * float64(time.Hour)))) {
+			return true
+		}
 	}
 	return t.MinTopicProb != 0 && p.TopPathP < cfg.MinTopicProb
 }

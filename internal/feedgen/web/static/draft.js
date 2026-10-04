@@ -33,7 +33,7 @@ export const SETTING_KEYS = ["authorGap", "halfLifeDays", "lookbackDays", "minLi
 /** The settings where zero is a value of its own (no gap between authors, no minimum), not "the feed's". */
 const ZERO_IS_A_VALUE = new Set(["authorGap", "minEngagement"]);
 /** The numbers of the ranking. */
-export const RANKING_KEYS = ["gravity", "freshEvery", "promoPenalty", "like", "repost", "reply", "quote"];
+export const RANKING_KEYS = ["gravity", "freshEvery", "promoPenalty", "like", "repost", "reply", "quote", "engagementPower"];
 
 const num = (v) => typeof v === "number" && Number.isFinite(v);
 
@@ -147,6 +147,20 @@ export function dial(draft, kind, name) {
 export function gapText(n) {
   if (n <= 0) return "No spacing: one author can fill several places in a row";
   return n === 1 ? "At least 1 other post between two by the same author" : `At least ${n} other posts between two by the same author`;
+}
+
+/** windowText says how far back a feed reaches, given in hours (half an hour at the least). */
+export function windowText(hours) {
+  const h = Number(Number(hours).toFixed(2));
+  if (h < 1) return `Posts from the last ${Math.round(h * 60)} minutes`;
+  return `Posts from the last ${h} ${h === 1 ? "hour" : "hours"}`;
+}
+
+/** popularityText says how much a post's engagement counts, from its power (1: in full). */
+export function popularityText(p) {
+  const v = Number(p);
+  const words = v >= 1 ? "Fully: the most-liked posts win" : v >= 0.75 ? "Mostly" : v >= 0.45 ? "About half: 4× the likes count 2× as much" : "A little: big numbers barely matter";
+  return `${words} (${v.toFixed(2)})`;
 }
 
 export function memoryText(days) {

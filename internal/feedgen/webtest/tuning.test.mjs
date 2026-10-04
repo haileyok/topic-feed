@@ -412,7 +412,7 @@ test("tuning: resetting everything is a draft, not a save", async () => {
 // ---------- every setting of the feed ----------
 
 const SETTINGS = ["authorGap", "halfLifeDays", "lookbackDays", "minLikes", "interests", "windowHours", "minTopicProb", "maxServes", "listSize", "minEngagement"];
-const RANKING = ["gravity", "freshEvery", "promoPenalty", "like", "repost", "reply", "quote"];
+const RANKING = ["gravity", "freshEvery", "promoPenalty", "like", "repost", "reply", "quote", "engagementPower"];
 
 test("knobs: there is a control for every setting, and each starts as the feed's own", async () => {
   const p = await openTuned();
@@ -453,6 +453,8 @@ test("knobs: each setting sends only itself, says what it is in words, and goes 
     ["minLikes", 10, "10 liked posts with topics", (v) => ({ minLikes: v })],
     ["interests", 12, "12 interests", (v) => ({ interests: v })],
     ["windowHours", 6, "Posts from the last 6 hours", (v) => ({ windowHours: v })],
+    ["windowHours", 0.5, "Posts from the last 30 minutes", (v) => ({ windowHours: v })],
+    ["windowHours", 1.5, "Posts from the last 1.5 hours", (v) => ({ windowHours: v })],
     ["minTopicProb", 0.8, "The model is at least 80% sure", (v) => ({ minTopicProb: v })],
     ["listSize", 100, "100 posts at a time", (v) => ({ listSize: v })],
     ["minEngagement", 12, "At least 12 likes' worth of reactions", (v) => ({ minEngagement: v })],
@@ -466,6 +468,8 @@ test("knobs: each setting sends only itself, says what it is in words, and goes 
     ["repost", 4, "×4", (v) => ({ ranking: { repost: v } })],
     ["reply", 0.5, "×0.5", (v) => ({ ranking: { reply: v } })],
     ["quote", 9, "×9", (v) => ({ ranking: { quote: v } })],
+    ["engagementPower", 0.5, "About half: 4× the likes count 2× as much (0.50)", (v) => ({ ranking: { engagementPower: v } })],
+    ["engagementPower", 0.2, "A little: big numbers barely matter (0.20)", (v) => ({ ranking: { engagementPower: v } })],
   ];
   for (const [key, value, text, payload] of cases) {
     const own = knob(p, key).value;
@@ -733,7 +737,9 @@ test("knobs: the ends of the sliders are what the server says the feed allows", 
   body.limits.minTopicProb = 0.6;
   const p = await openTuned({ tuning: { status: 200, body } });
   assert.equal(knob(p, "windowHours").max, "12", "no further back than the feed holds posts");
-  assert.equal(knob(p, "windowHours").min, "1");
+  assert.equal(knob(p, "windowHours").min, "0.5", "down to half an hour");
+  assert.equal(knob(p, "engagementPower").min, "0.2");
+  assert.equal(knob(p, "engagementPower").max, "1");
   assert.equal(knob(p, "listSize").max, "200", "no longer than the feed's own list");
   assert.equal(knob(p, "minTopicProb").min, "0.6", "no less sure than the feed's own pool");
   assert.equal(knob(p, "lookbackDays").max, "30");

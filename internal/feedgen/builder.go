@@ -125,8 +125,11 @@ type PreviewSpec struct {
 	// AllowAdult lifts the adult filters, like allow_adult in feeds.yaml. Only honored for
 	// requests with the owner's adult-access cookie.
 	AllowAdult bool `json:"allow_adult,omitempty"`
-	Offset     int  `json:"offset,omitempty"`
-	Limit      int  `json:"limit,omitempty"`
+	// MaxAgeMinutes leaves out older posts (0: the preview's whole window), like
+	// max_age_minutes in feeds.yaml.
+	MaxAgeMinutes int `json:"max_age_minutes,omitempty"`
+	Offset        int `json:"offset,omitempty"`
+	Limit         int `json:"limit,omitempty"`
 }
 
 // adultCookie holds proof of the adult-access key (a hash of it, never the key itself).
@@ -175,7 +178,7 @@ var errNoAdult = errors.New("adult topics aren't available in the builder")
 // feed turns a spec into a validated Feed.
 func (p *Previewer) feed(s PreviewSpec) (Feed, error) {
 	f := Feed{Rkey: "preview", DisplayName: "Preview", Paths: s.Paths, MinProb: s.MinProb,
-		Exclude: map[string]float32{}, Tone: s.Tone, Signals: s.Signals, Ranking: DefaultRanking}
+		Exclude: map[string]float32{}, Tone: s.Tone, Signals: s.Signals, Ranking: DefaultRanking, MaxAgeMinutes: s.MaxAgeMinutes}
 	if s.Ranking != nil {
 		f.Ranking = *s.Ranking
 	}
@@ -221,7 +224,8 @@ func key(f Feed) string {
 		Signals    Rules
 		Ranking    Ranking
 		AllowAdult bool
-	}{f.Paths, f.MinProb, f.Exclude, f.Tone, f.Signals, f.Ranking, f.AllowAdult})
+		MaxAge     int
+	}{f.Paths, f.MinProb, f.Exclude, f.Tone, f.Signals, f.Ranking, f.AllowAdult, f.MaxAgeMinutes})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
@@ -294,7 +298,7 @@ func (p *Previewer) Handle(c echo.Context) error {
 			return fail(http.StatusServiceUnavailable, "the builder is busy; try again in a moment")
 		}
 		start := time.Now()
-		posts, rm, err := p.Builder.Build(ctx, f, start.Add(-p.Window), p.MaxPosts)
+		posts, rm, err := p.Builder.Build(ctx, f, f.Since(start, p.Window), p.MaxPosts)
 		<-p.slots
 		if err != nil {
 			p.Log.Error("preview build", "err", err)

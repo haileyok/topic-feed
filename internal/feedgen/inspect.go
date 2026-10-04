@@ -264,14 +264,14 @@ func (a *InspectAPI) respond(ctx context.Context, facts PostFacts) InspectRespon
 			resp.Feeds = append(resp.Feeds, EvaluatePersonal(f, in, now))
 			continue
 		}
-		v := EvaluateFeed(f, in, now, a.Feeds.Window)
+		v := EvaluateFeed(f, in, now, f.Window(a.Feeds.Window))
 		limit := a.Feeds.MaxPosts
 		if f.MaxPosts > 0 {
 			limit = f.MaxPosts
 		}
 		posts, builtAt, ok := a.Feeds.Posts(f.Rkey)
 		if ok {
-			v.Live = LiveStatusIn(posts, builtAt, facts.URI, v, facts.Post.IndexedAt, limit, a.Feeds.Window)
+			v.Live = LiveStatusIn(posts, builtAt, facts.URI, v, facts.Post.IndexedAt, limit, f.Window(a.Feeds.Window))
 		}
 		resp.Summary.Feeds++
 		if v.Matches {

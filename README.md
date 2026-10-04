@@ -188,11 +188,14 @@ without the angry, anti-AI, or spammy posts:
   post's ranking prior, nothing is removed). Tones: `informative`, `humorous`, `personal`,
   `outraged`, `supportive`, `other`. Signals: see [the classifier](#the-classifier).
 - **Ranking.** Each post scores
-  `(prior + like·likes + repost·reposts + reply·replies + quote·quotes) / (age_hours + 2)^gravity`,
-  where the prior comes from the model's substance, general-interest, and promotion scores (and
-  any weights), so posts without engagement yet are still ordered sensibly. Every
-  `fresh_every`-th slot goes to the newest post not yet placed, and an author's posts are kept
-  `author_gap` slots apart. All of it can be set per feed under `ranking`.
+  `(prior + engagement^engagement_power) / (age_hours + 2)^gravity`, where engagement is
+  `like·likes + repost·reposts + reply·replies + quote·quotes` and the prior comes from the model's
+  substance, general-interest, and promotion scores (and any weights), so posts without engagement
+  yet are still ordered sensibly. `engagement_power` (default 1) below 1 makes big numbers count
+  less, so a post that went viral hours ago can't stay on top. Every `fresh_every`-th slot goes to
+  the newest post not yet placed, and an author's posts are kept `author_gap` slots apart. All of
+  it can be set per feed under `ranking`; a feed's `max_age_minutes` (30 minutes to a day) leaves
+  out older posts entirely.
 - **Serving.** Pages are cut from one ranked build, so paging through a feed never repeats or
   skips posts even as it's rebuilt. Every served post carries a `feedContext` with its top
   subtopics, tone, and scores, and every page a request ID, so interactions map back to what

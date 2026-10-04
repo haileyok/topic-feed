@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
@@ -52,6 +53,9 @@ type Feed struct {
 	// MaxPosts caps the feed's candidates, newest first (0: FEEDGEN_MAX_POSTS). Busy
 	// topics need more to reach back as far as quiet ones.
 	MaxPosts int `yaml:"max_posts"`
+	// MaxAgeMinutes leaves out posts older than this, however popular (0: the service's window,
+	// FEEDGEN_WINDOW_HOURS). It can only shorten that window.
+	MaxAgeMinutes int `yaml:"max_age_minutes"`
 	// Personal makes this a feed built for each viewer from the posts they liked, rather
 	// than from topic paths: paths, min_prob, exclude, tone and signals don't apply. Use
 	// `personal: {}` for the defaults. See PersonalConfig.
@@ -262,24 +266,45 @@ func (f Feed) anyTopic() bool { return slices.Contains(f.Paths, AnyTopic) }
 
 // Ranking controls a feed's order. Each post scores
 //
-//	(prior + like*likes + repost*reposts + reply*replies + quote*quotes) / (age_hours + 2)^gravity
+//	(prior + engagement^engagement_power) / (age_hours + 2)^gravity
 //
-// where prior = max(0.1, 1 + substance + general_interest - promo_penalty*promo), from the
-// model's signals, so posts without engagement yet are still ordered sensibly. Every
-// FreshEvery-th slot goes to the newest post not already placed, whatever its score, and
-// an author's posts are kept at least AuthorGap slots apart.
+// where engagement = like*likes + repost*reposts + reply*replies + quote*quotes, and prior =
+// max(0.1, 1 + substance + general_interest - promo_penalty*promo), from the model's signals,
+// so posts without engagement yet are still ordered sensibly. Every FreshEvery-th slot goes to
+// the newest post not already placed, whatever its score, and an author's posts are kept at
+// least AuthorGap slots apart.
+//
+// EngagementPower below 1 makes big numbers count less: at 0.5 a post with 4,000 likes counts
+// twice as much as one with 1,000, not four times, so a post that went viral hours ago can't
+// outlast its age. 0 (left out) is 1: engagement counts in full.
 type Ranking struct {
-	Weights      Weights `yaml:"weights" json:"weights"`
-	Gravity      float64 `yaml:"gravity" json:"gravity"`             // higher: older posts sink faster
-	FreshEvery   int     `yaml:"fresh_every" json:"fresh_every"`     // 0: no fresh slots
-	AuthorGap    int     `yaml:"author_gap" json:"author_gap"`       // 0: no limit
-	PromoPenalty float64 `yaml:"promo_penalty" json:"promo_penalty"` // 0: promotional posts aren't penalized
+	Weights         Weights `yaml:"weights" json:"weights"`
+	Gravity         float64 `yaml:"gravity" json:"gravity"`                             // higher: older posts sink faster
+	FreshEvery      int     `yaml:"fresh_every" json:"fresh_every"`                     // 0: no fresh slots
+	AuthorGap       int     `yaml:"author_gap" json:"author_gap"`                       // 0: no limit
+	PromoPenalty    float64 `yaml:"promo_penalty" json:"promo_penalty"`                 // 0: promotional posts aren't penalized
+	EngagementPower float64 `yaml:"engagement_power" json:"engagement_power,omitempty"` // 0 or 1: in full
+}
+
+// MinEngagementPower is the least EngagementPower can be: lower, posts nobody has reacted to
+// crowd out the ones people have.
+const MinEngagementPower = 0.2
+
+// power is the EngagementPower in effect.
+func (r Ranking) power() float64 {
+	if r.EngagementPower == 0 {
+		return 1
+	}
+	return r.EngagementPower
 }
 
 func (r Ranking) validate() error {
 	if r.Gravity < 0 || r.FreshEvery < 0 || r.AuthorGap < 0 || r.PromoPenalty < 0 ||
 		r.Weights.Like < 0 || r.Weights.Repost < 0 || r.Weights.Reply < 0 || r.Weights.Quote < 0 {
 		return fmt.Errorf("ranking values can't be negative")
+	}
+	if p := r.EngagementPower; p != 0 && !(p >= MinEngagementPower && p <= 1) {
+		return fmt.Errorf("engagement_power must be between %g and 1 (0 for 1)", MinEngagementPower)
 	}
 	return nil
 }
@@ -380,6 +405,9 @@ func (f Feed) validate(paths map[string]bool) error {
 		if len(f.Paths) > 0 || f.MinProb != 0 || len(f.Exclude) > 0 {
 			return fmt.Errorf("feed %q: a personal feed takes its topics from the viewer's likes; remove paths, min_prob and exclude", f.Rkey)
 		}
+		if f.MaxAgeMinutes != 0 {
+			return fmt.Errorf("feed %q: a personal feed reaches back personal.window_hours; remove max_age_minutes", f.Rkey)
+		}
 		if err := f.Personal.validate(); err != nil {
 			return fmt.Errorf("feed %q: personal: %w", f.Rkey, err)
 		}
@@ -417,6 +445,9 @@ func (f Feed) validate(paths map[string]bool) error {
 	if f.MaxPosts < 0 || f.MaxPosts > 20000 {
 		return fmt.Errorf("feed %q: max_posts must be 0-20000", f.Rkey)
 	}
+	if f.MaxAgeMinutes != 0 && (f.MaxAgeMinutes < MinMaxAgeMinutes || f.MaxAgeMinutes > MaxMaxAgeMinutes) {
+		return fmt.Errorf("feed %q: max_age_minutes must be %d-%d (0 for the service's window)", f.Rkey, MinMaxAgeMinutes, MaxMaxAgeMinutes)
+	}
 	if err := f.Tone.validate("tone", Tones); err != nil {
 		return fmt.Errorf("feed %q: %w", f.Rkey, err)
 	}
@@ -427,6 +458,26 @@ func (f Feed) validate(paths map[string]bool) error {
 		return fmt.Errorf("feed %q: fresh_every 1 would make every slot fresh; use 0 for none, or 2 or more", f.Rkey)
 	}
 	return nil
+}
+
+// The range of a feed's max_age_minutes: half an hour to a day.
+const (
+	MinMaxAgeMinutes = 30
+	MaxMaxAgeMinutes = 24 * 60
+)
+
+// Since is when the feed's posts start, given the service's window: the window, or the feed's
+// max age where that is shorter.
+func (f Feed) Since(now time.Time, window time.Duration) time.Time {
+	return now.Add(-f.Window(window))
+}
+
+// Window is how far back the feed reaches, given the service's window.
+func (f Feed) Window(window time.Duration) time.Duration {
+	if f.MaxAgeMinutes > 0 {
+		return min(window, time.Duration(f.MaxAgeMinutes)*time.Minute)
+	}
+	return window
 }
 
 // TaxonomyPaths returns what a feed may name: every broad topic ID and every broad/sub

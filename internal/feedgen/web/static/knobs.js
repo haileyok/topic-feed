@@ -5,7 +5,7 @@
 
 import { el } from "./posts.js";
 import { describe, rangeText, boostText, dialActive, newDial } from "./scores.js";
-import { dial, gapText, memoryText, RANKING_KEYS } from "./draft.js";
+import { dial, gapText, memoryText, windowText, popularityText, RANKING_KEYS } from "./draft.js";
 
 const ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0] || "th");
 
@@ -276,8 +276,9 @@ export function buildKnobs(container, ctx) {
       },
     },
     setting("windowHours", {
-      label: "How new", min: 1, max: L.windowHours, step: 1,
-      fmt: (n) => `Posts from the last ${n} ${n === 1 ? "hour" : "hours"}`, ends: ["Only the newest", "As far back as the feed goes"],
+      label: "How new", min: L.minWindowHours ?? 1, max: L.windowHours, step: 0.5,
+      fmt: windowText, ends: ["Only the newest", "As far back as the feed goes"],
+      hint: "Older posts are left out, however popular.",
     }),
     setting("minTopicProb", {
       label: "How sure the topic is", min: () => L.minTopicProb, max: Math.max(0.95, L.minTopicProb), step: 0.05,
@@ -321,6 +322,11 @@ export function buildKnobs(container, ctx) {
     ranking("gravity", {
       label: "How fast old posts sink", min: 0, max: (v) => uiMax(v, 5, L.gravity), step: 0.1, fmt: (v) => Number(v.toFixed(1)).toString(),
       ends: ["Popular posts stay up", "Newest first"],
+    }),
+    ranking("engagementPower", {
+      label: "How much popularity counts", min: L.minEngagementPower ?? 0.2, max: 1, step: 0.05, fmt: popularityText,
+      ends: ["A little", "Fully"],
+      hint: "Lower it so a post with thousands of likes can't stay on top for hours.",
     }),
     ranking("freshEvery", {
       label: "A brand-new post in every", min: 0, max: (v) => uiMax(v, 20, L.freshEvery), step: 1,

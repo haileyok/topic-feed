@@ -421,7 +421,7 @@ func (fs *Feeds) refresh(ctx context.Context, st *feedState) {
 	if f.MaxPosts > 0 {
 		limit = f.MaxPosts
 	}
-	posts, rm, err := fs.Builder.Build(bctx, f, start.Add(-fs.Window), limit)
+	posts, rm, err := fs.Builder.Build(bctx, f, f.Since(start, fs.Window), limit)
 	metricRefreshSeconds.WithLabelValues(label).Observe(time.Since(start).Seconds())
 	if err != nil {
 		if ctx.Err() == nil {

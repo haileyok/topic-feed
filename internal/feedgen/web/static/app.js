@@ -48,6 +48,7 @@ function blankState() {
     tone: Object.fromEntries(Object.keys(TONES).map((k) => [k, dial()])),
     signals: Object.fromEntries(Object.keys(SIGNALS).map((k) => [k, dial()])),
     ranking: structuredClone(DEFAULT_RANKING),
+    maxAge: 0,             // minutes; 0: the whole day the feeds reach back
     adult: false,          // owner only: adult topics and posts (needs the adult-access cookie)
     description: "",       // for saving the feed as one's own (mine.js)
     rkey: "",              // the key typed for a new saved feed; "" makes one from the name
@@ -79,6 +80,7 @@ function spec() {
     tone: rules(state.tone),
     signals: rules(state.signals),
     ranking: state.ranking,
+    max_age_minutes: state.maxAge || undefined,
     allow_adult: state.adult || undefined,
   };
 }
@@ -102,6 +104,7 @@ function fromFeed(f) {
   load(s.tone, f.tone);
   load(s.signals, f.signals);
   if (f.ranking) s.ranking = structuredClone(f.ranking);
+  s.maxAge = f.max_age_minutes || 0;
   return s;
 }
 
@@ -342,8 +345,17 @@ function renderControls() {
 
     el("details", { class: "section" },
       el("summary", {}, el("div", { class: "section-title", text: "Ranking" })),
+      // Max age: stops at whole steps from half an hour to a day; the last one is "off".
+      slider({ label: "Posts at most", min: 0, max: MAX_AGES.length - 1, step: 1, value: maxAgeStep(state.maxAge),
+        fmt: (v) => (v === MAX_AGES.length - 1 ? "a day old (all)" : `${ageText(MAX_AGES[v])} old`), ends: ["30 min", "24 h"],
+        onInput: (v) => { state.maxAge = v === MAX_AGES.length - 1 ? 0 : MAX_AGES[v]; changed(); } }),
       slider({ label: "Freshness", min: 0.6, max: 3, step: 0.1, value: r.gravity, fmt: (v) => v.toFixed(1),
         ends: ["Popular posts stay up", "Newest first"], onInput: (v) => { r.gravity = v; changed(); } }),
+      // Popularity: engagement counts as engagement^power. At 1 (in full) the setting is left out.
+      slider({ label: "How much popularity counts", min: 0.2, max: 1, step: 0.05, value: r.engagement_power || 1,
+        fmt: popularityText, ends: ["A little", "Fully"],
+        onInput: (v) => { if (v >= 1) delete r.engagement_power; else r.engagement_power = v; changed(); } }),
+      el("p", { class: "section-hint", text: "Lower it so a post with thousands of likes can't stay on top for hours: at half, 4,000 likes count twice as much as 1,000, not four times." }),
       // Position 1 is "off": every slot fresh (1) would leave no room for ranking.
       slider({ label: "Brand-new post in every", min: 1, max: 10, step: 1, value: r.fresh_every || 1,
         fmt: (v) => (v <= 1 ? "off" : `${ordinal(v)} slot`), ends: ["Off", "Rarely"],
@@ -356,11 +368,16 @@ function renderControls() {
         label: k[0].toUpperCase() + k.slice(1) + "s", min: 0, max: 10, step: 0.5, value: r.weights[k], fmt: (v) => "×" + v,
         onInput: (v) => { r.weights[k] = v; changed(); },
       })),
-      el("button", { class: "btn btn-ghost", text: "Reset ranking", onclick: () => { state.ranking = structuredClone(DEFAULT_RANKING); renderControls(); changed(); } })),
+      el("button", { class: "btn btn-ghost", text: "Reset ranking", onclick: () => { state.ranking = structuredClone(DEFAULT_RANKING); state.maxAge = 0; renderControls(); changed(); } })),
   );
   renderTopics();
   document.getElementById("preview-title").textContent = state.name || "Your feed";
 }
+// The max-age slider's stops, in minutes; the last (a day) is how far back every feed reaches.
+const MAX_AGES = [30, 45, 60, 90, 120, 180, 240, 360, 480, 720, 960, 1440];
+const maxAgeStep = (m) => { const i = MAX_AGES.findIndex((a) => a >= m); return !m || i < 0 ? MAX_AGES.length - 1 : i; };
+const ageText = (m) => (m < 60 ? `${m} min` : `${m / 60} h`);
+const popularityText = (v) => (v >= 1 ? "fully" : v >= 0.75 ? "mostly" : v >= 0.45 ? "half" : "a little") + ` (${v.toFixed(2)})`;
 const ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0] || "th");
 
 function renderActions(notice = null) {
@@ -495,7 +512,7 @@ async function load(reset) {
     view.total = body.total;
     const removed = Object.values(body.removed).reduce((a, b) => a + b, 0);
     document.getElementById("preview-stats").textContent =
-      `${body.total.toLocaleString()} posts from the last 24 hours · built in ${body.took_ms} ms` + (removed ? ` · ${removed} deleted or hidden` : "");
+      `${body.total.toLocaleString()} posts from the last ${state.maxAge ? ageText(state.maxAge) : "24 hours"} · built in ${body.took_ms} ms` + (removed ? ` · ${removed} deleted or hidden` : "");
     document.getElementById("posts-end").textContent = view.loaded >= view.total ? (view.total ? "That's everything for now." : "") : "";
   } catch (e) {
     if (e.name === "AbortError" || id !== view.reqId) return;

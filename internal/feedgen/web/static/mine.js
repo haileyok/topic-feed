@@ -64,6 +64,7 @@ export function feedBody(spec, { name, description, adult = false, owner = false
     signals: spec.signals,
     ranking: spec.ranking,
   };
+  if (spec.max_age_minutes) body.max_age_minutes = spec.max_age_minutes;
   if (adult && owner) body.allow_adult = true;
   if (broad) body.max_posts = Math.min(maxPosts > 0 ? maxPosts : 10000, 10000);
   return body;

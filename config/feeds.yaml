@@ -77,9 +77,10 @@
 #
 # Ranking (internal/feedgen/config.go, DefaultRanking). Each post scores
 #
-#   (prior + like*likes + repost*reposts + reply*replies + quote*quotes) / (age_hours + 2)^gravity
+#   (prior + engagement^engagement_power) / (age_hours + 2)^gravity
 #
-# with prior = max(0.1, 1 + substance + general_interest - promo_penalty*promo) from the
+# with engagement = like*likes + repost*reposts + reply*replies + quote*quotes, and
+# prior = max(0.1, 1 + substance + general_interest - promo_penalty*promo) from the
 # model's signals, so posts with no engagement yet are still ordered sensibly. Every
 # fresh_every-th slot goes to the newest post not already placed, and an author's posts
 # are kept author_gap slots apart. Defaults:
@@ -90,8 +91,11 @@
 #     fresh_every: 4      # 0: no fresh slots
 #     author_gap: 10      # 0: no limit
 #     promo_penalty: 1    # 0: promotional posts aren't penalized
+#     engagement_power: 1 # 0.2-1; lower: big numbers count less, so an hours-old viral post
+#                         # can't stay on top (at 0.5, 4x the likes count 2x as much)
 #
-# Feeds cover the last FEEDGEN_WINDOW_HOURS (24). Thresholds were
+# Feeds cover the last FEEDGEN_WINDOW_HOURS (24); a feed's max_age_minutes (30-1440, next to
+# max_posts) shortens that, leaving out older posts however popular. Thresholds were
 # picked from the first hour of live predictions (2026-09-29): at 0.5, NFL matched ~40
 # posts/hour on a Monday night; at 0.6, AI matched ~90/hour.
 

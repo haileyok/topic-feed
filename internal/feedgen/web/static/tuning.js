@@ -17,6 +17,7 @@ const DEFAULT_RETRY_DELAY = 3000;
 const LIMITS = {
   boost: 10, gravity: 10, freshEvery: 50, promoPenalty: 10, engagement: 20, authorGap: 50, lookbackDays: 30, minLikes: 500,
   interests: 100, windowHours: 24, minTopicProb: 0.5, maxServes: 20, listSize: 300, minEngagement: 200,
+  minWindowHours: 0.5, minEngagementPower: 0.2,
 };
 
 // Each broad topic has a colour of its own, the same on every visit: a hue from its name.

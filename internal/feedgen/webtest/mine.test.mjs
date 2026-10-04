@@ -85,6 +85,14 @@ test("a feed of whole topics asks for more candidates, up to what the account ma
   assert.ok(!("max_posts" in mine.feedBody(spec({ paths: ["art/painting"] }), { name: "N", maxPosts: 3000 })), "subtopics alone don't need more");
 });
 
+test("a max age and how much popularity counts are saved with the feed", () => {
+  const s = spec({ max_age_minutes: 90, ranking: { gravity: 3, engagement_power: 0.5 } });
+  const body = mine.feedBody(s, { name: "N" });
+  assert.equal(body.max_age_minutes, 90);
+  assert.equal(body.ranking.engagement_power, 0.5);
+  assert.ok(!("max_age_minutes" in mine.feedBody(spec(), { name: "N" })), "no max age: the whole day, left out");
+});
+
 test("names and descriptions are cut to what Bluesky allows", () => {
   const body = mine.feedBody(spec(), { name: "🐱".repeat(40), description: "d".repeat(400) });
   assert.equal(Array.from(body.display_name).length, 24);
