@@ -209,6 +209,9 @@ func extractEmbed(embed map[string]any, row *PostRow) {
 	case "app.bsky.embed.video":
 		row.EmbedType = "video"
 		addVideo(embed, row)
+	case "app.bsky.embed.gallery":
+		row.EmbedType = "gallery"
+		addGalleryImages(embed, row)
 	case "app.bsky.embed.external":
 		row.EmbedType = "external"
 		addExternal(mapv(embed, "external"), row)
@@ -225,6 +228,8 @@ func extractEmbed(embed map[string]any, row *PostRow) {
 			addImageAlts(media, row)
 		case "app.bsky.embed.video":
 			addVideo(media, row)
+		case "app.bsky.embed.gallery":
+			addGalleryImages(media, row)
 		case "app.bsky.embed.external":
 			addExternal(mapv(media, "external"), row)
 		}
@@ -241,6 +246,20 @@ func addImageAlts(embed map[string]any, row *PostRow) {
 			addAlt(str(m, "alt"), row)
 			addMedia("image", blobCID(mapv(m, "image")), str(m, "alt"), row)
 		}
+	}
+}
+
+// addGalleryImages records the images of an app.bsky.embed.gallery the way addImageAlts records an
+// images embed's: same blob, same alt text. A gallery's items are a union of kinds and only the
+// image kind exists so far; items of a kind added later are left alone rather than guessed at.
+func addGalleryImages(embed map[string]any, row *PostRow) {
+	for _, item := range slice(embed, "items") {
+		m, ok := item.(map[string]any)
+		if !ok || str(m, "$type") != "app.bsky.embed.gallery#image" {
+			continue
+		}
+		addAlt(str(m, "alt"), row)
+		addMedia("image", blobCID(mapv(m, "image")), str(m, "alt"), row)
 	}
 }
 

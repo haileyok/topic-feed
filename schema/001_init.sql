@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS posts
     text              String,
     langs             Array(LowCardinality(String)),
     detected_lang     LowCardinality(String),        -- from the local language detector
-    embed_type        LowCardinality(String),        -- none|images|video|external|record|recordWithMedia
+    embed_type        LowCardinality(String),        -- none|images|video|gallery|external|record|recordWithMedia|other
     media_alts        Array(String),                 -- alt text of images and video
     link_uri          String,
     link_domain       LowCardinality(String),

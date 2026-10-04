@@ -227,6 +227,79 @@ func TestMediaBlobsAndSelfLabels(t *testing.T) {
 	}
 }
 
+// galleryImage is one item of an app.bsky.embed.gallery, as a real record has it.
+func galleryImage(cid, alt string) map[string]any {
+	return map[string]any{"$type": "app.bsky.embed.gallery#image", "alt": alt, "image": blob(cid),
+		"aspectRatio": map[string]any{"width": 896, "height": 1195}}
+}
+
+// A gallery's images are attached just as an images embed's are, so the pipeline describes them
+// and the classifier sees that the post has pictures. (Before this they were ignored: a post of
+// five pictures read as a bare caption.)
+func TestGalleryImagesAreAttachedLikeImages(t *testing.T) {
+	rows, res := handle(t, post(map[string]any{
+		"text": "I used to be a mechanic for Amtrak and this was a fantasy for me. With AI, this will be the closest I can get.",
+		"embed": map[string]any{"$type": "app.bsky.embed.gallery", "items": []any{
+			galleryImage("bafygal1", " First "),
+			galleryImage("bafygal2", ""),
+			map[string]any{"$type": "app.bsky.embed.gallery#image", "alt": "no blob, skipped"},
+			// An item of a kind added to the lexicon later is left alone, not guessed at.
+			map[string]any{"$type": "app.bsky.embed.gallery#somethingNew", "alt": "unknown kind", "image": blob("bafyunknown")},
+			galleryImage("bafygal3", ""),
+		}},
+	}))
+	if res.PostOutcome != PostKept || len(rows.Posts) != 1 {
+		t.Fatalf("outcome %q, %d posts", res.PostOutcome, len(rows.Posts))
+	}
+	p := rows.Posts[0]
+	if p.EmbedType != "gallery" {
+		t.Errorf("embed type %q", p.EmbedType)
+	}
+	if !reflect.DeepEqual(p.MediaKinds, []string{"image", "image", "image"}) ||
+		!reflect.DeepEqual(p.MediaCIDs, []string{"bafygal1", "bafygal2", "bafygal3"}) ||
+		!reflect.DeepEqual(p.MediaAltTexts, []string{"First", "", ""}) {
+		t.Errorf("media %v %v %v", p.MediaKinds, p.MediaCIDs, p.MediaAltTexts)
+	}
+	// As for images, alt text is kept even for an entry with nothing to fetch.
+	if !reflect.DeepEqual(p.MediaAlts, []string{"First", "no blob, skipped"}) {
+		t.Errorf("media_alts %v", p.MediaAlts)
+	}
+}
+
+func TestGalleryAsTheMediaOfAQuote(t *testing.T) {
+	rows, _ := handle(t, post(map[string]any{
+		"text": "quoting this and adding a few pictures of the stadium from last night",
+		"embed": map[string]any{"$type": "app.bsky.embed.recordWithMedia",
+			"record": map[string]any{"record": map[string]any{"uri": "at://did:plc:q/app.bsky.feed.post/3lq"}},
+			"media":  map[string]any{"$type": "app.bsky.embed.gallery", "items": []any{galleryImage("bafyg1", "Lights"), galleryImage("bafyg2", "")}}},
+	}))
+	p := rows.Posts[0]
+	if p.EmbedType != "recordWithMedia" || p.QuoteURI != "at://did:plc:q/app.bsky.feed.post/3lq" {
+		t.Errorf("embed %q quote %q", p.EmbedType, p.QuoteURI)
+	}
+	if !reflect.DeepEqual(p.MediaKinds, []string{"image", "image"}) || !reflect.DeepEqual(p.MediaCIDs, []string{"bafyg1", "bafyg2"}) ||
+		!reflect.DeepEqual(p.MediaAlts, []string{"Lights"}) {
+		t.Errorf("media %v %v alts %v", p.MediaKinds, p.MediaCIDs, p.MediaAlts)
+	}
+}
+
+func TestGalleryWithNothingInItIsHarmless(t *testing.T) {
+	for name, embed := range map[string]map[string]any{
+		"no items key":     {"$type": "app.bsky.embed.gallery"},
+		"empty items":      {"$type": "app.bsky.embed.gallery", "items": []any{}},
+		"items not a list": {"$type": "app.bsky.embed.gallery", "items": "nope"},
+		"junk in items":    {"$type": "app.bsky.embed.gallery", "items": []any{"x", 3, nil, map[string]any{}}},
+	} {
+		rows, _ := handle(t, post(map[string]any{"text": "a post whose gallery has nothing usable in it at all, sadly", "embed": embed}))
+		if len(rows.Posts) != 1 {
+			t.Fatalf("%s: %d posts", name, len(rows.Posts))
+		}
+		if p := rows.Posts[0]; p.EmbedType != "gallery" || len(p.MediaCIDs) != 0 || len(p.MediaKinds) != 0 {
+			t.Errorf("%s: embed %q media %v", name, p.EmbedType, p.MediaCIDs)
+		}
+	}
+}
+
 func TestInsertColumnsFollowTags(t *testing.T) {
 	cols := chdb.Columns[PostRow]()
 	if !strings.HasPrefix(cols, "uri, did, rkey, cid,") || !strings.HasSuffix(cols, "self_labels, media_kinds, media_cids, media_alt_texts") {
