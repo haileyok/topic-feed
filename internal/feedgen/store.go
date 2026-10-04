@@ -17,6 +17,18 @@ import (
 // maxQuerySize allows IN lists of up to 20,000 post URIs (the max_posts limit).
 const maxQuerySize = 4 << 20
 
+// perPartitionFinal ends a query that reads post_pipeline FINAL over a window of time. It makes
+// FINAL merge each daily partition on its own, not every part of the whole table, so ClickHouse
+// can skip the partitions outside the window: a feed rebuild stopped reading the whole table
+// (about 5.4M rows) for a 24 hour window, at a sixth of the CPU and with the same result. It is
+// right because every version of a post_pipeline row has the same indexed_at (the pipeline, the
+// rescore and the picture retry copy it from the post), so a post's versions share a partition.
+// The exception is a post indexed again on another day (about 0.003% of posts, after a
+// re-index): both rows can come back, and Rank and mergeCandidates keep one of them by URI. Do
+// not use it for lookups by URI: the primary key already narrows those, and such a post would
+// count twice.
+const perPartitionFinal = ` SETTINGS do_not_merge_across_partitions_select_final = 1`
+
 // Store builds feeds from ClickHouse.
 type Store struct {
 	Conn   driver.Conn
@@ -102,7 +114,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+where.String()+`
 		ORDER BY indexed_at DESC, uri DESC
-		LIMIT ?`, args...)
+		LIMIT ?`+perPartitionFinal, args...)
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
@@ -272,7 +284,7 @@ func (s *Store) Volumes(ctx context.Context) (map[string]float64, error) {
 			FROM post_pipeline FINAL
 			WHERE indexed_at > now() - INTERVAL 3 HOUR AND model != '' AND feed_policy = 'ok'
 		) ARRAY JOIN keys AS key
-		GROUP BY key`)
+		GROUP BY key`+perPartitionFinal)
 	if err != nil {
 		return nil, fmt.Errorf("select volumes: %w", err)
 	}
