@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/haileyok/topic-feed/internal/chdb"
+	"github.com/haileyok/topic-feed/internal/labelpolicy"
 )
 
 // rescoreRow is one post_pipeline row joined with its posts row.
@@ -52,14 +53,16 @@ type rescoreWindow struct {
 }
 
 // prepareWindow reads the posts the old model classified in [lo, end) and downloads their pictures.
+// An empty oldModel selects the posts that were never classified. Posts the label policy drops are
+// never classified, so they are left out either way.
 func (p *Pipeline) prepareWindow(ctx context.Context, start, lo, end time.Time, oldModel string) (rescoreWindow, error) {
 	w := rescoreWindow{start: start}
 	var rs []rescoreRow
 	t0 := time.Now()
 	if err := p.Conn.Select(ctx, &rs, rescoreSelect+`
-		FROM (SELECT * FROM post_pipeline FINAL WHERE indexed_at >= ? AND indexed_at < ? AND model = ?) AS pp
+		FROM (SELECT * FROM post_pipeline FINAL WHERE indexed_at >= ? AND indexed_at < ? AND model = ? AND feed_policy != ?) AS pp
 		INNER JOIN (SELECT * FROM posts FINAL WHERE indexed_at >= ? AND indexed_at < ?) AS p ON p.uri = pp.uri`,
-		lo, end, oldModel, lo, end); err != nil {
+		lo, end, oldModel, labelpolicy.Drop, lo, end); err != nil {
 		return w, fmt.Errorf("select %s: %w", start, err)
 	}
 	w.selectDur = time.Since(t0)
@@ -94,7 +97,9 @@ func (p *Pipeline) prepareWindow(ctx context.Context, start, lo, end time.Time, 
 // indexed_at; a zero `after` means from the first one), with the current classifier, reusing the
 // labels and label policy decision the pipeline already stored but downloading each post's pictures
 // again (the model looks at them). A post whose pictures are gone is classified without them. Only
-// rows still on oldModel are picked, so a rerun resumes.
+// rows still on oldModel are picked, so a rerun resumes. An empty oldModel picks the rows that were
+// never classified (a post with no text of its own whose pictures the old model could not read);
+// the ones the new model cannot classify either (no pictures, or no text and no media) keep their row.
 //
 // The next window is read and its pictures downloaded while the current one is being classified, so
 // the GPU isn't left waiting for the network.
@@ -104,15 +109,19 @@ func (p *Pipeline) Rescore(ctx context.Context, oldModel string, after, before t
 	}
 	var first time.Time
 	var n uint64
-	if err := p.Conn.QueryRow(ctx, `SELECT min(indexed_at), count() FROM post_pipeline FINAL WHERE model = ? AND indexed_at >= ? AND indexed_at < ?`,
-		oldModel, after, before).Scan(&first, &n); err != nil {
+	if err := p.Conn.QueryRow(ctx, `SELECT min(indexed_at), count() FROM post_pipeline FINAL WHERE model = ? AND feed_policy != ? AND indexed_at >= ? AND indexed_at < ?`,
+		oldModel, labelpolicy.Drop, after, before).Scan(&first, &n); err != nil {
 		return err
 	}
 	if n == 0 {
 		p.Log.Info("nothing to rescore", "model", oldModel)
 		return nil
 	}
-	p.Log.Info("rescoring", "from_model", oldModel, "posts", n, "from", first, "before", before, "max_pictures", p.Cfg.MaxPictures)
+	fromName := oldModel
+	if fromName == "" {
+		fromName = "none (never classified)"
+	}
+	p.Log.Info("rescoring", "from_model", fromName, "posts", n, "from", first, "before", before, "max_pictures", p.Cfg.MaxPictures)
 
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()

@@ -36,8 +36,19 @@ func main() {
 	}
 }
 
+// noModel is the -from-model value for rows the pipeline never classified (stored with an empty model).
+const noModel = "none"
+
+// storedModel is the model name to look for in post_pipeline for a -from-model value.
+func storedModel(flagValue string) string {
+	if flagValue == noModel {
+		return ""
+	}
+	return flagValue
+}
+
 func run(log *slog.Logger) error {
-	fromModel := flag.String("from-model", "", "re-classify rows this model classified (required)")
+	fromModel := flag.String("from-model", "", "re-classify rows this model classified, or \"none\" for rows that were never classified (required)")
 	afterS := flag.String("after", "", "only posts indexed at or after this time, RFC 3339 (default: from the first one; feeds only show the last 24h)")
 	beforeS := flag.String("before", "", "only posts indexed before this time, RFC 3339 (required)")
 	window := flag.Duration("window", 10*time.Minute, "posts per step, by indexed_at")
@@ -74,7 +85,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("classifier: %w", err)
 	}
-	if h.Model == *fromModel {
+	if h.Model == storedModel(*fromModel) {
 		return fmt.Errorf("the classifier is still serving %s; switch it to the new model first", h.Model)
 	}
 	if h.PostdocVersion != postdoc.Version {
@@ -83,5 +94,5 @@ func run(log *slog.Logger) error {
 	p := &pipeline.Pipeline{Cfg: pipeline.Config{MaxPictures: h.MaxImages}, Conn: conn, Classifier: c,
 		HTTP: &http.Client{Timeout: 60 * time.Second}, Log: log}
 	log.Info("classifier", "model", h.Model, "postdoc", h.PostdocVersion, "pictures_per_post", h.MaxImages)
-	return p.Rescore(ctx, *fromModel, after, before, *window)
+	return p.Rescore(ctx, storedModel(*fromModel), after, before, *window)
 }
