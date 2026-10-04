@@ -27,8 +27,11 @@ temperature_path), fitted on held-out validation posts so that the confidence is
 """
 
 import concurrent.futures as cf
+import contextlib
 import json
 import os
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -189,11 +192,30 @@ class TopicClassifier:
         self.model.to(self.device).eval()
         self._image_encoder_id = image_encoder or self.cfg["image_features"]["model"]
         self._image_model = self._image_processor = None
+        self._image_lock = threading.Lock()
         self._AutoModel, self._AutoProcessor = AutoModel, AutoProcessor
         self.t_broad, self.t_path = self.cfg["temperature_broad"], self.cfg["temperature_path"]
         n = decode_threads if decode_threads is not None else int(os.environ.get("TOPIC_DECODE_THREADS", "8"))
         self._decode_pool = cf.ThreadPoolExecutor(n, thread_name_prefix="decode") if n > 1 else None
         self._prefetch = prefetch
+        # Optional timing hook, called as stage_timer(name, seconds, count=1) from whichever thread ran the stage
+        # (the service sets it to log where the time goes). None costs nothing.
+        self.stage_timer = None
+
+    @contextlib.contextmanager
+    def _stage(self, name):
+        if self.stage_timer is None:
+            yield
+            return
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.stage_timer(name, time.perf_counter() - t0)
+
+    def _count(self, name, n):
+        if self.stage_timer is not None:
+            self.stage_timer(name, 0.0, n)
 
     @classmethod
     def from_pretrained(cls, path_or_repo, device=None, image_encoder=None, **kwargs):
@@ -207,13 +229,17 @@ class TopicClassifier:
 
     # -- pictures
     def _load_image_encoder(self):
-        if self._image_model is None:
-            dtype = torch.bfloat16 if self.device.type == "cuda" else torch.float32
-            m = self._AutoModel.from_pretrained(self._image_encoder_id, dtype=dtype)
-            if hasattr(m, "text_model"):
-                del m.text_model  # only the picture tower is used
-            self._image_model = m.to(self.device).eval()
-            self._image_processor = self._AutoProcessor.from_pretrained(self._image_encoder_id)
+        if self._image_model is not None:
+            return
+        with self._image_lock:  # several threads may prepare batches at once
+            if self._image_model is None:
+                dtype = torch.bfloat16 if self.device.type == "cuda" else torch.float32
+                m = self._AutoModel.from_pretrained(self._image_encoder_id, dtype=dtype)
+                if hasattr(m, "text_model"):
+                    del m.text_model  # only the picture tower is used
+                processor = self._AutoProcessor.from_pretrained(self._image_encoder_id)
+                self._image_processor = processor
+                self._image_model = m.to(self.device).eval()  # set last: other threads treat it as "loaded"
 
     def load_image_encoder(self):
         """Load the picture encoder now (it is otherwise loaded when the first picture arrives)."""
@@ -251,31 +277,49 @@ class TopicClassifier:
         return emb.float().cpu().numpy().astype(np.float16)
 
     # -- predictions
-    def _prepare(self, items):
-        """The CPU part of a batch: tokenize the texts, decode the pictures (on the decode threads) and resize and
-        normalise them. It can run for the next batch while the current one is on the GPU."""
+    def _pixels(self, p):
+        """One picture decoded, resized and normalised by the image processor: a float32 tensor [3, H, W], or None
+        when the file cannot be read. Run on the decode threads; the result is exactly what the processor gives for
+        the same picture inside a batch."""
+        im = self._open(p)
+        if im is None:
+            return None
+        with self._stage("prep.resize"):  # summed over threads
+            return self._image_processor(images=[im], return_tensors="pt")["pixel_values"][0]
+
+    def prepare_batch(self, items):
+        """The CPU part of a batch: tokenize the texts and decode, resize and normalise the pictures (one picture per
+        task on the decode threads). Thread safe; it can run for the next batches while the current one is on the GPU."""
         max_images = self.cfg["max_images"]
-        enc = self.tok([(it["text"] or "")[:MAX_CHARS] for it in items], truncation=True, max_length=self.cfg["max_len"])["input_ids"]
+        t_prep = time.perf_counter()
+        with self._stage("prep.tokenize"):
+            enc = self.tok([(it["text"] or "")[:MAX_CHARS] for it in items], truncation=True, max_length=self.cfg["max_len"])["input_ids"]
         refs, sources = [], []
         for b, it in enumerate(items):
             for p in list(it.get("pictures") or [])[:max_images]:
                 refs.append(b)
                 sources.append(p)
-        if self._decode_pool is not None and len(sources) > 1:
-            decoded = list(self._decode_pool.map(self._open, sources))
-        else:
-            decoded = [self._open(p) for p in sources]
-        readable = [im for im in decoded if im is not None]
-        px = None
-        if readable:
+        px, ok = None, []
+        if sources:
             self._load_image_encoder()
-            px = self._image_processor(images=readable, return_tensors="pt")["pixel_values"]  # resize and normalise on the CPU
-        return enc, refs, decoded, px
+            with self._stage("prep.pictures"):  # wall time of decoding and resizing the batch's pictures
+                if self._decode_pool is not None and len(sources) > 1:
+                    tensors = list(self._decode_pool.map(self._pixels, sources))
+                else:
+                    tensors = [self._pixels(p) for p in sources]
+            ok = [t is not None for t in tensors]
+            readable = [t for t in tensors if t is not None]
+            if readable:
+                px = torch.stack(readable)
+        if self.stage_timer is not None:
+            self.stage_timer("prep", time.perf_counter() - t_prep)
+            self._count("pictures", sum(ok))
+        return enc, refs, ok, px
 
     def _finish(self, n, prepared):
         """The GPU part: embed the decoded pictures and build the model's input tensors."""
         max_images, dim = self.cfg["max_images"], self.cfg["image_features"]["dim"]
-        enc, refs, decoded, px = prepared
+        enc, refs, ok, px = prepared
         L = max(len(x) for x in enc)
         ids = torch.full((n, L), self.tok.pad_token_id, dtype=torch.long)
         att = torch.zeros((n, L), dtype=torch.long)
@@ -285,50 +329,75 @@ class TopicClassifier:
         img = np.zeros((n, max_images, dim), np.float16)
         have = np.zeros((n, max_images), bool)
         where, slot = [], [0] * n
-        for b, im in zip(refs, decoded):
-            if im is None:  # a picture that cannot be read is skipped, as in training
+        for b, readable in zip(refs, ok):
+            if not readable:  # a picture that cannot be read is skipped, as in training
                 continue
             where.append((b, slot[b]))
             slot[b] += 1
         if px is not None:
-            for (b, k), e in zip(where, self._embed_pixels(px)):
+            with self._stage("gpu.embed"):  # copy to the GPU, the picture encoder, and the copy back (waits for the GPU)
+                emb = self._embed_pixels(px)
+            for (b, k), e in zip(where, emb):
                 img[b, k] = e
                 have[b, k] = True
         d = self.device
-        return (ids.to(d), att.to(d), torch.from_numpy(img).to(d), torch.from_numpy(have).to(d)), have.sum(1)
+        with self._stage("gpu.upload"):
+            out = (ids.to(d), att.to(d), torch.from_numpy(img).to(d), torch.from_numpy(have).to(d))
+        return out, have.sum(1)
 
-    def _batch(self, items):
-        return self._finish(len(items), self._prepare(items))
+    @torch.no_grad()
+    def run_batch(self, n, prepared):
+        """The GPU part for one batch of `n` posts that prepare_batch has prepared: ([broad, paths, signals, tone]
+        probabilities as numpy arrays, pictures_used [n]). Call it from one thread at a time (the GPU)."""
+        with self._stage("finish"):
+            inputs, n_used = self._finish(n, prepared)
+        with self._stage("gpu.forward"):  # text model and heads, up to the copy of the probabilities back
+            with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
+                lb, lp, ls, lt = self.model(*inputs)
+            probs = (torch.softmax(lb.float() / self.t_broad, -1), torch.softmax(lp.float() / self.t_path, -1),
+                     torch.sigmoid(ls.float()), torch.softmax(lt.float(), -1))
+            arrays = [p.cpu().numpy() for p in probs]
+        self._count("batches", 1)
+        self._count("batch.posts", n)
+        return arrays, n_used
+
+    @staticmethod
+    def plan_batches(items, batch_size=32):
+        """Splits the items into batches of similar text length: (order, batches), where batches holds the items in
+        that order, `batch_size` at a time."""
+        order = np.argsort([len(it["text"] or "") for it in items], kind="stable")  # similar lengths together
+        return order, [[items[i] for i in order[s:s + batch_size]] for s in range(0, len(items), batch_size)]
+
+    @staticmethod
+    def assemble(order, parts, used):
+        """The predict_arrays result from per-batch results (parts[k] = run_batch's arrays, used[k] = pictures_used),
+        in batch order, put back in the input order."""
+        inv = np.empty(len(order), int)
+        inv[order] = np.arange(len(order))
+        out = {name: np.concatenate([p[j] for p in parts])[inv] for j, name in enumerate(("broad", "paths", "signals", "tone"))}
+        out["pictures_used"] = np.concatenate(used)[inv]
+        return out
 
     @torch.no_grad()
     def predict_arrays(self, items, batch_size=32):
         """Arrays in the input order: broad [n, 25], paths [n, 118], signals [n, 11], tone [n, 6] (all
         probabilities) and pictures_used [n] (how many of each post's pictures could be read and were used)."""
-        order = np.argsort([len(it["text"] or "") for it in items], kind="stable")  # similar lengths together
-        batches = [[items[i] for i in order[s:s + batch_size]] for s in range(0, len(items), batch_size)]
-        parts, used = [[], [], [], []], []
+        order, batches = self.plan_batches(items, batch_size)
+        parts, used = [], []
         ahead = cf.ThreadPoolExecutor(1, thread_name_prefix="prefetch") if self._prefetch and len(batches) > 1 else None
         try:
-            nxt = ahead.submit(self._prepare, batches[0]) if ahead else None
+            nxt = ahead.submit(self.prepare_batch, batches[0]) if ahead else None
             for k, batch in enumerate(batches):
-                prepared = nxt.result() if ahead else self._prepare(batch)
-                nxt = ahead.submit(self._prepare, batches[k + 1]) if ahead and k + 1 < len(batches) else None
-                inputs, n_used = self._finish(len(batch), prepared)
-                with torch.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.device.type == "cuda"):
-                    lb, lp, ls, lt = self.model(*inputs)
-                probs = (torch.softmax(lb.float() / self.t_broad, -1), torch.softmax(lp.float() / self.t_path, -1),
-                         torch.sigmoid(ls.float()), torch.softmax(lt.float(), -1))
-                for j in range(4):
-                    parts[j].append(probs[j].cpu().numpy())
+                with self._stage("wait_prep.first" if k == 0 else "wait_prep"):  # the GPU is idle while this waits
+                    prepared = nxt.result() if ahead else self.prepare_batch(batch)
+                nxt = ahead.submit(self.prepare_batch, batches[k + 1]) if ahead and k + 1 < len(batches) else None
+                arrays, n_used = self.run_batch(len(batch), prepared)
+                parts.append(arrays)
                 used.append(n_used)
         finally:
             if ahead:
                 ahead.shutdown(wait=True)
-        inv = np.empty(len(order), int)
-        inv[order] = np.arange(len(order))
-        out = {name: np.concatenate(p)[inv] for name, p in zip(("broad", "paths", "signals", "tone"), parts)}
-        out["pictures_used"] = np.concatenate(used)[inv]
-        return out
+        return self.assemble(order, parts, used)
 
     def predict(self, items, batch_size=32, top_k=None):
         """items: list of {"text": str, "pictures": [PIL image or file path, ...]}  ("pictures" optional).
