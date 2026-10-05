@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Post inspector · Topic Feeds</title>
+  <title>Account inspector · Topic Feeds</title>
   <meta name="robots" content="noindex">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b0f18">
@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/static/v/__V__/app.css">
   <link rel="stylesheet" href="/static/v/__V__/me.css">
   <link rel="stylesheet" href="/static/v/__V__/inspect.css">
-  <script type="module" src="/static/v/__V__/inspect.js"></script>
+  <script type="module" src="/static/v/__V__/inspect-account.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -41,8 +41,8 @@
     </section>
 
     <section class="me-card" id="signed-out" hidden>
-      <h1>Post inspector</h1>
-      <p class="me-lead">Sign in with your Bluesky account to see how a post was scored and which feeds take it.</p>
+      <h1>Account inspector</h1>
+      <p class="me-lead">Sign in with your Bluesky account to see what an account is most interested in.</p>
       <p class="me-note" id="signin-notice" role="alert" hidden></p>
       <form id="login" class="me-form">
         <label for="handle">Your Bluesky handle</label>
@@ -56,7 +56,7 @@
     </section>
 
     <section class="me-card" id="forbidden" hidden>
-      <h1>Post inspector</h1>
+      <h1>Account inspector</h1>
       <p class="me-lead">This page is for the owner of these feeds. The account you're signed in with isn't.</p>
       <p><a class="btn" href="/me">Back to your feed</a></p>
     </section>
@@ -64,49 +64,29 @@
     <section id="inspector" hidden>
       <div class="me-head">
         <div class="me-title">
-          <h1>Post inspector</h1>
-          <p class="me-who">How a post was scored, and which feeds would take it.
-            <a href="/inspect/account">Inspect an account instead</a></p>
+          <h1>Account inspector</h1>
+          <p class="me-who">What an account's likes say it's most interested in, as its For you feed reads them.
+            <a href="/inspect">Inspect a post instead</a></p>
         </div>
       </div>
 
-      <form id="inspect-form" class="insp-form" novalidate>
-        <label for="post">A link to a post on bsky.app, or its at:// address</label>
+      <form id="account-form" class="insp-form" novalidate>
+        <label for="account-input">A handle, a DID, or a link to a profile on bsky.app</label>
         <div class="me-row">
-          <input id="post" name="post" type="text" inputmode="url" placeholder="https://bsky.app/profile/…/post/…" autocapitalize="none"
+          <input id="account-input" name="account" type="text" placeholder="alice.bsky.social" autocapitalize="none"
                  autocorrect="off" spellcheck="false" autocomplete="off" maxlength="600">
-          <button class="btn btn-primary" id="inspect-button" type="submit">Inspect</button>
+          <button class="btn btn-primary" id="account-button" type="submit">Inspect</button>
         </div>
       </form>
-      <p class="me-note" id="inspect-error" role="alert" hidden></p>
-      <p class="me-lead insp-status" id="inspect-status" role="status" hidden>Looking…</p>
+      <p class="me-note" id="account-error" role="alert" hidden></p>
+      <p class="me-lead insp-status" id="account-status" role="status" hidden>Reading their likes…</p>
 
-      <div id="result" hidden>
-        <div class="insp-verdict" id="verdict" data-tone="neutral">
-          <p class="insp-verdict-title" id="verdict-title"></p>
-          <p class="insp-verdict-text" id="verdict-text"></p>
-        </div>
-        <div class="me-info insp-why" id="why" hidden></div>
-
-        <div class="insp-grid">
-          <div class="insp-left">
-            <section class="me-col">
-              <h2 class="me-h2">The post</h2>
-              <div id="post-card" class="insp-post"></div>
-              <ul class="insp-facts" id="post-facts"></ul>
-            </section>
-            <section class="me-col" id="scores-panel" hidden>
-              <h2 class="me-h2">What the model saw</h2>
-              <p class="me-fine insp-tip">The model's scores for the post, as the pipeline stored them. The feeds' rules are checked against these.</p>
-              <div id="scores"></div>
-            </section>
-          </div>
-          <section class="me-col insp-right" id="feeds-panel" hidden>
-            <h2 class="me-h2">Feeds</h2>
-            <p class="me-fine insp-tip" id="feeds-tip"></p>
-            <div id="feed-groups"></div>
-          </section>
-        </div>
+      <div id="account-result" hidden>
+        <h2 class="me-h2" id="account-who-title"></h2>
+        <p class="me-summary" id="account-summary"></p>
+        <p class="me-info" id="account-mix" hidden></p>
+        <ol class="interests acct-interests" id="acct-interests"></ol>
+        <p class="me-fine" id="account-other" hidden></p>
       </div>
     </section>
   </main>

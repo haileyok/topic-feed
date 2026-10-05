@@ -278,6 +278,10 @@ func serve(ctx context.Context, log *slog.Logger) error {
 			srv.Me = newMeAPI(s.cfg, s.tax, store, personal, signIn, "https://"+s.hostname, handleOf, log)
 			// The post inspector (/inspect) is the owner's: it is signed in with the same session.
 			srv.Inspect = newInspectAPI(s.owner.String(), signIn, store, feeds, policy, s.tax, handleOf, log)
+			// The account inspector (/inspect/account) reads an account's interests as its personal feed does.
+			if srv.Me != nil {
+				srv.Inspect.Interests, srv.Inspect.Tunings = srv.Me.Interests, store
+			}
 			// People's own feeds (/feeds): made and changed here, published from their browsers.
 			srv.FeedsAPI = newFeedsAPI(s.owner.String(), s.serviceDID, "https://"+s.hostname, signIn, store, feeds, taxonomyPaths, log)
 			srv.ResolveHandle = newResolveHandleAPI(log)

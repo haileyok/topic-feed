@@ -336,7 +336,9 @@ in, or whose sign-in has run out, gets only the post asking them to. See `docs/f
 Paste the link to a post and it shows the post, how the topic model scored it, and for every feed
 which rules the post meets or fails, where it stands in the feed now, and its ranking score. A post we
 hold nothing of is explained (a reply, not tagged English, deleted, not yet processed). See
-`docs/post-inspector.md`.
+`docs/post-inspector.md`. `https://feeds.hailey.at/inspect/account`, also the owner's only, takes a handle,
+DID or profile link and shows what that account's likes say it's most interested in, strongest first,
+with the liked posts behind each topic and any tuning it saved: what its For you feed is built from.
 
 ## The classifier
 

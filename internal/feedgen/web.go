@@ -132,6 +132,16 @@ func addWebRoutes(e *echo.Echo, origin string) {
 		c.Response().Header().Set("X-Robots-Tag", "noindex")
 		return page(c, inspect)
 	})
+	// The account inspector: what an account's likes say it's into. The owner's too (/api/inspect/account).
+	accountRaw, err := webFS.ReadFile("web/inspect-account.html")
+	if err != nil {
+		panic(err)
+	}
+	account := fill(accountRaw)
+	e.GET("/inspect/account", func(c echo.Context) error {
+		c.Response().Header().Set("X-Robots-Tag", "noindex")
+		return page(c, account)
+	})
 
 	// The filtered feeds: signing in for them, and choosing what they leave out.
 	filteredRaw, err := webFS.ReadFile("web/filtered.html")

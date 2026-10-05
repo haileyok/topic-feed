@@ -17,6 +17,7 @@ var pagesWithTheHeader = []struct{ file, path, script, current string }{
 	{"web/inspect.html", "/inspect", "inspect.js", `href="/inspect"`},
 	{"web/filtered.html", "/filtered", "filtered.js", `href="/filtered"`},
 	{"web/left-out.html", "/filtered/left-out", "left-out.js", `href="/filtered"`},
+	{"web/inspect-account.html", "/inspect/account", "inspect-account.js", `href="/inspect"`},
 }
 
 var headerMarkup = regexp.MustCompile(`(?s)<header class="topbar">.*?</header>`)
@@ -49,6 +50,7 @@ var pagesWithTheSignInForm = []struct{ file, script string }{
 	{"web/me.html", "me.js"},
 	{"web/feeds.html", "feeds.js"},
 	{"web/inspect.html", "inspect.js"},
+	{"web/inspect-account.html", "inspect-account.js"},
 	{"web/index.html", "app.js"},
 }
 
@@ -168,7 +170,7 @@ func TestEveryPageHasTheSameHeader(t *testing.T) {
 }
 
 func TestTheHeaderScriptPutsTextOnThePageAsText(t *testing.T) {
-	for _, name := range []string{"header.js", "filtered.js", "left-out.js"} {
+	for _, name := range []string{"header.js", "filtered.js", "left-out.js", "inspect-account.js"} {
 		js, err := webFS.ReadFile("web/static/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -185,6 +187,11 @@ func TestTheHeaderScriptPutsTextOnThePageAsText(t *testing.T) {
 // the real page. It only runs when TOPICFEED_JSDOM names jsdom's directory.
 func TestFilteredPageScript(t *testing.T) {
 	runNodeTests(t, true, "webtest/filtered.test.mjs", "webtest/left-out.test.mjs")
+}
+
+// TestAccountInspectorPageScript runs the account inspector's script against the real page, in jsdom.
+func TestAccountInspectorPageScript(t *testing.T) {
+	runNodeTests(t, true, "webtest/inspect-account.test.mjs")
 }
 
 // The page at /filtered has the sign-in form (its own words around it: that sign-in is a different

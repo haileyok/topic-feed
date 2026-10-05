@@ -138,6 +138,7 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir *atmosidentity.Directory, log
 	e.PUT("/api/me/tuning", s.meRoute((*MeAPI).SaveTuning))
 	e.POST("/api/me/preview", s.meRoute((*MeAPI).ServePreview))
 	e.GET("/api/inspect", s.inspectRoute((*InspectAPI).ServeInspect))
+	e.GET("/api/inspect/account", s.inspectRoute((*InspectAPI).ServeAccount))
 	e.GET("/api/me/feeds", s.feedsRoute((*FeedsAPI).ServeList))
 	e.PUT("/api/me/feeds/:rkey", s.feedsRoute((*FeedsAPI).ServeSave))
 	e.DELETE("/api/me/feeds/:rkey", s.feedsRoute((*FeedsAPI).ServeDelete))
