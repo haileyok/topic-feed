@@ -1,0 +1,38 @@
+/* The page at /filtered: the parts me.css and app.css don't already have. */
+
+.filtered-feed {
+  border-top: 1px solid var(--line, rgba(127, 127, 127, .25));
+  padding-top: 24px;
+  margin-top: 24px;
+}
+.filtered-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.filtered-head .me-h2 { margin: 0; }
+.filtered-sub { margin-top: 4px; }
+.filtered-h3 { font-size: 15px; font-weight: 650; margin: 22px 0 4px; }
+.filtered-excludes, .filtered-scores { display: grid; gap: 10px; margin-top: 10px; }
+.filtered-rules { margin-top: 22px; }
+.filtered-rules > summary { cursor: pointer; font-weight: 650; font-size: 15px; }
+.filtered-rules .topic-rules { margin-top: 10px; }
+.filtered-check { display: flex; align-items: center; gap: 8px; margin-top: 22px; }
+.filtered-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.filtered-status { margin-top: 8px; }
+.filtered-left-out-link { margin-top: 18px; font-weight: 650; }
+.filtered-left-out-list { margin-top: 12px; }
+.filtered-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 16px; }
+.filtered-tab {
+  padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px;
+  font-weight: 650; font-size: 14px; color: var(--muted); text-decoration: none;
+}
+.filtered-tab[aria-current="page"] { background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow); }
+.filtered-adult { display: grid; gap: 8px; margin-top: 10px; }
+.filtered-adult-kind .me-check { display: flex; align-items: center; gap: 8px; }
+.filtered-adult-kind .dial-grid { margin-top: 8px; }
+.filtered-why { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.filtered-hidden-post { display: block; }

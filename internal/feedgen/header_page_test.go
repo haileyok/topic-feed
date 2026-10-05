@@ -15,6 +15,8 @@ var pagesWithTheHeader = []struct{ file, path, script, current string }{
 	{"web/feeds.html", "/feeds", "feeds-page.js", `href="/feeds"`},
 	{"web/me.html", "/me", "me.js", `href="/me"`},
 	{"web/inspect.html", "/inspect", "inspect.js", `href="/inspect"`},
+	{"web/filtered.html", "/filtered", "filtered.js", `href="/filtered"`},
+	{"web/left-out.html", "/filtered/left-out", "left-out.js", `href="/filtered"`},
 }
 
 var headerMarkup = regexp.MustCompile(`(?s)<header class="topbar">.*?</header>`)
@@ -158,7 +160,7 @@ func TestEveryPageHasTheSameHeader(t *testing.T) {
 			t.Errorf("GET %s: %d, or the header isn't in it", p.path, w.Code)
 		}
 	}
-	for _, link := range []string{`href="/"`, `href="/?view=browse"`, `href="/feeds"`, `href="/me"`, `href="/inspect"`} {
+	for _, link := range []string{`href="/"`, `href="/?view=browse"`, `href="/feeds"`, `href="/me"`, `href="/filtered"`, `href="/inspect"`} {
 		if !strings.Contains(first, link) {
 			t.Errorf("the header has no link with %s", link)
 		}
@@ -166,14 +168,40 @@ func TestEveryPageHasTheSameHeader(t *testing.T) {
 }
 
 func TestTheHeaderScriptPutsTextOnThePageAsText(t *testing.T) {
-	js, err := webFS.ReadFile("web/static/header.js")
+	for _, name := range []string{"header.js", "filtered.js", "left-out.js"} {
+		js, err := webFS.ReadFile("web/static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, bad := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"} {
+			if strings.Contains(string(js), bad) {
+				t.Errorf("%s uses %s", name, bad)
+			}
+		}
+	}
+}
+
+// TestFilteredPageScript runs the page at /filtered's script, in a simulated browser (jsdom), against
+// the real page. It only runs when TOPICFEED_JSDOM names jsdom's directory.
+func TestFilteredPageScript(t *testing.T) {
+	runNodeTests(t, true, "webtest/filtered.test.mjs", "webtest/left-out.test.mjs")
+}
+
+// The page at /filtered has the sign-in form (its own words around it: that sign-in is a different
+// one), with every element signin-form.js and its own script use.
+func TestTheFilteredPageHasWhatItsScriptsUse(t *testing.T) {
+	raw, err := webFS.ReadFile("web/filtered.html")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"} {
-		if strings.Contains(string(js), bad) {
-			t.Errorf("header.js uses %s", bad)
+	for id := range idsUsedBy(t, "signin-form.js", "filtered.js") {
+		if !strings.Contains(string(raw), `id="`+id+`"`) {
+			t.Errorf("filtered.html has no #%s", id)
 		}
+	}
+	js, _ := webFS.ReadFile("web/static/filtered.js")
+	if !strings.Contains(string(js), `setupSignInForm({ endpoint: "/oauth/connect" })`) {
+		t.Error("the page's sign-in isn't the filtered feeds' (/oauth/connect)")
 	}
 }
 

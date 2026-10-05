@@ -65,6 +65,11 @@ type Server struct {
 	Preview *Previewer
 	// Personal serves the feeds configured with `personal:`; nil leaves them empty.
 	Personal *Personal
+	// Filtered serves the feeds configured with `filtered:`, and sends interactions with their
+	// posts on to their sources; nil answers 503 for them.
+	Filtered *FilteredFeeds
+	// FilteredAPI serves the page at /filtered's API (/api/me/filtered); nil answers 404.
+	FilteredAPI *FilteredAPI
 	// SignIn serves sign-in with Bluesky (/oauth/... and /api/me); nil answers 404.
 	SignIn *signin.Handler
 	// Me serves a signed-in viewer's own data (/api/me/...); nil answers 404.
@@ -120,6 +125,14 @@ func NewServer(cfg ServerConfig, feeds *Feeds, dir *atmosidentity.Directory, log
 	e.GET("/oauth/callback", s.signInRoute((*signin.Handler).ServeCallback))
 	e.POST("/oauth/logout", s.signInRoute((*signin.Handler).ServeLogout))
 	e.GET("/api/me", s.signInRoute((*signin.Handler).ServeMe))
+	// The sign-in for the filtered feeds, which keeps the viewer's sign-in to ask for tokens.
+	e.GET("/oauth/connect-metadata.json", s.signInRoute((*signin.Handler).ServeConnectMetadata))
+	e.POST("/oauth/connect", s.signInRoute((*signin.Handler).ServeConnect))
+	e.GET("/oauth/connect-callback", s.signInRoute((*signin.Handler).ServeConnectCallback))
+	e.POST("/oauth/disconnect", s.signInRoute((*signin.Handler).ServeDisconnect))
+	e.GET("/api/me/filtered", s.filteredRoute((*FilteredAPI).ServeList))
+	e.PUT("/api/me/filtered/:rkey", s.filteredRoute((*FilteredAPI).ServeSave))
+	e.GET("/api/me/filtered/:rkey/left-out", s.filteredRoute((*FilteredAPI).ServeLeftOut))
 	e.GET("/api/me/interests", s.meRoute((*MeAPI).ServeInterests))
 	e.GET("/api/me/tuning", s.meRoute((*MeAPI).ServeTuning))
 	e.PUT("/api/me/tuning", s.meRoute((*MeAPI).SaveTuning))
@@ -159,6 +172,22 @@ func (s *Server) meRoute(serve func(*MeAPI, http.ResponseWriter, *http.Request))
 			return echo.ErrNotFound
 		}
 		serve(s.Me, c.Response(), c.Request())
+		return nil
+	}
+}
+
+// filteredRoute serves one of the routes of the page at /filtered, or 404 while it is off. The rkey
+// in the address is handed on as a path value of the request.
+func (s *Server) filteredRoute(serve func(*FilteredAPI, http.ResponseWriter, *http.Request)) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if s.FilteredAPI == nil {
+			return echo.ErrNotFound
+		}
+		r := c.Request()
+		if rkey := c.Param("rkey"); rkey != "" {
+			r.SetPathValue("rkey", rkey)
+		}
+		serve(s.FilteredAPI, c.Response(), r)
 		return nil
 	}
 }
@@ -237,8 +266,10 @@ type xrpcError struct {
 }
 
 type skeletonItem struct {
-	Post        string `json:"post"`
-	FeedContext string `json:"feedContext,omitempty"`
+	Post string `json:"post"`
+	// Reason is a source feed's reason for a post (a repost, a pin), passed on as it came.
+	Reason      json.RawMessage `json:"reason,omitempty"`
+	FeedContext string          `json:"feedContext,omitempty"`
 }
 
 type skeletonResponse struct {
@@ -270,6 +301,9 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 	}
 	if s.Personal != nil && s.Personal.Serves(key) {
 		return s.personalSkeleton(c, key, limit, fail)
+	}
+	if f, ok := s.feeds.Lookup(key); ok && f.Filtered != nil {
+		return s.filteredSkeleton(c, f, limit, fail)
 	}
 	items, next, ready, err := s.feeds.Page(c.Request().Context(), key, c.QueryParam("cursor"), limit)
 	if err != nil {
@@ -319,6 +353,30 @@ func (s *Server) personalSkeleton(c echo.Context, rkey string, limit int, fail f
 	metricPersonalPages.WithLabelValues(rkey, page.State).Inc()
 	metricRequests.WithLabelValues(rkey, "200").Inc()
 	return c.JSON(http.StatusOK, resp)
+}
+
+// filteredSkeleton answers a request for a filtered feed: the source's posts that the viewer's
+// filters keep, read with a token the viewer's own server signed for the source; or, for a viewer
+// without a sign-in for the filtered feeds that works, only the post that says so.
+func (s *Server) filteredSkeleton(c echo.Context, f Feed, limit int, fail func(int, string, string, string) error) error {
+	if s.Filtered == nil {
+		return fail(http.StatusServiceUnavailable, f.Rkey, "NotReady", "filtered feeds are off")
+	}
+	page, err := s.Filtered.Page(c.Request().Context(), f, s.viewer(c), c.QueryParam("cursor"), limit, c.Request().Header)
+	switch {
+	case errors.Is(err, errBadCursor):
+		return fail(http.StatusBadRequest, f.Rkey, "InvalidRequest", err.Error())
+	case errors.Is(err, errNotReady):
+		return fail(http.StatusServiceUnavailable, f.Rkey, "NotReady", "the source feed hasn't been found yet")
+	case errors.Is(err, errSourceFailed):
+		return fail(http.StatusBadGateway, f.Rkey, "UpstreamFailure", "the source feed didn't answer")
+	case err != nil:
+		s.log.Warn("filtered skeleton", "feed", f.Rkey, "err", err)
+		return fail(http.StatusInternalServerError, f.Rkey, "InternalServerError", "could not build the feed")
+	}
+	metricFilteredPages.WithLabelValues(f.Rkey, page.State).Inc()
+	metricRequests.WithLabelValues(f.Rkey, "200").Inc()
+	return c.JSON(http.StatusOK, skeletonResponse{Feed: page.Items, Cursor: page.Cursor, ReqID: newReqID(f.Rkey)})
 }
 
 // feedKey returns the key (Feed.Key) of the feed a feed URI names: a generator record in anyone's repo,
@@ -417,6 +475,7 @@ func (s *Server) handleInteractions(c echo.Context) error {
 	}
 	now := time.Now().UTC()
 	rows := make([]InteractionRow, 0, len(in.Interactions))
+	toSource := map[string][]Interaction{} // by filtered feed: what is sent on to its source
 	for _, it := range in.Interactions {
 		if it.Item == "" || it.Event == "" {
 			continue
@@ -433,6 +492,15 @@ func (s *Server) handleInteractions(c echo.Context) error {
 		rows = append(rows, InteractionRow{ReceivedAt: now, ViewerDID: viewer, Feed: f,
 			Item: clip(it.Item, 512), Event: clip(ev, 100), FeedContext: clip(it.FeedContext, 2000), ReqID: clip(it.ReqID, 100)})
 		metricInteractions.WithLabelValues(orUnknown(feedLabel(f)), knownEvent(ev)).Inc()
+		if s.Filtered != nil && f != "" {
+			if ff, ok := s.feeds.Lookup(f); ok && ff.Filtered != nil {
+				toSource[f] = append(toSource[f], Interaction{Item: it.Item, Event: it.Event, FeedContext: it.FeedContext, ReqID: it.ReqID})
+			}
+		}
+	}
+	for key, its := range toSource {
+		ff, _ := s.feeds.Lookup(key)
+		s.Filtered.Forward(ff, viewer, its)
 	}
 	s.Interactions.Add(rows)
 	if s.Personal != nil {
@@ -521,6 +589,9 @@ func (s *Server) handleHealth(c echo.Context) error {
 	all := map[string]status{}
 	healthy := true
 	for _, f := range s.feeds.List() {
+		if f.Filtered != nil { // another feed's posts, fetched on each request: nothing here grows old
+			continue
+		}
 		posts, builtAt, _ := s.feeds.Posts(f.Rkey)
 		st := status{Posts: len(posts), AgeSeconds: -1}
 		built := posts != nil
@@ -569,8 +640,8 @@ type publishedFeed struct {
 func (s *Server) handleFeeds(c echo.Context) error {
 	out := []publishedFeed{}
 	for _, f := range s.feeds.List() {
-		// Adult feeds aren't listed, and a personal feed has no settings to remix.
-		if f.AllowAdult || f.Personal != nil {
+		// Adult feeds aren't listed, and a personal or filtered feed has no settings to remix.
+		if f.AllowAdult || f.fromConfig() {
 			continue
 		}
 		posts, _, _ := s.feeds.Posts(f.Rkey)

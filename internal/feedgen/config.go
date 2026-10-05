@@ -63,7 +63,19 @@ type Feed struct {
 	// than from topic paths: paths, min_prob, exclude, tone and signals don't apply. Use
 	// `personal: {}` for the defaults. See PersonalConfig.
 	Personal *PersonalConfig `yaml:"personal"`
+	// Filtered makes this a feed of another feed's posts, less the ones its filters (exclude,
+	// tone, signals and topic_rules, cutoffs only) leave out. See FilteredConfig.
+	Filtered *FilteredConfig `yaml:"filtered"`
 }
+
+// builtHere reports whether the service builds the feed's list of posts itself, again and again:
+// the owner's topic feeds. A personal feed is built per viewer, a filtered one is another feed's
+// posts, and people's own topic feeds are built while they are in use.
+func (f Feed) builtHere() bool { return !f.lazy() && f.Personal == nil && f.Filtered == nil }
+
+// fromConfig reports whether the feed is served from the config file rather than the database:
+// personal and filtered feeds are not made from a spec.
+func (f Feed) fromConfig() bool { return f.Personal != nil || f.Filtered != nil }
 
 // PersonalConfig tunes a personal feed. A viewer's interests are the subtopics of the posts
 // they liked and reposted, newer likes counting more; the feed fills its slots in
@@ -417,6 +429,9 @@ func (f Feed) validate(paths map[string]bool) error {
 	}
 	if utf8.RuneCountInString(f.Description) > maxDescription {
 		return fmt.Errorf("feed %q: description is over %d characters", f.Rkey, maxDescription)
+	}
+	if f.Filtered != nil {
+		return f.validateFiltered(paths)
 	}
 	if f.Personal != nil {
 		// A personal feed has no topic paths: the viewer's likes choose them.

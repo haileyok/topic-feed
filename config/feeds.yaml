@@ -8,7 +8,8 @@
 # `personal:` feed (made from each viewer's likes), and the layout of every feed's fields, documented
 # below (the specs stored in the database use the same fields). See docs/web-feeds.md.
 #
-# `make feeds-publish` still writes the owner's feeds (those in the database) to the owner's account.
+# `make feeds-publish` writes only the personal and filtered feeds below to the owner's account; topic
+# feeds (the owner's too) are published from /feeds.
 #
 #   rkey          record key: the last part of the feed's at:// URI (max 15 characters;
 #                 changing it makes a new feed and orphans the old one)
@@ -56,6 +57,22 @@
 #                 A topic's min_prob replaces the feed's for one of its paths (a subtopic path
 #                 takes its broad topic's when it has none); with paths: ["*"] it is what posts
 #                 whose most likely subtopic is in the topic need for that subtopic.
+#
+#   filtered      makes the feed another feed's posts, in that feed's order, less the ones its
+#                 filters leave out: nothing is added or ranked. paths, min_prob, max_posts and
+#                 max_age_minutes then don't apply; exclude, tone, signals and topic_rules
+#                 (max and min only, no weights) are the filters viewers start from, and each
+#                 viewer can choose their own on the page at /filtered.
+#                   filtered:
+#                     source: at://did:.../app.bsky.feed.generator/...  # the feed to filter
+#                     drop_unscored: false  # also leave out posts the model never scored
+#                                           # (not in English, and replies)
+#                 The source is read as each viewer, with a token their own server signs: a
+#                 viewer must sign in on /filtered first (that sign-in asks permission to send
+#                 the sources' services feed requests and interactions, and nothing else).
+#                 Until they do, or if it runs out, the feed is only FEEDGEN_FILTER_SIGNIN_POST
+#                 (make feeds-welcome FOR=filtered). Interactions with its posts (seen, like,
+#                 show more/less) are sent on to the source as the viewer.
 #
 #   personal      makes the feed a different one for each viewer, built from the posts they
 #                 liked and reposted; paths, min_prob and exclude then don't apply (use
@@ -124,3 +141,18 @@ feeds:
     display_name: For you
     description: Built for you from the posts you have liked, in the mix of topics you like. Leaves out posts you have already seen. Picked by a topic classifier. No keyword lists.
     personal: {}
+
+  # Other feeds' posts, filtered (see `filtered` above). Viewers sign in on /filtered first, and choose
+  # their filters there: these leave nothing out until they do. Needs FEEDGEN_FILTER_SECRET and
+  # FEEDGEN_FILTER_SIGNIN_POST.
+  - rkey: discover-filter
+    display_name: Discover, Filtered
+    description: Bluesky's Discover feed, without the topics, tones and kinds of post you choose. Sign in at feeds.hailey.at/filtered to use it and pick what it leaves out. Picked by a topic classifier. No keyword lists.
+    filtered:
+      source: at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot
+
+  - rkey: foryou-filter
+    display_name: For You, Filtered
+    description: spacecowboy's For You feed, without the topics, tones and kinds of post you choose. Sign in at feeds.hailey.at/filtered to use it and pick what it leaves out. Picked by a topic classifier. No keyword lists.
+    filtered:
+      source: at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you

@@ -101,6 +101,8 @@ override with `ENV_FILE=`):
 | `FEEDGEN_BUILDER_ADULT_KEY` | feedgen | optional; the owner's key for adult content in the feed builder (at least 24 characters) |
 | `FEEDGEN_WELCOME_POST` | feedgen | optional; the `at://` URI of the post a personal feed shows while a viewer's feed is being built (`make feeds-welcome` creates it) |
 | `FEEDGEN_SESSION_SECRET` | feedgen | optional; at least 32 random characters (`openssl rand -base64 36`) that sign the cookie saying who is signed in on the page at `/me`. Without it sign-in is off |
+| `FEEDGEN_FILTER_SECRET` | feedgen | optional; at least 32 random characters for the filtered feeds' sign-in: the key the service signs in to viewers' servers with, and the key their kept sign-ins are sealed with. Changing it signs everyone out of the filtered feeds. Without it the filtered feeds show only the sign-in post |
+| `FEEDGEN_FILTER_SIGNIN_POST` | feedgen | optional; the `at://` URI of the post a filtered feed shows, alone, to viewers who haven't signed in for it (`make feeds-welcome FOR=filtered` creates it) |
 
 Each command documents its other settings (all with defaults) at the top of its `main.go`;
 for example the pipeline's `CLASSIFIER_URL` and `IMAGE_RETRY_*`, and feedgen's `FEEDGEN_WINDOW_HOURS`, `FEEDGEN_REFRESH_SECONDS`, `FEEDGEN_MAX_POSTS`.
@@ -148,8 +150,8 @@ Every Go service exposes Prometheus metrics at `/metrics` and logs JSON to stdou
 | `make ch` | interactive ClickHouse client |
 | `make test` | Go tests |
 | `make feeds` | rebuild and restart the feed generator (feeds are kept in the database, see `docs/web-feeds.md`) |
-| `make feeds-publish` | write the owner's feed records (`DRY=1` to only print, `CODE=` for an emailed sign-in code) |
-| `make feeds-welcome` | post the welcome message a personal feed shows first, dated 90 days back so it sorts far down followers' timelines (`DRY=1`, `TEXT="..."`, `DAYS_AGO=`, `CODE=`) |
+| `make feeds-publish` | write the records of the personal and filtered feeds in `config/feeds.yaml` (topic feeds, the owner's too, are published from `/feeds`; `DRY=1` to only print, `CODE=` for an emailed sign-in code) |
+| `make feeds-welcome` | post the welcome message a personal feed shows first, dated 90 days back so it sorts far down followers' timelines (`DRY=1`, `TEXT="..."`, `DAYS_AGO=`, `CODE=`; `FOR=filtered` for the filtered feeds' sign-in post) |
 | `make profile-web` | serve a page of what a viewer's likes say they're into, on the local network at `:8720` (`ADDR=`, `ACTOR=`) |
 | `make label` | start or resume the Jev labeling run over the labeling windows |
 | `make export` | export a training set (`LABEL_CONFIG=`, `FULL_CONTEXT=`, `EXPORT=`) |
@@ -307,6 +309,26 @@ Anyone can sign in at `/me`, build a feed at `/`, **save it as theirs**, and pub
 Bluesky account from `https://feeds.hailey.at/feeds`: five feeds each (no limit for the owner), no
 adult feeds. Publishing happens in the browser, with an OAuth connection that never leaves it: the
 service holds nothing that could write to anyone's account. See `docs/web-feeds.md`.
+
+## Filtered feeds
+
+A filtered feed is another feed's posts, in that feed's order, less the ones its filters leave out:
+nothing is added, ranked or boosted. There are two, both the owner's (`filtered:` in
+`config/feeds.yaml`, published with `make feeds-publish`): Bluesky's Discover and spacecowboy's For
+You, which leave nothing out until the viewer chooses what to. At `https://feeds.hailey.at/filtered`
+a viewer signs in for them and chooses, for each feed, the topics (adult content by kind, so NSFW art
+can stay while explicit posts go), tones and kinds of post to leave out (and different cutoffs for
+particular topics). `/filtered/left-out` shows what was left out of their feed in the last week, and
+why. Posts the model never scored (not in English, and replies, about a third of Discover) are kept
+unless they ask to leave them out too.
+
+Each request is answered with the source's own posts for that viewer: the service asks the viewer's
+own server for a token addressed to the source, and reads the source with it, page after page until
+it has as many posts as were asked for. Interactions with the feed's posts (seen, like, show more or
+less) are sent on to the source the same way, so the source keeps leaving out what the viewer has
+seen. That sign-in, unlike the one at `/me`, is kept (sealed in the database) and asks permission for
+exactly this: feed requests and interactions to the two sources' services. A viewer who hasn't signed
+in, or whose sign-in has run out, gets only the post asking them to. See `docs/filtered-feeds.md`.
 
 ## The post inspector
 

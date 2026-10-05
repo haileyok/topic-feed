@@ -28,7 +28,7 @@ func TestCredentialsCanBeCheckedWithEverythingTheServiceLinks(t *testing.T) {
 
 func TestSignInIsOffWithoutASecret(t *testing.T) {
 	t.Setenv("FEEDGEN_SESSION_SECRET", "")
-	h, handle, err := newSignIn("https://feeds.example.test", "", quiet)
+	h, handle, err := newSignIn("https://feeds.example.test", "", nil, quiet)
 	if h != nil || handle != nil || err != nil {
 		t.Errorf("%v, %v: with no secret the page is simply off", h, err)
 	}
@@ -37,7 +37,7 @@ func TestSignInIsOffWithoutASecret(t *testing.T) {
 func TestSignInRefusesAWeakSecret(t *testing.T) {
 	for _, secret := range []string{"x", "too short for signing cookies", strings.Repeat("a", 31)} {
 		t.Setenv("FEEDGEN_SESSION_SECRET", secret)
-		h, _, err := newSignIn("https://feeds.example.test", "", quiet)
+		h, _, err := newSignIn("https://feeds.example.test", "", nil, quiet)
 		if h != nil || err == nil || !strings.Contains(err.Error(), "FEEDGEN_SESSION_SECRET") {
 			t.Errorf("%q: %v, %v: a secret that is set but too weak is an error, not a quiet 'off'", secret, h, err)
 		}
@@ -46,7 +46,7 @@ func TestSignInRefusesAWeakSecret(t *testing.T) {
 
 func TestSignInOnWithASecret(t *testing.T) {
 	t.Setenv("FEEDGEN_SESSION_SECRET", strings.Repeat("s", 32))
-	h, handle, err := newSignIn("https://feeds.example.test", "", quiet)
+	h, handle, err := newSignIn("https://feeds.example.test", "", nil, quiet)
 	if err != nil || h == nil || handle == nil {
 		t.Fatalf("%v, %v, %v", h, handle != nil, err)
 	}
@@ -81,7 +81,7 @@ func TestSignInOnWithASecret(t *testing.T) {
 func TestSignInRefusesABadOrigin(t *testing.T) {
 	t.Setenv("FEEDGEN_SESSION_SECRET", strings.Repeat("s", 32))
 	for _, origin := range []string{"http://feeds.example.test", "https://feeds.example.test/path", "feeds.example.test", "https://"} {
-		if h, _, err := newSignIn(origin, "", quiet); err == nil || h != nil {
+		if h, _, err := newSignIn(origin, "", nil, quiet); err == nil || h != nil {
 			t.Errorf("%q: %v, %v", origin, h, err)
 		}
 	}

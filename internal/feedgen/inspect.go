@@ -260,6 +260,9 @@ func (a *InspectAPI) respond(ctx context.Context, facts PostFacts) InspectRespon
 
 	in := facts.EvalInput(a.Policy)
 	for _, f := range a.Feeds.List() {
+		if f.Filtered != nil { // its posts are another feed's, and its filters each viewer's own
+			continue
+		}
 		if f.Personal != nil {
 			resp.Feeds = append(resp.Feeds, EvaluatePersonal(f, in, now))
 			continue

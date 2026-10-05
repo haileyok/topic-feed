@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Your feeds · Topic Feeds</title>
-  <meta name="robots" content="noindex">
+  <title>Filtered feeds · Topic Feeds</title>
+  <meta name="description" content="Bluesky's Discover and For You, without the topics and tones you'd rather not see.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0b0f18">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/v/__V__/app.css">
   <link rel="stylesheet" href="/static/v/__V__/me.css">
-  <link rel="stylesheet" href="/static/v/__V__/feeds.css">
-  <script type="module" src="/static/v/__V__/feeds-page.js"></script>
+  <link rel="stylesheet" href="/static/v/__V__/filtered.css">
+  <script type="module" src="/static/v/__V__/filtered.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -22,9 +22,9 @@
     <nav class="sitenav" aria-label="Pages">
       <a class="sitenav-link" href="/" data-view="build">Build a feed</a>
       <a class="sitenav-link" href="/?view=browse" data-view="browse">Browse feeds</a>
-      <a class="sitenav-link" href="/feeds" aria-current="page">Your feeds</a>
+      <a class="sitenav-link" href="/feeds">Your feeds</a>
       <a class="sitenav-link" href="/me">For you</a>
-      <a class="sitenav-link" href="/filtered">Filtered</a>
+      <a class="sitenav-link" href="/filtered" aria-current="page">Filtered</a>
       <a class="sitenav-link" id="nav-inspect" href="/inspect" hidden>Post inspector</a>
     </nav>
     <div class="account" id="account" data-state="checking">
@@ -35,14 +35,18 @@
     </div>
   </header>
 
-  <main class="me feeds">
+  <main class="me">
     <section class="me-card" id="loading" aria-live="polite">
       <p class="me-lead">Loading…</p>
     </section>
 
-    <section class="me-card" id="signed-out" hidden>
-      <h1>Your feeds</h1>
-      <p class="me-lead">Sign in with your Bluesky account to make feeds of your own and publish them.</p>
+    <!-- Nobody signed in for the filtered feeds on this browser, or their sign-in ran out. -->
+    <section class="me-card" id="connect" hidden>
+      <h1>Filtered feeds</h1>
+      <p class="me-lead">Bluesky's Discover and For You feeds, without what you'd rather not see: pick topics, tones and
+        kinds of post to leave out. Everything else stays in the order the feed gave it.</p>
+      <p class="me-info" id="connect-again" hidden>Your sign-in for the filtered feeds has run out or was revoked, so they
+        show only a post asking you to sign in. Sign in again to get them back.</p>
       <p class="me-note" id="signin-notice" role="alert" hidden></p>
       <form id="login" class="me-form">
         <label for="handle">Your Bluesky handle</label>
@@ -52,35 +56,24 @@
           <button class="btn btn-primary" id="login-button" type="submit">Sign in with Bluesky</button>
         </div>
       </form>
-      <p class="me-fine">You'll approve this on your own Bluesky server. We only learn which account is yours: we get no password, and we keep no access to your account.</p>
+      <p class="me-fine">You'll approve this on your own Bluesky server. It lets this site ask for these two feeds as you,
+        and pass on what you do in them (what you've seen, liked or asked for more or less of), so they keep working the way
+        they do in the app: nothing else. We get no password, and can't post, follow or read your messages. Until you sign
+        in, the filtered feeds show only a post asking you to.</p>
     </section>
 
-    <section id="feeds-main" hidden>
+    <section class="me-card me-wide" id="connected" hidden>
       <div class="me-head">
         <div class="me-title">
-          <h1>Your feeds</h1>
-          <p class="me-who">Signed in as <strong id="who"></strong>. <span id="count"></span></p>
+          <h1>Filtered feeds</h1>
+          <p class="me-who">Signed in as <strong id="who"></strong>
+            · <button class="link-btn" id="disconnect" type="button">Sign out of the filtered feeds</button></p>
         </div>
-        <a class="btn btn-primary" href="/">New feed</a>
       </div>
-
-      <section class="me-col feeds-connection" id="connection" data-state="checking" aria-labelledby="connection-title">
-        <h2 class="me-h2" id="connection-title">Publishing on Bluesky</h2>
-        <p class="me-fine" id="connection-text">Checking…</p>
-        <form id="connect-form" class="me-form" hidden novalidate>
-          <label for="connect-handle">Your Bluesky handle</label>
-          <div class="me-row">
-            <input id="connect-handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none" autocorrect="off"
-                   spellcheck="false" autocomplete="username" maxlength="300">
-            <button class="btn btn-primary" id="connect-button" type="submit">Connect to publish</button>
-          </div>
-        </form>
-        <p><button class="btn" id="disconnect-button" type="button" hidden>Disconnect</button></p>
-      </section>
-
-      <p class="me-note" id="notice" role="alert" hidden></p>
-      <p class="me-lead" id="empty" hidden>You haven't made a feed yet. <a href="/">Build one</a>: pick topics, dial in the vibe, and save it as yours.</p>
-      <ul class="feeds-list" id="feeds-list"></ul>
+      <p class="me-note" id="connected-notice" role="alert" hidden></p>
+      <p class="me-fine me-tip">Each feed is the original's posts, in its order, less the ones your filters leave out. Posts
+        the model can't judge (not in English, and replies) stay in unless you say otherwise.</p>
+      <div id="feeds"></div>
     </section>
   </main>
 </body>

@@ -11,7 +11,7 @@ import (
 
 func TestPeoplesFeedsAreWiredToTheSignedInAccountOnly(t *testing.T) {
 	t.Setenv("FEEDGEN_SESSION_SECRET", strings.Repeat("s", 32))
-	signIn, _, err := newSignIn("https://feeds.example.test", "", quiet)
+	signIn, _, err := newSignIn("https://feeds.example.test", "", nil, quiet)
 	if err != nil || signIn == nil {
 		t.Fatalf("%v, %v", signIn, err)
 	}

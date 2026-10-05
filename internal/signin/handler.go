@@ -49,6 +49,9 @@ type Config struct {
 	// path of the page it is on (the form field "return"), and only a path listed here exactly is
 	// used, so a link can't send someone elsewhere after they sign in.
 	Returns []string
+	// Connect, if set, is the sign-in for the filtered feeds (/oauth/connect...), which keeps the
+	// viewer's sign-in to ask their server for tokens; nil: those routes answer 404.
+	Connect *Connector
 	Log     *slog.Logger
 }
 
@@ -217,7 +220,68 @@ func normalizeAccount(s string) string {
 }
 
 // ServeLogin starts signing in the account in the form field "handle".
-func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) { h.serveLogin(w, r, h.cfg.Auth) }
+
+// ServeConnect starts the sign-in for the filtered feeds, which also signs the browser in. It
+// answers 404 when they are off.
+func (h *Handler) ServeConnect(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Connect == nil {
+		http.NotFound(w, r)
+		return
+	}
+	h.serveLogin(w, r, h.cfg.Connect)
+}
+
+// ServeConnectCallback is where a viewer's server sends them back from the sign-in for the
+// filtered feeds.
+func (h *Handler) ServeConnectCallback(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Connect == nil {
+		http.NotFound(w, r)
+		return
+	}
+	h.serveCallback(w, r, h.cfg.Connect)
+}
+
+// ServeConnectMetadata serves the client metadata of the sign-in for the filtered feeds.
+func (h *Handler) ServeConnectMetadata(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Connect == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_ = json.NewEncoder(w).Encode(h.cfg.Connect.Metadata())
+}
+
+// ServeDisconnect revokes and forgets the signed-in viewer's sign-in for the filtered feeds. The
+// browser stays signed in.
+func (h *Handler) ServeDisconnect(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
+	if h.cfg.Connect == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !SameOrigin(r, h.cfg.Origin) {
+		http.Error(w, "cross-site request", http.StatusForbidden)
+		return
+	}
+	did, ok := h.Viewer(r)
+	if !ok {
+		replyJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), loginTimeout)
+	defer cancel()
+	if err := h.cfg.Connect.Disconnect(ctx, did); err != nil {
+		h.cfg.Log.Warn("filtered feeds: signing out failed", "did", did, "err", err)
+		replyJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "unavailable"})
+		return
+	}
+	replyJSON(w, http.StatusOK, map[string]bool{"connected": false})
+}
+
+func (h *Handler) serveLogin(w http.ResponseWriter, r *http.Request, auth Authenticator) {
 	noStore(w)
 	if !SameOrigin(r, h.cfg.Origin) {
 		http.Error(w, "cross-site request", http.StatusForbidden)
@@ -243,7 +307,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), loginTimeout)
 	defer cancel()
-	redirect, state, err := h.cfg.Auth.Start(ctx, account)
+	redirect, state, err := auth.Start(ctx, account)
 	switch {
 	case errors.Is(err, ErrBadAccount):
 		h.problem(w, r, "invalid", http.StatusBadRequest)
@@ -280,6 +344,10 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 
 // ServeCallback is where the person's own server sends them back.
 func (h *Handler) ServeCallback(w http.ResponseWriter, r *http.Request) {
+	h.serveCallback(w, r, h.cfg.Auth)
+}
+
+func (h *Handler) serveCallback(w http.ResponseWriter, r *http.Request, auth Authenticator) {
 	noStore(w)
 	q := r.URL.Query()
 	state := q.Get("state")
@@ -312,7 +380,7 @@ func (h *Handler) ServeCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), loginTimeout)
 	defer cancel()
-	did, err := h.cfg.Auth.Finish(ctx, code, state, q.Get("iss"))
+	did, err := auth.Finish(ctx, code, state, q.Get("iss"))
 	if err != nil {
 		h.cfg.Log.Info("sign-in: finishing a login failed", "err", err)
 		h.home(w, r, "failed")

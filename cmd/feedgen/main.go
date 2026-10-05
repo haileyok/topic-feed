@@ -2,8 +2,9 @@
 //
 //	feedgen [serve]            serve the feeds (default)
 //	feedgen publish [-dry-run] [-code C]
-//	                           write an app.bsky.feed.generator record for every feed in
-//	                           the config into the owner's repo (-dry-run: print them;
+//	                           write an app.bsky.feed.generator record for each personal and
+//	                           filtered feed in the config into the owner's repo (topic feeds
+//	                           are published from /feeds) (-dry-run: print them;
 //	                           -code: the emailed sign-in code, only needed when logging
 //	                           in with the account's main password and email 2FA is on).
 //	                           At a terminal it shows the records, asks before writing,
@@ -31,6 +32,12 @@
 //	                          is being built (create it with `feedgen welcome`); unset: an empty feed
 //	FEEDGEN_SESSION_SECRET    at least 32 random characters that sign the cookie saying who is
 //	                          signed in on the page at /me (sign-in with Bluesky); unset: sign-in is off
+//	FEEDGEN_FILTER_SECRET     at least 32 random characters for the filtered feeds' sign-in: the key the
+//	                          service proves itself to viewers' servers with, and the key their kept
+//	                          sign-ins are sealed with (changing it signs everyone out); unset: every
+//	                          viewer of a filtered feed gets only the sign-in post
+//	FEEDGEN_FILTER_SIGNIN_POST at:// URI of the post filtered feeds show, alone, to viewers who haven't
+//	                          signed in for them (create it with `feedgen welcome -for filtered`)
 //	HTTP_ADDR                 public listener, default :8710
 //	METRICS_ADDR              Prometheus metrics, default :9104
 //	LOG_LEVEL                 debug|info|warn, default info
@@ -96,10 +103,12 @@ func main() {
 		fs := flag.NewFlagSet("welcome", flag.ExitOnError)
 		dry := fs.Bool("dry-run", false, "print the post instead of writing it")
 		code := fs.String("code", "", "emailed sign-in code (email 2FA with the main password; app passwords don't need it)")
-		text := fs.String("text", defaultWelcomeText, "the post's text")
+		text := fs.String("text", "", "the post's text (default: the one for -for)")
+		kind := fs.String("for", "personal", "personal: the post personal feeds show while a viewer's feed is built; "+
+			"filtered: the post filtered feeds show viewers who haven't signed in for them")
 		daysAgo := fs.Int("days-ago", defaultDaysAgo, "date the post this many days back, so it sorts that far down followers' timelines instead of at the top")
 		fs.Parse(args)
-		err = welcome(ctx, *dry, *code, *text, *daysAgo)
+		err = welcome(ctx, *dry, *code, *text, *daysAgo, *kind)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("feedgen "+cmd+" failed", "err", err)
@@ -220,6 +229,35 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	go iw.Run(wctx)
 	srv.Interactions = iw
 
+	// Filtered feeds (`filtered:` in the config): another feed's posts, read as each viewer with a
+	// sign-in this service keeps. Their sources are looked up first: the sign-in asks permission
+	// for exactly those.
+	// The posts they leave out of each viewer's feed are kept a week, for the viewer to look back at.
+	leftOut := feedgen.NewLeftOutWriter(conn, log)
+	go leftOut.Run(wctx)
+	filtered, connector, err := newFiltered(ctx, s, store, feeds, leftOut, log)
+	if err != nil {
+		stopWriter()
+		iw.Wait()
+		leftOut.Wait()
+		return err
+	}
+	srv.Filtered = filtered
+
+	// Signing in with Bluesky, for the pages where viewers see and tune their feeds. The filtered
+	// feeds' sign-in (which keeps the viewer's sign-in) is one of its routes.
+	signIn, handleOf, err := newSignIn("https://"+s.hostname, s.owner.String(), connector, log)
+	if err != nil {
+		stopWriter()
+		iw.Wait()
+		return err
+	}
+	if signIn == nil {
+		log.Info("sign-in is off: FEEDGEN_SESSION_SECRET is not set")
+	} else if filtered != nil {
+		srv.FilteredAPI = newFilteredAPI(s, signIn, connector, store, feeds, filtered, taxonomyPaths, log)
+	}
+
 	// Personal feeds (`personal:` in the config): built per viewer from their likes. What
 	// they were sent is stored so a restart doesn't forget it.
 	var served *feedgen.RowWriter[feedgen.ServedRow]
@@ -235,16 +273,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		if personal.Welcome == "" {
 			log.Warn("FEEDGEN_WELCOME_POST is not set: a viewer whose feed is still being built sees an empty feed (make feeds-welcome creates the post)")
 		}
-		// Signing in with Bluesky, for the page where viewers see and tune their feed.
-		signIn, handleOf, err := newSignIn("https://"+s.hostname, s.owner.String(), log)
-		if err != nil {
-			stopWriter()
-			iw.Wait()
-			return err
-		}
-		if signIn == nil {
-			log.Info("sign-in is off: FEEDGEN_SESSION_SECRET is not set")
-		} else {
+		if signIn != nil {
 			srv.SignIn = signIn
 			srv.Me = newMeAPI(s.cfg, s.tax, store, personal, signIn, "https://"+s.hostname, handleOf, log)
 			// The post inspector (/inspect) is the owner's: it is signed in with the same session.
@@ -258,10 +287,13 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		personal.Served = served
 		personal.Start(ctx)
 		srv.Personal = personal
+	} else if signIn != nil && filtered != nil {
+		srv.SignIn = signIn // the filtered feeds' page needs to know who is signed in
 	}
 	stopWriters := func() {
 		stopWriter()
 		iw.Wait()
+		leftOut.Wait()
 		if served != nil {
 			served.Wait()
 		}
@@ -269,6 +301,10 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	for _, f := range feeds.List() {
 		if f.Personal != nil {
 			log.Info("serving personal feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey))
+			continue
+		}
+		if f.Filtered != nil {
+			log.Info("serving filtered feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey), "source", f.Filtered.Source)
 			continue
 		}
 		log.Info("serving feed", "feed", f.Rkey, "uri", srv.FeedURI(f.Rkey), "paths", f.Paths, "min_prob", f.MinProb)
@@ -303,13 +339,16 @@ func hasPersonal(cfg *feedgen.Config) bool {
 }
 
 // checkWelcomePost accepts "" (no welcome post) or the at:// URI of a post.
-func checkWelcomePost(uri string) error {
+func checkWelcomePost(uri string) error { return checkPostURI("FEEDGEN_WELCOME_POST", uri) }
+
+// checkPostURI accepts "" or the at:// URI of a post, for the setting name.
+func checkPostURI(name, uri string) error {
 	if uri == "" {
 		return nil
 	}
 	u, err := syntax.ParseATURI(uri)
 	if err != nil || u.Collection().String() != "app.bsky.feed.post" || u.RecordKey().String() == "" {
-		return fmt.Errorf("FEEDGEN_WELCOME_POST must be the at:// URI of a post (at://did:plc:.../app.bsky.feed.post/...), got %q", uri)
+		return fmt.Errorf("%s must be the at:// URI of a post (at://did:plc:.../app.bsky.feed.post/...), got %q", name, uri)
 	}
 	return nil
 }
@@ -356,28 +395,18 @@ func publish(ctx context.Context, dry bool, code string) error {
 	return p.Publish(ctx, feeds, login)
 }
 
-// ownerFeeds are the feeds the service owner publishes: those in the database that are the owner's
-// (feeds other people made are published by them, from the page at /feeds), then the personal
-// feed of the config file.
-func ownerFeeds(ctx context.Context, s *settings) ([]feedgen.Feed, error) {
-	if os.Getenv("CLICKHOUSE_PASSWORD") == "" {
-		return nil, errors.New("CLICKHOUSE_PASSWORD must be set: the feeds are read from the database")
-	}
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	all, err := feedgen.LoadServedFeeds(ctx, &feedgen.Store{Conn: conn}, s.cfg, s.owner.String(),
-		feedgen.TaxonomyPaths(s.tax), slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if err != nil {
-		return nil, err
-	}
+// ownerFeeds are the feeds `publish` writes: the personal and filtered feeds of the config file. The
+// topic feeds are made and changed on the web, and their records are written from the page at /feeds
+// (the owner's included), so publishing here leaves them alone.
+func ownerFeeds(_ context.Context, s *settings) ([]feedgen.Feed, error) {
 	var mine []feedgen.Feed
-	for _, f := range all {
-		if f.Owner == "" {
+	for _, f := range s.cfg.Feeds {
+		if f.Personal != nil || f.Filtered != nil {
 			mine = append(mine, f)
 		}
+	}
+	if len(mine) == 0 {
+		return nil, errors.New("the config has no personal or filtered feeds to publish (topic feeds are published from /feeds)")
 	}
 	return mine, nil
 }

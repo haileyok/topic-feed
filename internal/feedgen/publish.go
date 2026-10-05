@@ -90,7 +90,7 @@ func (p *Publisher) Publish(ctx context.Context, feeds []Feed, login *atclient.A
 		return err
 	}
 	for _, uri := range others {
-		fmt.Fprintf(p.Out, "not in config, left as is: %s\n", uri)
+		fmt.Fprintf(p.Out, "not published from here (a topic feed is published from /feeds), left as is: %s\n", uri)
 	}
 	return nil
 }

@@ -53,6 +53,32 @@ var (
 		Help: "sendInteractions calls, by HTTP status.",
 	}, []string{"status"})
 
+	metricFilteredPosts = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_filtered_posts_total",
+		Help: "Posts read from filtered feeds' sources (read), and of those the ones the filters left out (dropped), by feed.",
+	}, []string{"feed", "kind"})
+
+	metricFilteredPages = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_filtered_pages_total",
+		Help: "Pages of filtered feeds served, by feed and state (ok, signin: only the sign-in post).",
+	}, []string{"feed", "state"})
+
+	metricFilteredSource = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_filtered_source_requests_total",
+		Help: "Requests to filtered feeds' sources, by filtered feed and HTTP status (or error).",
+	}, []string{"feed", "status"})
+
+	metricFilteredSourceSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "feedgen_filtered_source_seconds",
+		Help:    "How long filtered feeds' sources take to answer, by filtered feed.",
+		Buckets: []float64{.05, .1, .25, .5, 1, 2, 4},
+	}, []string{"feed"})
+
+	metricForwardedInteractions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_forwarded_interactions_total",
+		Help: "Interactions sent on to filtered feeds' sources, by filtered feed and outcome (ok, signin, error, dropped).",
+	}, []string{"feed", "result"})
+
 	metricInteractionsWritten = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "feedgen_interactions_written_total",
 		Help: "Interaction rows written to ClickHouse.",

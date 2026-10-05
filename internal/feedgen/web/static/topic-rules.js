@@ -82,8 +82,9 @@ function paint(input, from, to) {
  *   get(): the dials, an object the editor changes in place;
  *   own(key, name): the feed's own dial for a score, which a topic's starts from;
  *   sure: {min, own(), hint(path)}, for how sure the model must be of a topic: the least it can be
- *     set to, the feed's own setting (which a topic's starts from), and a note for a topic, or
- *     null for none;
+ *     set to, the feed's own setting (which a topic's starts from), and a note for a topic; null
+ *     leaves that setting out (a filtered feed has none);
+ *   noBoost: true leaves out the boosts, for a feed that only leaves posts out;
  *   changed(): called after every change;
  *   id: what the controls' ids start with.
  * The result has the element (node) and refresh(), which shows get() again after it was replaced.
@@ -141,7 +142,7 @@ export function topicRulesEditor(o) {
       el("div", { class: "dial-head" }, el("span", { class: "dial-emoji", text: meta.icon }), el("span", { text: meta.name }),
         el("span", { class: "dial-desc", text: meta.hint }), remove),
       el("div", { class: "dial-grid" },
-        el("label", { for: boost.id, text: "Boost" }), boost, boostOut,
+        o.noBoost ? null : [el("label", { for: boost.id, text: "Boost" }), boost, boostOut],
         el("label", { text: "Allowed" }), el("div", { class: "dual" }, lo, hi), range));
   }
 
@@ -169,7 +170,7 @@ export function topicRulesEditor(o) {
   function card(path) {
     const sets = o.get()[path];
     const { title, sub } = label(path);
-    const rows = sets.minProb > 0 ? [sureRow(path)] : [];
+    const rows = o.sure && sets.minProb > 0 ? [sureRow(path)] : [];
     const unused = [];
     for (const [key, kind] of KINDS) {
       for (const name of o.names[key] || []) {
@@ -178,8 +179,8 @@ export function topicRulesEditor(o) {
       }
     }
     const add = el("select", { class: "text-input topic-rules-add", "aria-label": `Add a score with a rule of its own for ${title}` },
-      el("option", { value: "", text: "Add how sure, a tone or a signal…" }),
-      sets.minProb > 0 ? null : el("option", { value: "min_prob", text: "🎯 How sure the model is" }),
+      el("option", { value: "", text: o.sure ? "Add how sure, a tone or a signal…" : "Add a tone or a signal…" }),
+      !o.sure || sets.minProb > 0 ? null : el("option", { value: "min_prob", text: "🎯 How sure the model is" }),
       ...KINDS.map(([key, kind]) => {
         const opts = unused.filter((u) => u[0] === key);
         return opts.length ? el("optgroup", { label: kind === "tone" ? "Tone" : "Quality signals" },
@@ -203,7 +204,9 @@ export function topicRulesEditor(o) {
         el("div", {}, el("strong", { text: title }), sub ? el("span", { class: "topic-rule-sub", text: sub }) : null),
         el("button", { class: "link-btn", type: "button", text: "Remove topic", "aria-label": `Remove the rules for ${title}`,
           onclick: () => { delete o.get()[path]; render(); o.changed(); } })),
-      rows.length ? rows : el("p", { class: "section-hint", text: "Add how sure the model must be, a tone or a signal, to give this topic its own setting for it." }),
+      rows.length ? rows : el("p", { class: "section-hint", text: o.sure
+        ? "Add how sure the model must be, a tone or a signal, to give this topic its own setting for it."
+        : "Add a tone or a signal to give this topic its own setting for it." }),
       add);
   }
 

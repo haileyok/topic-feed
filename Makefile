@@ -53,11 +53,11 @@ feeds: ## Build and (re)start the feed generator, picking up config/feeds.yaml (
 feeds-logs:
 	$(COMPOSE) --profile feeds logs --tail=100 -f feedgen
 
-feeds-publish: ## Write every feed in config/feeds.yaml to the owner's account (DRY=1 to only print; CODE=<emailed code> for email 2FA)
+feeds-publish: ## Write the personal and filtered feeds of config/feeds.yaml to the owner's account; topic feeds are published from /feeds (DRY=1 to only print; CODE=<emailed code> for email 2FA)
 	$(COMPOSE) --profile feeds run --rm --build feedgen publish $(if $(DRY),-dry-run,) $(if $(CODE),-code $(CODE),)
 
-feeds-welcome: ## Post the welcome message personal feeds show while a viewer's feed is built, as the owner, dated 90 days back (DRY=1 to only print; TEXT="..."; DAYS_AGO=n; CODE=<emailed code>)
-	$(COMPOSE) --profile feeds run --rm --build feedgen welcome $(if $(DRY),-dry-run,) $(if $(CODE),-code $(CODE),) $(if $(TEXT),-text "$(TEXT)",) $(if $(DAYS_AGO),-days-ago $(DAYS_AGO),)
+feeds-welcome: ## Post the welcome message personal feeds show while a viewer's feed is built (FOR=filtered: the post filtered feeds show viewers who haven't signed in for them), as the owner, dated 90 days back (DRY=1 to only print; TEXT="..."; DAYS_AGO=n; CODE=<emailed code>)
+	$(COMPOSE) --profile feeds run --rm --build feedgen welcome $(if $(DRY),-dry-run,) $(if $(CODE),-code $(CODE),) $(if $(TEXT),-text "$(TEXT)",) $(if $(DAYS_AGO),-days-ago $(DAYS_AGO),) $(if $(FOR),-for $(FOR),)
 
 profile-web: ## Serve a page of what a viewer's likes say they're into, on the local network at :8720 (ADDR=127.0.0.1:8720 to keep it local; ACTOR=<handle or DID> to start from)
 	set -a; . $(ENV_FILE); set +a; go run ./cmd/profile -serve $(or $(ADDR),:8720) -feed for-you $(if $(ACTOR),-did $(ACTOR),)

@@ -94,7 +94,7 @@ func (fs *Feeds) set(feeds []Feed) (fresh []*feedState) {
 		}
 		st := &feedState{feed: f}
 		next[key] = st
-		if !f.lazy() && f.Personal == nil {
+		if f.builtHere() {
 			fresh = append(fresh, st)
 		}
 	}
@@ -260,7 +260,7 @@ func (fs *Feeds) Start(ctx context.Context) {
 	fs.ctx = ctx
 	var pinned []*feedState
 	for _, f := range fs.feeds {
-		if !f.lazy() && f.Personal == nil { // a personal feed is built per viewer by Personal
+		if f.builtHere() { // a personal feed is built per viewer by Personal; a filtered one isn't built
 			pinned = append(pinned, fs.state[f.Key()])
 		}
 	}
@@ -501,9 +501,9 @@ func (fs *Feeds) SyncFrom(ctx context.Context, load func(context.Context) ([]Fee
 		}
 		// Every feed gone at once is far more likely a database that answered wrongly than somebody
 		// removing them all, and serving nothing is worse than serving what was.
-		topics := func(list []Feed) (n int) { // the personal feed is not from the database, so it is always there
+		topics := func(list []Feed) (n int) { // personal and filtered feeds are not from the database, so they are always there
 			for _, f := range list {
-				if f.Personal == nil {
+				if !f.fromConfig() {
 					n++
 				}
 			}
