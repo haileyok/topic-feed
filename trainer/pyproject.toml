@@ -4,7 +4,18 @@ version = "0.1.0"
 description = "Trains, evaluates, and exports the topic classifier (plan §11)."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "torch==2.14.0",
+    "torch[device-gfx1151]==2.14.0",
+    # torch's ROCm dependencies, which only AMD's index has. They are listed here only so
+    # that [tool.uv.sources] applies to them (uv ignores sources for indirect dependencies).
+    # torch pins their exact versions.
+    "triton",
+    "amd-torch-device-gfx1151",
+    "amd-torch-device-gfx115x",
+    "rocm",
+    "rocm-bootstrap",
+    "rocm-sdk-core",
+    "rocm-sdk-libraries",
+    "rocm-sdk-device-gfx1151",
     "transformers",
     "datasets",
     "pyarrow",
@@ -19,12 +30,25 @@ dependencies = [
 
 [tool.uv]
 package = false
+# Only lock for Linux x86-64: AMD's index has no Windows triton build, and both machines are Linux.
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 
-# CUDA build of PyTorch; the driver here reports CUDA 13.3, which supports cu132 wheels.
+# ROCm build of PyTorch for the Framework Desktop's Radeon 8060S (gfx1151), from AMD's
+# wheel index. The `device-gfx1151` extra pulls in the GPU kernels for this chip. ROCm
+# builds still report the GPU as torch.cuda / "cuda". The index is explicit, so only the
+# packages listed here come from it; everything else comes from PyPI.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu132" }]
+torch = [{ index = "amd-rocm" }]
+triton = [{ index = "amd-rocm" }]
+amd-torch-device-gfx1151 = [{ index = "amd-rocm" }]
+amd-torch-device-gfx115x = [{ index = "amd-rocm" }]
+rocm = [{ index = "amd-rocm" }]
+rocm-bootstrap = [{ index = "amd-rocm" }]
+rocm-sdk-core = [{ index = "amd-rocm" }]
+rocm-sdk-libraries = [{ index = "amd-rocm" }]
+rocm-sdk-device-gfx1151 = [{ index = "amd-rocm" }]
 
 [[tool.uv.index]]
-name = "pytorch-cu132"
-url = "https://download.pytorch.org/whl/cu132"
+name = "amd-rocm"
+url = "https://stable.repo.amd.com/rocm/whl-next/"
 explicit = true
