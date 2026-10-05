@@ -92,6 +92,11 @@ type PersonalConfig struct {
 	// MinTopicProb: a post belongs to its most likely subtopic when the model gives it at
 	// least this probability (default 0.5).
 	MinTopicProb float32 `yaml:"min_topic_prob"`
+	// PoolMinTopicProb is the least probability a post's most likely subtopic can have for the
+	// post to be in the feed's pool (default 0.3, and never above min_topic_prob): what a viewer can
+	// lower min_topic_prob to, for their own feed or for one topic. Posts below min_topic_prob are
+	// left out of the feeds of viewers who didn't.
+	PoolMinTopicProb float32 `yaml:"pool_min_topic_prob"`
 	// MaxServes is how many times a post may be shown before it counts as seen even though
 	// Bluesky never reported a view (default 2; 1 never repeats a post, but loses the posts
 	// that were sent and not scrolled to).
@@ -125,7 +130,9 @@ func (c *PersonalConfig) applyDefaults() {
 	set(&c.MinLikes, 5)
 	set(&c.Topics, 20)
 	set(&c.WindowHours, 24)
-	set(&c.PerTopic, 200)
+	// 240 rather than 200: about 30% of the newest posts at pool_min_topic_prob are under
+	// min_topic_prob, so this keeps most of them (about 170) for viewers who didn't lower it.
+	set(&c.PerTopic, 240)
 	set(&c.TopPerTopic, 150)
 	set(&c.MaxServes, 2)
 	set(&c.ListSize, 300)
@@ -134,6 +141,9 @@ func (c *PersonalConfig) applyDefaults() {
 	}
 	if c.MinTopicProb == 0 {
 		c.MinTopicProb = 0.5
+	}
+	if c.PoolMinTopicProb == 0 {
+		c.PoolMinTopicProb = min(DefaultPoolMinTopicProb, c.MinTopicProb)
 	}
 	if c.AuthorGap == nil {
 		gap := 10
@@ -144,6 +154,9 @@ func (c *PersonalConfig) applyDefaults() {
 		c.MinEngagement = &minEngagement
 	}
 }
+
+// DefaultPoolMinTopicProb is what `pool_min_topic_prob` is when a personal feed doesn't set it.
+const DefaultPoolMinTopicProb = 0.3
 
 // DefaultMinEngagement is what `min_engagement` is when a personal feed doesn't set it.
 const DefaultMinEngagement = 5.0
@@ -169,6 +182,8 @@ func (c PersonalConfig) validate() error {
 		return fmt.Errorf("top_per_topic must be 1-1000")
 	case c.MinTopicProb <= 0 || c.MinTopicProb > 1:
 		return fmt.Errorf("min_topic_prob must be in (0, 1]")
+	case c.PoolMinTopicProb <= 0 || c.PoolMinTopicProb > c.MinTopicProb:
+		return fmt.Errorf("pool_min_topic_prob must be above 0 and at most min_topic_prob")
 	case c.MaxServes < 1 || c.MaxServes > 20:
 		return fmt.Errorf("max_serves must be 1-20")
 	case c.ListSize < 1 || c.ListSize > 2000:

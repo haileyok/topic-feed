@@ -77,7 +77,9 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		scoreExpr = "greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?)))"
 		args = append(args, subs, broads)
 	}
-	args = append(args, since, policies, f.MinProb)
+	args = append(args, since, policies)
+	match, margs := matchCondition(f)
+	args = append(args, margs...)
 	// Exclusions and tone/signal cutoffs, as conditions on the stored scores, so the limit
 	// counts only posts that pass. Names are checked when the config loads, and passed as
 	// parameters.
@@ -99,13 +101,45 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	err := s.Conn.Select(ctx, &cands, `
 		SELECT `+candidateColumns(scoreExpr)+`
 		FROM post_pipeline FINAL
-		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+where.String()+`
+		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND `+match+where.String()+`
 		ORDER BY indexed_at DESC, uri DESC
 		LIMIT ?`+perPartitionFinal, args...)
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
 	return s.finish(ctx, f, cands)
+}
+
+// matchCondition is the SQL condition for a post to match the feed's topics, with its arguments:
+// its best probability for the feed's paths (the score column) at least min_prob, or, when rules
+// for particular topics give some paths thresholds of their own (TopicRules.MinProb), at least
+// one path's probability at least that path's threshold.
+func matchCondition(f Feed) (string, []any) {
+	if f.anyTopic() {
+		return "score >= ?", []any{f.MinProb}
+	}
+	byLimit := map[float32][]string{}
+	for _, p := range f.Paths {
+		byLimit[f.pathMinProb(p)] = append(byLimit[f.pathMinProb(p)], p)
+	}
+	if len(byLimit) == 1 {
+		for limit := range byLimit {
+			return "score >= ?", []any{limit}
+		}
+	}
+	var sb strings.Builder
+	var args []any
+	sb.WriteString("(")
+	for i, limit := range slices.Sorted(maps.Keys(byLimit)) {
+		if i > 0 {
+			sb.WriteString(" OR ")
+		}
+		subs, broads := split(byLimit[limit])
+		sb.WriteString("greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?))) >= ?")
+		args = append(args, subs, broads, limit)
+	}
+	sb.WriteString(")")
+	return sb.String(), args
 }
 
 // cutoffCondition is the feed's tone and signal cutoffs as SQL conditions on post_pipeline, each
@@ -153,18 +187,25 @@ func cutoffCondition(f Feed) (string, []any) {
 	const broadExpr = "splitByChar('/', top_path)[1]"
 	sb.WriteString(" AND (")
 	groups := 0
-	group := func(match string, matchArgs []any, rules TopicRules) {
+	// In a feed of every topic, a topic's own min_prob is how sure the model must be of its posts'
+	// most likely subtopic (topPath stands for the group's posts). In a feed of topic paths it is a
+	// path's threshold instead (matchCondition).
+	group := func(match string, matchArgs []any, rules TopicRules, topPath string) {
 		if groups > 0 {
 			sb.WriteString(" OR ")
 		}
 		groups++
 		sb.WriteString("(" + match)
 		args = append(args, matchArgs...)
+		if v := topicMinProb(f.TopicRules, topPath); f.anyTopic() && v > 0 {
+			sb.WriteString(" AND top_path_p >= ?")
+			args = append(args, v)
+		}
 		cutoffs(rules)
 		sb.WriteString(")")
 	}
 	for _, s := range subs {
-		group("top_path = ?", []any{s}, f.RulesFor(s))
+		group("top_path = ?", []any{s}, f.RulesFor(s), s)
 	}
 	for _, b := range broads {
 		var under []string
@@ -174,9 +215,9 @@ func cutoffCondition(f Feed) (string, []any) {
 			}
 		}
 		// The rules of a broad topic: those of any of its subtopics without rules of their own.
-		group(broadExpr+" = ? AND top_path NOT IN ?", []any{b, orNone(under)}, f.RulesFor(b+"/"))
+		group(broadExpr+" = ? AND top_path NOT IN ?", []any{b, orNone(under)}, f.RulesFor(b+"/"), b+"/")
 	}
-	group("top_path NOT IN ? AND "+broadExpr+" NOT IN ?", []any{orNone(subs), orNone(broads)}, TopicRules{Tone: f.Tone, Signals: f.Signals})
+	group("top_path NOT IN ? AND "+broadExpr+" NOT IN ?", []any{orNone(subs), orNone(broads)}, TopicRules{Tone: f.Tone, Signals: f.Signals}, noTopic)
 	sb.WriteString(")")
 	return sb.String(), args
 }

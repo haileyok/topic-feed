@@ -133,6 +133,48 @@ func TestCutoffConditionGroupsPostsByTopic(t *testing.T) {
 	}
 }
 
+func TestTopicMinProb(t *testing.T) {
+	f := Feed{Paths: []string{"sports", "technology/ai", "technology/software_dev", "us_politics/elections"}, MinProb: 0.5,
+		TopicRules: map[string]TopicRules{
+			"technology":            {MinProb: 0.3},
+			"technology/ai":         {MinProb: 0.8},
+			"us_politics/elections": {Tone: Rules{Max: map[string]float32{"outraged": 0.5}}}, // no min_prob of its own
+		}}
+	for path, want := range map[string]float32{"sports": 0.5, "technology/ai": 0.8, "technology/software_dev": 0.3, "us_politics/elections": 0.5} {
+		if got := f.pathMinProb(path); got != want {
+			t.Errorf("%s: %v, want %v", path, got, want)
+		}
+	}
+	sql, args := matchCondition(f)
+	if strings.Count(sql, " OR ") != 2 || strings.Count(sql, "?") != len(args) {
+		t.Errorf("three thresholds, three groups: %s %v", sql, args)
+	}
+	// Without thresholds of their own, the one the feed has always had.
+	f.TopicRules = nil
+	if sql, args := matchCondition(f); sql != "score >= ?" || len(args) != 1 || args[0] != float32(0.5) {
+		t.Errorf("plain: %s %v", sql, args)
+	}
+	bad := Feed{Rkey: "f", DisplayName: "F", Paths: []string{"technology"}, MinProb: 0.5, Ranking: DefaultRanking,
+		TopicRules: map[string]TopicRules{"technology": {MinProb: 1.5}}}
+	if err := (&Config{Feeds: []Feed{bad}}).Validate(map[string]bool{"technology": true}); err == nil {
+		t.Error("a min_prob above 1 accepted")
+	}
+
+	// A personal feed: a topic's own min_prob, never under what the pool holds.
+	cfg := PersonalConfigDefaults()
+	tun := Tuning{TopicRules: map[string]TopicRules{"sports": {MinProb: 0.35}, "sports/baseball": {MinProb: 0.9}, "food": {MinProb: 0.1}}}
+	c := tun.Config(cfg)
+	for path, want := range map[string]float32{"sports/soccer": 0.35, "sports/baseball": 0.9, "food/baking": cfg.PoolMinTopicProb, "technology/ai": cfg.MinTopicProb} {
+		if got := tun.MinTopicProbFor(c, path); got != want {
+			t.Errorf("personal %s: %v, want %v", path, got, want)
+		}
+	}
+	post := func(path string, p float32) Post { return Post{TopPath: path, TopPathP: p} }
+	if tun.Excludes(post("sports/soccer", 0.4), c, now) || !tun.Excludes(post("technology/ai", 0.4), c, now) {
+		t.Error("a soccer post at 0.4 is shown, an AI post at 0.4 isn't")
+	}
+}
+
 func TestTuningTopicRules(t *testing.T) {
 	cfg := PersonalConfigDefaults()
 	tun := Tuning{

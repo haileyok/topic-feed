@@ -863,7 +863,7 @@ func TestPersonalConfig(t *testing.T) {
 	}
 	d := c.Feeds[0].Personal
 	if d.LookbackDays != 30 || d.HalfLifeDays != 7 || d.MinLikes != 5 || d.Topics != 20 || d.WindowHours != 24 ||
-		d.PerTopic != 200 || d.MinTopicProb != 0.5 || d.MaxServes != 2 || d.ListSize != 300 || d.AuthorGap == nil || *d.AuthorGap != 10 {
+		d.PerTopic != 240 || d.MinTopicProb != 0.5 || d.PoolMinTopicProb != 0.3 || d.MaxServes != 2 || d.ListSize != 300 || d.AuthorGap == nil || *d.AuthorGap != 10 {
 		t.Errorf("defaults: %+v", d)
 	}
 	x := c.Feeds[1].Personal

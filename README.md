@@ -189,8 +189,9 @@ without the angry, anti-AI, or spammy posts:
   `outraged`, `supportive`, `other`. Signals: see [the classifier](#the-classifier).
   `topic_rules` give particular topics (a broad topic or a subtopic) their own: each score a topic
   names replaces the feed's rule for that score, for posts whose most likely subtopic is in it; a
-  subtopic's rules win over its broad topic's. The builder and the tuning page at `/me` both have
-  a "Rules for particular topics" section for them.
+  subtopic's rules win over its broad topic's. A topic's `min_prob` replaces the feed's match
+  threshold for it. The builder and the tuning page at `/me` both have a "Rules for particular
+  topics" section for them.
 - **Ranking.** Each post scores
   `(prior + engagement^engagement_power) / (age_hours + 2)^gravity`, where engagement is
   `like·likes + repost·reposts + reply·replies + quote·quotes` and the prior comes from the model's

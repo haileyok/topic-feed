@@ -17,7 +17,7 @@ import (
 // maxPoolPosts bounds the posts kept across all subtopics: their URIs go into IN lists,
 // which maxQuerySize allows up to 50,000 of (about 6 MB of query text with their authors). It is
 // room for the newest and the most engaged posts of every subtopic in the taxonomy: about 120
-// subtopics of up to 200 + 150 posts.
+// subtopics of up to 240 + 150 posts.
 const maxPoolPosts = 50000
 
 // PoolQuery says which posts a personal feed's pool holds, for each subtopic.
@@ -47,7 +47,7 @@ func (c PersonalConfig) PoolQuery(now time.Time, r Ranking) PoolQuery {
 		Since:   now.Add(-time.Duration(c.WindowHours) * time.Hour),
 		Newest:  c.PerTopic,
 		Engaged: c.TopPerTopic,
-		MinProb: c.MinTopicProb,
+		MinProb: c.PoolMinTopicProb,
 		Gravity: min(popularGravity, r.Gravity),
 		Weights: r.Weights,
 	}

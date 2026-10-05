@@ -197,7 +197,7 @@ func TestMeTuningIsTheViewersOwn(t *testing.T) {
 		l.MinWindowHours != MinWindowHours || l.MinEngagementPower != MinEngagementPower {
 		t.Errorf("limits %+v", l)
 	}
-	if l.WindowHours != cfg.WindowHours || l.ListSize != cfg.ListSize || l.MinTopicProb != float64(cfg.MinTopicProb) {
+	if l.WindowHours != cfg.WindowHours || l.ListSize != cfg.ListSize || l.MinTopicProb != round3(cfg.PoolMinTopicProb) {
 		t.Errorf("the limits that are the feed's own: %+v", l)
 	}
 	if !slices.Equal(r.Tones, Tones) || !slices.Equal(r.Signals, Signals) {

@@ -238,6 +238,8 @@ export function buildKnobs(container, ctx) {
       names: { tone: ctx.info().tones || [], signals: ctx.info().signals || [] },
       get: () => ctx.draft().topicRules,
       own: (key, name) => ({ ...(ctx.draft()[key][name] || newDial()) }),
+      // Down to what the feed's pool holds, starting from the viewer's own setting.
+      sure: { min: limits().minTopicProb, own: () => ctx.draft().settings.minTopicProb ?? defaults().minTopicProb, hint: null },
       changed: () => edited(),
       id: "me-rules",
     });
@@ -340,7 +342,7 @@ export function buildKnobs(container, ctx) {
 
     group({
       title: "Rules for particular topics",
-      hint: "Give a topic its own tone or signal setting, e.g. allow critical posts about politics but not about your hobbies. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above.",
+      hint: "Give a topic its own how-sure, tone or signal setting, e.g. allow critical posts about politics but not about your hobbies, or take looser matches for a quiet interest. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above.",
       icon: "🗂️", changes: (d) => topicRulesCount(d.topicRules), open: topicRulesCount(ctx.draft().topicRules) > 0,
       reset: (d) => (d.topicRules = {}),
     }, topicRules()),

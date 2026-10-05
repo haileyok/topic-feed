@@ -1302,6 +1302,24 @@ test("topic rules: a topic gets its own setting for a score, starting from the f
   assert.deepEqual(lastPreview(p), { signals: { max: { critical: 0.3 } } });
 });
 
+test("topic rules: a topic's own how-sure, down to what the pool holds, starting from the viewer's", async () => {
+  const p = await openTuned();
+  assert.equal(knob(p, "minTopicProb").min, "0.3", "the feed-wide setting goes down to the pool's 0.3");
+  slide(p, knob(p, "minTopicProb"), 0.7);
+  pick(p, p.$("me-rules-add-topic"), BAKING);
+  pick(p, ruleCard(p, BAKING).querySelector("select"), "min_prob");
+  const sure = p.$("me-rules-food-baking-min-prob");
+  assert.equal(sure.value, "0.7", "it starts from the viewer's own setting");
+  assert.equal(sure.min, "0.3");
+  slide(p, sure, 0.35);
+  await settled(p);
+  assert.deepEqual(lastPreview(p), { minTopicProb: 0.7, topicRules: { [BAKING]: { min_prob: 0.35 } } });
+  assert.ok(!ruleCard(p, BAKING).querySelector('option[value="min_prob"]'), "only one how-sure per topic");
+  ruleCard(p, BAKING).querySelector('.dial[data-score="min_prob"] .link-btn').click();
+  await settled(p);
+  assert.deepEqual(lastPreview(p), { minTopicProb: 0.7 }, "removed, the topic has nothing of its own");
+});
+
 test("topic rules: saved ones are shown, saved again as they were, and the group puts them all back", async () => {
   const saved = { topicRules: { sports: { signals: { max: { critical: 1 } } }, [AI]: { tone: { max: { outraged: 0.2 }, min: { informative: 0.5 }, weights: { humorous: -1 } } } } };
   const p = await openTuned({ tuning: { status: 200, body: tuningBody({ tuning: saved }) } });

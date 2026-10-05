@@ -94,7 +94,7 @@ test("a max age and how much popularity counts are saved with the feed", () => {
 });
 
 test("rules for particular topics are saved with the feed, and left out when there are none", () => {
-  const rules = { us_politics: { signals: { max: { critical: 1 } } } };
+  const rules = { us_politics: { signals: { max: { critical: 1 } } }, "animals_nature/cats": { min_prob: 0.25 } };
   assert.deepEqual(mine.feedBody(spec({ topic_rules: rules }), { name: "N" }).topic_rules, rules);
   assert.ok(!("topic_rules" in mine.feedBody(spec(), { name: "N" })));
   assert.ok(!("topic_rules" in mine.feedBody(spec({ topic_rules: {} }), { name: "N" })));

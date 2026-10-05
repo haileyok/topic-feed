@@ -51,6 +51,11 @@
 #                   topic_rules:
 #                     us_politics: {signals: {max: {critical: 1}}}           # critical is fine here
 #                     us_politics/elections: {signals: {max: {critical: 0.1}}}  # but not here
+#                     animals_nature/cats: {min_prob: 0.25}                  # looser matches for cats
+#
+#                 A topic's min_prob replaces the feed's for one of its paths (a subtopic path
+#                 takes its broad topic's when it has none); with paths: ["*"] it is what posts
+#                 whose most likely subtopic is in the topic need for that subtopic.
 #
 #   personal      makes the feed a different one for each viewer, built from the posts they
 #                 liked and reposted; paths, min_prob and exclude then don't apply (use
@@ -66,7 +71,7 @@
 #                     min_likes: 5          # classified liked posts needed; fewer: a mix of every topic
 #                     topics: 20            # interests used, strongest first
 #                     window_hours: 24      # only posts at most this old
-#                     per_topic: 200        # newest posts kept per subtopic
+#                     per_topic: 240        # newest posts kept per subtopic
 #                     top_per_topic: 150    # more kept per subtopic: the most engaged for their age,
 #                                           # from the whole window (a busy subtopic's newest 200
 #                                           # are only minutes old; these reach back hours)
@@ -77,6 +82,8 @@
 #                                           # gets shorter instead of filling up with new ones nobody
 #                                           # has reacted to yet (0: no minimum)
 #                     min_topic_prob: 0.5   # a post belongs to its top subtopic at this probability
+#                     pool_min_topic_prob: 0.3  # the pool holds posts down to this, for viewers
+#                                           # who lower min_topic_prob (for their feed or a topic)
 #                     max_serves: 2         # times a post may be sent before it counts as seen
 #                                           # even if Bluesky never reports a view (1: never repeats)
 #                     list_size: 300        # posts in a viewer's feed at a time

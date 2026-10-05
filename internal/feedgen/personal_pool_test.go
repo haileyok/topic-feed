@@ -50,7 +50,8 @@ func TestPoolQueryFollowsTheConfigAndTheRanking(t *testing.T) {
 	at := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 	q := cfg.PoolQuery(at, DefaultRanking)
-	if !q.Since.Equal(at.Add(-24*time.Hour)) || q.Newest != 200 || q.Engaged != 150 || q.MinProb != 0.5 {
+	// The pool holds posts down to pool_min_topic_prob, what a viewer can lower min_topic_prob to.
+	if !q.Since.Equal(at.Add(-24*time.Hour)) || q.Newest != 240 || q.Engaged != 150 || q.MinProb != DefaultPoolMinTopicProb {
 		t.Errorf("defaults: %+v", q)
 	}
 	if q.Weights != DefaultRanking.Weights {
@@ -68,9 +69,9 @@ func TestPoolQueryFollowsTheConfigAndTheRanking(t *testing.T) {
 		t.Errorf("gravity %v for a feed ranked at 0.8", g)
 	}
 
-	cfg.WindowHours, cfg.PerTopic, cfg.TopPerTopic, cfg.MinTopicProb = 6, 40, 25, 0.7
+	cfg.WindowHours, cfg.PerTopic, cfg.TopPerTopic, cfg.MinTopicProb, cfg.PoolMinTopicProb = 6, 40, 25, 0.7, 0.6
 	q = cfg.PoolQuery(at, DefaultRanking)
-	if !q.Since.Equal(at.Add(-6*time.Hour)) || q.Newest != 40 || q.Engaged != 25 || q.MinProb != 0.7 {
+	if !q.Since.Equal(at.Add(-6*time.Hour)) || q.Newest != 40 || q.Engaged != 25 || q.MinProb != 0.6 {
 		t.Errorf("settings: %+v", q)
 	}
 }
@@ -95,7 +96,7 @@ func TestTopPerTopicSetting(t *testing.T) {
 	if p, err := load("{}"); err != nil || p.TopPerTopic != 150 {
 		t.Errorf("default: %+v, %v", p, err)
 	}
-	if p, err := load("{top_per_topic: 40}"); err != nil || p.TopPerTopic != 40 || p.PerTopic != 200 {
+	if p, err := load("{top_per_topic: 40}"); err != nil || p.TopPerTopic != 40 || p.PerTopic != 240 {
 		t.Errorf("set: %+v, %v", p, err)
 	}
 	for _, bad := range []string{"{top_per_topic: 1001}", "{top_per_topic: -1}"} {
@@ -117,7 +118,7 @@ func TestPersonalFeedAsksForItsPoolWithItsOwnSettings(t *testing.T) {
 		t.Fatal("the pool was never read")
 	}
 	q := src.poolQueries[0]
-	if !q.Since.Equal(now.Add(-12*time.Hour)) || q.Newest != 60 || q.Engaged != 45 || q.MinProb != 0.5 {
+	if !q.Since.Equal(now.Add(-12*time.Hour)) || q.Newest != 60 || q.Engaged != 45 || q.MinProb != DefaultPoolMinTopicProb {
 		t.Errorf("%+v", q)
 	}
 	if q.Gravity != popularGravity || q.Weights != DefaultRanking.Weights {

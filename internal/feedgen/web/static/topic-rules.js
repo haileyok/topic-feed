@@ -3,8 +3,9 @@
 // topic: a broad topic, or a subtopic, whose rules win over its broad topic's. (See TopicRules in
 // topic_rules.go.)
 //
-// On the page, a topic's rules are dials: {topicPath: {tone: {name: dial}, signals: {name: dial}}},
-// a dial being a score's cutoffs and boost ({min, max, w}, as in scores.js). Every score with a
+// On the page, a topic's rules are dials: {topicPath: {tone: {name: dial}, signals: {name: dial},
+// minProb}}, a dial being a score's cutoffs and boost ({min, max, w}, as in scores.js), and minProb
+// how sure the model must be of the topic (sent as min_prob; none: the feed's own). Every score with a
 // dial is the topic's, even one that cuts nothing and boosts nothing: that one lifts the feed's
 // own rule for the topic. So what is sent always names it, with a maximum (1 lets every post by).
 
@@ -31,6 +32,7 @@ export function topicRulesPayload(rules) {
       for (const k of Object.keys(r)) if (Object.keys(r[k]).length === 0) delete r[k];
       if (Object.keys(r).length > 0) t[key] = r;
     }
+    if (sets && fine(sets.minProb) && sets.minProb > 0) t.min_prob = sets.minProb;
     if (Object.keys(t).length > 0) out[path] = t;
   }
   return out;
@@ -56,6 +58,7 @@ export function topicRulesFrom(payload) {
         t[key][name] = d;
       }
     }
+    if (num(sets.min_prob) && sets.min_prob > 0) t.minProb = sets.min_prob;
     out[path] = t;
   }
   return out;
@@ -78,6 +81,9 @@ function paint(input, from, to) {
  *   names: {tone: [...], signals: [...]}, the scores;
  *   get(): the dials, an object the editor changes in place;
  *   own(key, name): the feed's own dial for a score, which a topic's starts from;
+ *   sure: {min, own(), hint(path)}, for how sure the model must be of a topic: the least it can be
+ *     set to, the feed's own setting (which a topic's starts from), and a note for a topic, or
+ *     null for none;
  *   changed(): called after every change;
  *   id: what the controls' ids start with.
  * The result has the element (node) and refresh(), which shows get() again after it was replaced.
@@ -139,10 +145,31 @@ export function topicRulesEditor(o) {
         el("label", { text: "Allowed" }), el("div", { class: "dual" }, lo, hi), range));
   }
 
+  // How sure the model must be of the topic, in place of the feed's own setting.
+  function sureRow(path) {
+    const sets = o.get()[path];
+    const id = `${o.id}-${slug(path)}-min-prob`;
+    const input = el("input", { type: "range", id, min: o.sure.min, max: 0.95, step: 0.05, value: sets.minProb, "aria-label": `How sure the model must be of ${label(path).title}` });
+    const out = el("output");
+    const show = () => {
+      out.textContent = `≥ ${Math.round(sets.minProb * 100)}%`;
+      paint(input, 0, ((sets.minProb - o.sure.min) / (0.95 - o.sure.min)) * 100);
+    };
+    input.addEventListener("input", () => { sets.minProb = Number(input.value); show(); o.changed(); });
+    show();
+    const hint = o.sure.hint ? o.sure.hint(path) : null;
+    return el("div", { class: "dial active", "data-topic": path, "data-score": "min_prob" },
+      el("div", { class: "dial-head" }, el("span", { class: "dial-emoji", text: "🎯" }), el("span", { text: "How sure the model is" }),
+        el("button", { class: "link-btn", type: "button", text: "Remove", "aria-label": `Stop ${label(path).title} having its own how-sure setting`,
+          onclick: () => { delete sets.minProb; render(); o.changed(); } })),
+      el("div", { class: "dial-grid" }, el("label", { for: id, text: "At least" }), input, out),
+      hint ? el("p", { class: "section-hint", text: hint }) : null);
+  }
+
   function card(path) {
     const sets = o.get()[path];
     const { title, sub } = label(path);
-    const rows = [];
+    const rows = sets.minProb > 0 ? [sureRow(path)] : [];
     const unused = [];
     for (const [key, kind] of KINDS) {
       for (const name of o.names[key] || []) {
@@ -151,7 +178,8 @@ export function topicRulesEditor(o) {
       }
     }
     const add = el("select", { class: "text-input topic-rules-add", "aria-label": `Add a score with a rule of its own for ${title}` },
-      el("option", { value: "", text: "Add a tone or signal…" }),
+      el("option", { value: "", text: "Add how sure, a tone or a signal…" }),
+      sets.minProb > 0 ? null : el("option", { value: "min_prob", text: "🎯 How sure the model is" }),
       ...KINDS.map(([key, kind]) => {
         const opts = unused.filter((u) => u[0] === key);
         return opts.length ? el("optgroup", { label: kind === "tone" ? "Tone" : "Quality signals" },
@@ -159,6 +187,12 @@ export function topicRulesEditor(o) {
       }));
     add.addEventListener("change", () => {
       if (!add.value) return;
+      if (add.value === "min_prob") {
+        sets.minProb = Math.max(o.sure.min, o.sure.own());
+        render();
+        o.changed();
+        return;
+      }
       const [key, name] = add.value.split(":");
       sets[key][name] = { ...newDial(), ...(o.own(key, name) || {}) };
       render();
@@ -169,8 +203,8 @@ export function topicRulesEditor(o) {
         el("div", {}, el("strong", { text: title }), sub ? el("span", { class: "topic-rule-sub", text: sub }) : null),
         el("button", { class: "link-btn", type: "button", text: "Remove topic", "aria-label": `Remove the rules for ${title}`,
           onclick: () => { delete o.get()[path]; render(); o.changed(); } })),
-      rows.length ? rows : el("p", { class: "section-hint", text: "Add a tone or signal to give this topic its own rule for it." }),
-      unused.length ? add : null);
+      rows.length ? rows : el("p", { class: "section-hint", text: "Add how sure the model must be, a tone or a signal, to give this topic its own setting for it." }),
+      add);
   }
 
   function picker() {
