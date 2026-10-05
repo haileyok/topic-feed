@@ -75,9 +75,9 @@ every feed; the token for the source is always that viewer's own.
    kept on our side.
 
 **Adult content** is what the topic model calls it: `adult_content` and its subtopics (explicit posts &
-promo, horny & thirst posts, kink & fetish, NSFW art, other), left out like any topic, each with how
-sure the model must be. The page has a section for them (`/api/taxonomy?for=filters` lists the adult
-topics, which the builder hides), so a viewer can leave out explicit posts and keep NSFW art. Posts
+promo, horny & thirst posts, kink & fetish, NSFW art, other), in the topic list like any other topic
+(`/api/taxonomy?for=filters` lists the adult topics, which the builder hides), so a viewer can leave
+out explicit posts and keep NSFW art. Posts
 the model never scored (not in English, replies) can't be judged; "leave out posts the model can't
 judge" covers those.
 
@@ -112,7 +112,7 @@ run at once; more are dropped (and counted).
 
 `/filtered`: the sign-in for these feeds (the same form as the other pages, posting to
 `/oauth/connect`), then a card per feed with topics to leave out (each with how sure the model must
-be), a section for the kinds of adult content, tone and signal ranges, per-topic ranges, the switch for
+be, adult topics included), tone and signal ranges, per-topic ranges, the switch for
 unscored posts, and a link to what was left out. The feeds have no filters of their own,
 so a viewer starts with nothing left out; "Clear all filters" saves `null` (with filters set in
 feeds.yaml it reads "Use the feed's own filters"). API: `GET /api/me/filtered`,

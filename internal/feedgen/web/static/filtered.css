@@ -31,8 +31,5 @@
   font-weight: 650; font-size: 14px; color: var(--muted); text-decoration: none;
 }
 .filtered-tab[aria-current="page"] { background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow); }
-.filtered-adult { display: grid; gap: 8px; margin-top: 10px; }
-.filtered-adult-kind .me-check { display: flex; align-items: center; gap: 8px; }
-.filtered-adult-kind .dial-grid { margin-top: 8px; }
 .filtered-why { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .filtered-hidden-post { display: block; }

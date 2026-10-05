@@ -136,43 +136,20 @@ test("a signed-in viewer sees each feed with the feed's own filters, and saves t
   });
 });
 
-test("adult content has a section of its own, by the model's kinds, and isn't among the other topics", async () => {
+test("adult topics are in the topic list like any other", async () => {
   const p = await open({ list: connected([feed({ defaults: { tone: {}, signals: {} } })]) });
   await p.until(() => !p.$("connected").hidden, "the feeds");
   assert.ok(p.calls.some((c) => c.url === "/api/taxonomy?for=filters"), "asks for every topic a filter can leave out");
   const card = p.win.document.querySelector('[data-feed="discover-filter"]');
-  const kinds = [...card.querySelectorAll("[data-adult-kind]")].map((k) => k.dataset.adultKind);
-  assert.deepEqual(kinds, ["adult_content", "adult_content/nsfw_art", "adult_content/explicit_posts"]);
-  const other = [...card.querySelector("#f-discover-filter-add-exclude").querySelectorAll("option")].map((o) => o.value);
-  assert.equal(other.some((v) => v.startsWith("adult_content")), false, "adult topics aren't in the other topics' list");
-
-  // Leave out explicit posts, keep NSFW art; make it stricter about how sure it must be.
-  const explicit = card.querySelector('input[data-adult="adult_content/explicit_posts"]');
-  explicit.checked = true;
-  explicit.dispatchEvent(new p.win.Event("change"));
-  const sure = card.querySelector("#f-discover-filter-adult-adult-content-explicit-posts-p");
-  assert.ok(sure, "a how-sure slider once it's on");
-  sure.value = "0.3";
-  sure.dispatchEvent(new p.win.Event("input"));
-  assert.equal(card.querySelector('[data-adult-kind="adult_content/nsfw_art"] input[type="range"]'), null, "art stays off");
+  const add = card.querySelector("#f-discover-filter-add-exclude");
+  const values = [...add.querySelectorAll("option")].map((o) => o.value);
+  assert.ok(values.includes("adult_content") && values.includes("adult_content/nsfw_art") && values.includes("adult_content/explicit_posts"));
+  add.value = "adult_content/explicit_posts";
+  add.dispatchEvent(new p.win.Event("change"));
+  assert.ok(card.querySelector('.filtered-excludes [data-topic="adult_content/explicit_posts"]'));
   [...card.querySelectorAll("button")].find((b) => b.textContent === "Save").click();
   await p.until(() => p.calls.some((c) => c.method === "PUT"), "the save");
-  assert.deepEqual(p.calls.find((c) => c.method === "PUT").json, { exclude: { "adult_content/explicit_posts": 0.3 }, tone: {}, signals: {} });
-});
-
-test("saved adult filters show as switched on, and switching one off removes it", async () => {
-  const p = await open({ list: connected([feed({ filters: { exclude: { adult_content: 0.6, technology: 0.4 }, tone: {}, signals: {} } })]) });
-  await p.until(() => !p.$("connected").hidden, "the feeds");
-  const card = p.win.document.querySelector('[data-feed="discover-filter"]');
-  const all = card.querySelector('input[data-adult="adult_content"]');
-  assert.equal(all.checked, true);
-  assert.equal(card.querySelector('.filtered-excludes [data-topic="adult_content"]'), null, "not shown twice");
-  assert.ok(card.querySelector('.filtered-excludes [data-topic="technology"]'));
-  all.checked = false;
-  all.dispatchEvent(new p.win.Event("change"));
-  [...card.querySelectorAll("button")].find((b) => b.textContent === "Save").click();
-  await p.until(() => p.calls.some((c) => c.method === "PUT"), "the save");
-  assert.deepEqual(p.calls.find((c) => c.method === "PUT").json.exclude, { technology: 0.4 });
+  assert.deepEqual(p.calls.find((c) => c.method === "PUT").json, { exclude: { "adult_content/explicit_posts": 0.5 }, tone: {}, signals: {} });
 });
 
 test("each feed links to the page of what it left out", async () => {

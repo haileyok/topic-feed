@@ -6,8 +6,8 @@
 //   {exclude: {topic: p}, tone: {max, min}, signals: {max, min}, topic_rules: {...}, drop_unscored}
 // On the page they are a draft: {exclude: {topic: p}, tone: {name: dial}, signals: {name: dial},
 // topicRules: dials (topic-rules.js), dropUnscored}, a dial being {min, max, w} with w always 0: a
-// filtered feed only leaves posts out. Adult content is topics too (the model's adult_content and its
-// subtopics), with a section of its own.
+// filtered feed only leaves posts out. Adult content is topics like any other (the model's
+// adult_content and its subtopics).
 
 import "./header.js"; // the header every page shares
 import { $ } from "./dom.js";
@@ -88,8 +88,6 @@ function feedCard(feed, tax) {
     }
   }
   const topicName = (p) => names.get(p) || p;
-  const adultTopic = tax.topics.find((b) => b.adult === true || b.id === "adult_content");
-  const isAdult = (path) => Boolean(adultTopic) && (path === adultTopic.id || path.startsWith(adultTopic.id + "/"));
 
   const status = el("p", { class: "me-fine filtered-status", role: "status" });
   const save = el("button", { class: "btn btn-primary", type: "button", text: "Save" });
@@ -124,7 +122,7 @@ function feedCard(feed, tax) {
   function renderExcludes() {
     const sel = el("select", { class: "text-input topic-rules-add", id: `${id}-add-exclude`, "aria-label": "Add a topic to leave out" },
       el("option", { value: "", text: "Add a topic to leave out…" }),
-      ...tax.topics.filter((b) => !isAdult(b.id)).sort((a, b) => a.name.localeCompare(b.name)).map((b) =>
+      ...[...tax.topics].sort((a, b) => a.name.localeCompare(b.name)).map((b) =>
         el("optgroup", { label: b.name },
           draft.exclude[b.id] !== undefined ? null : el("option", { value: b.id, text: `All of ${b.name}` }),
           ...(b.subtopics || []).filter((s) => draft.exclude[s.id] === undefined).sort((x, y) => x.name.localeCompare(y.name))
@@ -135,7 +133,7 @@ function feedCard(feed, tax) {
       renderExcludes();
       changed();
     });
-    const paths = Object.keys(draft.exclude).filter((p) => !isAdult(p)).sort((a, b) => topicName(a).localeCompare(topicName(b)));
+    const paths = Object.keys(draft.exclude).sort((a, b) => topicName(a).localeCompare(topicName(b)));
     excludeBox.replaceChildren(...paths.map(excludeRow), sel);
   }
 
@@ -215,46 +213,10 @@ function feedCard(feed, tax) {
     id: `${id}-rules`,
   });
 
-  // Adult content, as the model sees it: all of it, or each kind, with how sure it must be.
-  const adultBox = el("div", { class: "filtered-adult" });
-  function renderAdult() {
-    if (!adultTopic) return;
-    const kinds = [{ path: adultTopic.id, name: `All ${adultTopic.name.toLowerCase()}`, hint: "every kind below" },
-      ...(adultTopic.subtopics || []).map((t) => ({ path: t.id, name: t.name, hint: "" }))];
-    adultBox.replaceChildren(...kinds.map(({ path, name, hint }) => {
-      const slug = path.replace(/[^a-z0-9]+/gi, "-");
-      const on = draft.exclude[path] !== undefined;
-      const box = el("input", { type: "checkbox", id: `${id}-adult-${slug}`, "data-adult": path, checked: on });
-      box.addEventListener("change", () => {
-        if (box.checked) draft.exclude[path] = 0.5;
-        else delete draft.exclude[path];
-        renderAdult();
-        changed();
-      });
-      let sure = null;
-      if (on) {
-        const input = el("input", { type: "range", id: `${id}-adult-${slug}-p`, min: 0.05, max: 0.95, step: 0.05, value: draft.exclude[path],
-          "aria-label": `How sure the model must be that a post is ${name} to leave it out` });
-        const out = el("output");
-        const showIt = () => {
-          out.textContent = `> ${Math.round(draft.exclude[path] * 100)}% sure`;
-          paint(input, ((draft.exclude[path] - 0.05) / 0.9) * 100, 100);
-        };
-        input.addEventListener("input", () => { draft.exclude[path] = Number(input.value); showIt(); changed(); });
-        showIt();
-        sure = el("div", { class: "dial-grid" }, el("label", { for: input.id, text: "Leave out when" }), input, out);
-      }
-      return el("div", { class: on ? "dial active filtered-adult-kind" : "dial filtered-adult-kind", "data-adult-kind": path },
-        el("label", { class: "me-check", for: box.id }, box, el("strong", { text: name }), hint ? el("span", { class: "dial-desc", text: hint }) : null),
-        sure);
-    }));
-  }
-
   const unscored = el("input", { type: "checkbox", id: `${id}-unscored`, checked: draft.dropUnscored });
   unscored.addEventListener("change", () => { draft.dropUnscored = unscored.checked; changed(); });
 
   function renderAll() {
-    renderAdult();
     renderExcludes();
     renderScores();
     rulesEditor.refresh();
@@ -328,12 +290,7 @@ function feedCard(feed, tax) {
           feed.sourceUrl ? el("a", { href: feed.sourceUrl, target: "_blank", rel: "noopener", text: sourceName }) : sourceName,
           feed.description ? ` · ${feed.description}` : "")),
       el("a", { class: "btn", href: feed.url, target: "_blank", rel: "noopener", text: "Open in Bluesky" })),
-    adultTopic ? [
-      el("h3", { class: "filtered-h3", text: "Adult content" }),
-      el("p", { class: "section-hint", text: "What the topic model thinks is adult content, by kind. Leave out the kinds you don't want: keep NSFW art and drop the rest, say." }),
-      adultBox,
-    ] : null,
-    el("h3", { class: "filtered-h3", text: "Leave out other topics" }),
+    el("h3", { class: "filtered-h3", text: "Leave out topics" }),
     el("p", { class: "section-hint", text: "Posts the model thinks are about a topic, when it's more sure than you say." }),
     excludeBox,
     el("h3", { class: "filtered-h3", text: "Leave out by tone or kind of post" }),
