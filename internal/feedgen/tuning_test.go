@@ -355,10 +355,10 @@ func TestRankPoolWithBoostsOnToneAndSignals(t *testing.T) {
 	if got := order(RankPool(pool, r, at)); got != "meaty funny plain" && got != "meaty plain funny" {
 		t.Errorf("no boosts: %s", got)
 	}
-	if got := order(RankPoolWith(pool, r, Rules{Weights: map[string]float64{"humorous": 5}}, Rules{}, at)); got != "funny meaty plain" {
+	if got := order(RankPoolWith(pool, r, Rules{Weights: map[string]float64{"humorous": 5}}, Rules{}, nil, at)); got != "funny meaty plain" {
 		t.Errorf("a boost on funny: %s", got)
 	}
-	if got := order(RankPoolWith(pool, r, Rules{}, Rules{Weights: map[string]float64{"substance": -1.5}}, at)); got != "plain funny meaty" && got != "funny plain meaty" {
+	if got := order(RankPoolWith(pool, r, Rules{}, Rules{Weights: map[string]float64{"substance": -1.5}}, nil, at)); got != "plain funny meaty" && got != "funny plain meaty" {
 		t.Errorf("a boost against substance: %s", got)
 	}
 	if pool["a/x"][0].Score != 0 {

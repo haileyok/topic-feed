@@ -559,6 +559,9 @@ type publishedFeed struct {
 	Tone        Rules              `json:"tone"`
 	Signals     Rules              `json:"signals"`
 	Ranking     Ranking            `json:"ranking"`
+	// TopicRules and MaxAgeMinutes are as in a feed's spec.
+	TopicRules    map[string]TopicRules `json:"topic_rules,omitempty"`
+	MaxAgeMinutes int                   `json:"max_age_minutes,omitempty"`
 }
 
 // handleFeeds answers GET /api/feeds: every served feed with its settings, for the
@@ -574,7 +577,7 @@ func (s *Server) handleFeeds(c echo.Context) error {
 		out = append(out, publishedFeed{Rkey: f.Rkey, DisplayName: f.DisplayName, Description: f.Description,
 			URI: s.FeedURI(f.Rkey), URL: "https://bsky.app/profile/" + s.cfg.OwnerDID.String() + "/feed/" + f.Rkey,
 			Posts: len(posts), Paths: f.Paths, MinProb: f.MinProb, Exclude: f.Exclude, Tone: f.Tone,
-			Signals: f.Signals, Ranking: f.Ranking})
+			Signals: f.Signals, Ranking: f.Ranking, TopicRules: f.TopicRules, MaxAgeMinutes: f.MaxAgeMinutes})
 	}
 	c.Response().Header().Set("Cache-Control", "public, max-age=30")
 	return c.JSON(http.StatusOK, out)

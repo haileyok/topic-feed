@@ -210,19 +210,30 @@ func EvaluateFeed(f Feed, in EvalInput, now time.Time, window time.Duration) Fee
 		v.Checks = append(v.Checks, c)
 	}
 
-	// Cutoffs on tone and signals.
+	// Cutoffs on tone and signals: the feed's own, or its rules for the post's topic.
+	rules := f.RulesFor(in.Post.TopPath)
 	for _, r := range []struct {
-		kind   string
-		rules  Rules
-		scores map[string]float32
-	}{{"Tone", f.Tone, in.Post.Tone}, {"Signal", f.Signals, in.Post.Signals}} {
+		kind, key string
+		rules     Rules
+		scores    map[string]float32
+	}{{"Tone", "tone", rules.Tone, in.Post.Tone}, {"Signal", "signal", rules.Signals, in.Post.Signals}} {
+		// for says which topic's rules a cutoff is, when it isn't the feed's own.
+		forTopic := func(name string) string {
+			if src := ruleSource(f.TopicRules, in.Post.TopPath, r.key, name); src != "" {
+				return fmt.Sprintf(" (the feed's rule for %s)", src)
+			}
+			return ""
+		}
 		for _, name := range slices.Sorted(mapKeys(r.rules.Max)) {
 			limit, got := r.rules.Max[name], r.scores[name]
-			v.Checks = append(v.Checks, Check{Name: fmt.Sprintf("%s: %s at most %s", r.kind, name, num3(limit)), Pass: got <= limit, Detail: numVs(got, limit)})
+			if limit >= 1 {
+				continue // lets every post through: a topic's rule lifting the feed's own cutoff
+			}
+			v.Checks = append(v.Checks, Check{Name: fmt.Sprintf("%s: %s at most %s%s", r.kind, name, num3(limit), forTopic(name)), Pass: got <= limit, Detail: numVs(got, limit)})
 		}
 		for _, name := range slices.Sorted(mapKeys(r.rules.Min)) {
 			limit, got := r.rules.Min[name], r.scores[name]
-			v.Checks = append(v.Checks, Check{Name: fmt.Sprintf("%s: %s at least %s", r.kind, name, num3(limit)), Pass: got >= limit, Detail: numVs(got, limit)})
+			v.Checks = append(v.Checks, Check{Name: fmt.Sprintf("%s: %s at least %s%s", r.kind, name, num3(limit), forTopic(name)), Pass: got >= limit, Detail: numVs(got, limit)})
 		}
 	}
 

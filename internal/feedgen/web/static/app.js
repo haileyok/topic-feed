@@ -3,6 +3,7 @@ import "./header.js"; // the header every page shares
 import { hydrate, renderPost, el, compact, setShowAdult } from "./posts.js";
 import { fetchMe, fetchMine, savePanel } from "./mine.js";
 import { setupSignInForm, showSignInProblem } from "./signin-form.js";
+import { topicRulesEditor, topicRulesPayload, topicRulesFrom, topicRulesCount } from "./topic-rules.js";
 
 const TONES = {
   informative: ["📰", "Informative", "facts, news, how-tos"],
@@ -47,6 +48,7 @@ function blankState() {
     excludeAbove: 0.3,
     tone: Object.fromEntries(Object.keys(TONES).map((k) => [k, dial()])),
     signals: Object.fromEntries(Object.keys(SIGNALS).map((k) => [k, dial()])),
+    topicRules: {},        // path -> {tone: {name: dial}, signals: {name: dial}} (topic-rules.js)
     ranking: structuredClone(DEFAULT_RANKING),
     maxAge: 0,             // minutes; 0: the whole day the feeds reach back
     adult: false,          // owner only: adult topics and posts (needs the adult-access cookie)
@@ -79,12 +81,19 @@ function spec() {
     exclude: Object.fromEntries(exc.map((k) => [k, round(state.excludeAbove)])),
     tone: rules(state.tone),
     signals: rules(state.signals),
+    topic_rules: topicRulesOf(keep),
     ranking: state.ranking,
     max_age_minutes: state.maxAge || undefined,
     allow_adult: state.adult || undefined,
   };
 }
 const round = (x) => Math.round(x * 100) / 100;
+// The rules for particular topics as the server takes them, for the topics keep allows; undefined for none.
+function topicRulesOf(keep) {
+  const all = topicRulesPayload(state.topicRules);
+  const out = Object.fromEntries(Object.entries(all).filter(([k]) => keep(k)));
+  return Object.keys(out).length ? out : undefined;
+}
 
 function fromFeed(f) {
   const s = blankState();
@@ -105,6 +114,7 @@ function fromFeed(f) {
   load(s.signals, f.signals);
   if (f.ranking) s.ranking = structuredClone(f.ranking);
   s.maxAge = f.max_age_minutes || 0;
+  s.topicRules = Object.fromEntries(Object.entries(topicRulesFrom(f.topic_rules)).filter(([k]) => NAMES.has(k)));
   return s;
 }
 
@@ -126,6 +136,8 @@ function loadHash() {
     s.ranking = Object.assign(structuredClone(DEFAULT_RANKING), s.ranking);
     s.ranking.weights = Object.assign(structuredClone(DEFAULT_RANKING.weights), s.ranking.weights);
     for (const k of Object.keys(s.topics)) if (!NAMES.has(k)) delete s.topics[k];
+    // Through what is sent and back: only well-formed dials, for topics that exist.
+    s.topicRules = Object.fromEntries(Object.entries(topicRulesFrom(topicRulesPayload(s.topicRules))).filter(([k]) => NAMES.has(k)));
     return s;
   } catch {
     return null;
@@ -343,6 +355,8 @@ function renderControls() {
       el("p", { class: "section-hint", text: "Scores from 0 to 100% for what a post is like. They don't add up to 100%." }),
       Object.entries(SIGNALS).map(([k, m]) => dialRow(k, m, state.signals[k]))),
 
+    topicRulesSection(),
+
     el("details", { class: "section" },
       el("summary", {}, el("div", { class: "section-title", text: "Ranking" })),
       // Max age: stops at whole steps from half an hour to a day; the last one is "off".
@@ -373,6 +387,32 @@ function renderControls() {
   renderTopics();
   document.getElementById("preview-title").textContent = state.name || "Your feed";
 }
+// Rules for particular topics: in place of Vibe and Quality signals, score by score, for posts
+// about one topic. Folded away until a topic has some.
+function topicRulesSection() {
+  const topics = [];
+  for (const t of TAX.topics) {
+    if (t.adult && !state.adult) continue;
+    for (const s of t.subtopics || []) topics.push({ path: s.id, name: s.name, broad: t.id, broadName: t.name });
+  }
+  const count = el("span", { class: "group-count" });
+  const showCount = () => { const n = topicRulesCount(state.topicRules); count.textContent = String(n); count.hidden = n === 0; };
+  const editor = topicRulesEditor({
+    topics,
+    names: { tone: Object.keys(TONES), signals: Object.keys(SIGNALS) },
+    get: () => state.topicRules,
+    own: (key, name) => ({ ...(state[key][name] || dial()) }),
+    changed: () => { showCount(); changed(); },
+    id: "builder-rules",
+  });
+  showCount();
+  return el("details", { class: "section", open: topicRulesCount(state.topicRules) > 0 },
+    el("summary", {}, el("div", { class: "section-title" }, el("span", { text: "Rules for particular topics" }), count)),
+    el("p", { class: "section-hint", text: "Give a topic its own Vibe or Quality signal setting, e.g. allow critical posts about politics but not about games. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above." }),
+    editor.node,
+    el("button", { class: "btn btn-ghost", text: "Remove all topic rules", onclick: () => { state.topicRules = {}; editor.refresh(); showCount(); changed(); } }));
+}
+
 // The max-age slider's stops, in minutes; the last (a day) is how far back every feed reaches.
 const MAX_AGES = [30, 45, 60, 90, 120, 180, 240, 360, 480, 720, 960, 1440];
 const maxAgeStep = (m) => { const i = MAX_AGES.findIndex((a) => a >= m); return !m || i < 0 ? MAX_AGES.length - 1 : i; };

@@ -46,6 +46,8 @@ type FeedSpec struct {
 	Signals             Rules              `json:"signals"`
 	MaxPosts            int                `json:"max_posts,omitempty"`
 	MaxAgeMinutes       int                `json:"max_age_minutes,omitempty"`
+	// TopicRules are tone and signal rules for particular topics (see TopicRules).
+	TopicRules map[string]TopicRules `json:"topic_rules,omitempty"`
 }
 
 // UnmarshalJSON starts from the defaults a feeds.yaml entry starts from, so a spec only lists
@@ -89,7 +91,7 @@ func SpecOf(f Feed) (FeedSpec, error) {
 	return FeedSpec{
 		DisplayName: f.DisplayName, Description: f.Description, Paths: f.Paths, Exclude: f.Exclude, MinProb: f.MinProb,
 		AllowAdult: f.AllowAdult, Ranking: f.Ranking, AcceptsInteractions: f.AcceptsInteractions, Tone: f.Tone,
-		Signals: f.Signals, MaxPosts: f.MaxPosts, MaxAgeMinutes: f.MaxAgeMinutes,
+		Signals: f.Signals, MaxPosts: f.MaxPosts, MaxAgeMinutes: f.MaxAgeMinutes, TopicRules: f.TopicRules,
 	}, nil
 }
 
@@ -99,7 +101,7 @@ func (s FeedSpec) Feed(owner, rkey string) Feed {
 	return Feed{
 		Owner: owner, Rkey: rkey, DisplayName: s.DisplayName, Description: s.Description, Paths: s.Paths, Exclude: s.Exclude,
 		MinProb: s.MinProb, AllowAdult: s.AllowAdult, Ranking: s.Ranking, AcceptsInteractions: s.AcceptsInteractions,
-		Tone: s.Tone, Signals: s.Signals, MaxPosts: s.MaxPosts, MaxAgeMinutes: s.MaxAgeMinutes,
+		Tone: s.Tone, Signals: s.Signals, MaxPosts: s.MaxPosts, MaxAgeMinutes: s.MaxAgeMinutes, TopicRules: s.TopicRules,
 	}
 }
 

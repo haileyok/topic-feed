@@ -6,6 +6,7 @@
 import { el } from "./posts.js";
 import { describe, rangeText, boostText, dialActive, newDial } from "./scores.js";
 import { dial, gapText, memoryText, windowText, popularityText, RANKING_KEYS } from "./draft.js";
+import { topicRulesEditor, topicRulesCount } from "./topic-rules.js";
 
 const ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0] || "th");
 
@@ -228,6 +229,29 @@ export function buildKnobs(container, ctx) {
       el("p", { class: "knob-hint", text: "On: a post leaves your feed once Bluesky says you saw it, or once it has been sent as many times as \"Repeats\" allows. Off: posts you've seen can come back, so each refresh starts over from the best posts. Posts you liked or reposted, and your own, stay out either way." }));
   }
 
+  // ----- rules for particular topics -----
+
+  function topicRules() {
+    const topics = (ctx.info().topics || []).map((t) => ({ path: t.path, name: t.name, broad: t.path.split("/")[0], broadName: t.broad || t.path.split("/")[0] }));
+    const editor = topicRulesEditor({
+      topics,
+      names: { tone: ctx.info().tones || [], signals: ctx.info().signals || [] },
+      get: () => ctx.draft().topicRules,
+      own: (key, name) => ({ ...(ctx.draft()[key][name] || newDial()) }),
+      changed: () => edited(),
+      id: "me-rules",
+    });
+    // The draft can be replaced (saved, reset, reverted): show the one there is now.
+    let shown = null;
+    syncers.push(() => {
+      if (shown !== ctx.draft().topicRules) {
+        shown = ctx.draft().topicRules;
+        editor.refresh();
+      }
+    });
+    return editor.node;
+  }
+
   const names = (set, kind) => (Array.isArray(set) ? set : []).map((n) => dialRow(kind, kind === "tone" ? "tone" : "signals", n));
 
   // How many of these settings the draft has set to something other than the feed's own.
@@ -313,6 +337,13 @@ export function buildKnobs(container, ctx) {
       icon: "📊", changes: (d) => dialCount(d.signals), open: dialCount(ctx.draft().signals) > 0,
       reset: (d) => (d.signals = {}),
     }, ...names(info.signals, "signal")),
+
+    group({
+      title: "Rules for particular topics",
+      hint: "Give a topic its own tone or signal setting, e.g. allow critical posts about politics but not about your hobbies. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above.",
+      icon: "🗂️", changes: (d) => topicRulesCount(d.topicRules), open: topicRulesCount(ctx.draft().topicRules) > 0,
+      reset: (d) => (d.topicRules = {}),
+    }, topicRules()),
 
     group({
       title: "Ranking", hint: "Each post scores (engagement and a quality prior) divided by its age. These are the numbers.",

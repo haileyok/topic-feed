@@ -11,7 +11,7 @@ import (
 )
 
 // scriptsOfTheInspectPage are the scripts the page at /inspect is made of.
-var scriptsOfTheInspectPage = []string{"inspect.js", "header.js", "signin-form.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js"}
+var scriptsOfTheInspectPage = []string{"inspect.js", "header.js", "signin-form.js", "dom.js", "posts.js", "stats.js", "scores.js", "draft.js", "topic-rules.js"}
 
 func TestInspectPageIsServedWithTheSitesSecurityHeaders(t *testing.T) {
 	s := testServer(t)

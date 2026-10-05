@@ -90,19 +90,9 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		}
 		args = append(args, p, f.Exclude[p])
 	}
-	for _, r := range []struct {
-		col   string
-		rules Rules
-	}{{"tone", f.Tone}, {"signals", f.Signals}} {
-		for _, name := range slices.Sorted(maps.Keys(r.rules.Max)) {
-			where.WriteString(" AND " + r.col + "[?] <= ?")
-			args = append(args, name, r.rules.Max[name])
-		}
-		for _, name := range slices.Sorted(maps.Keys(r.rules.Min)) {
-			where.WriteString(" AND " + r.col + "[?] >= ?")
-			args = append(args, name, r.rules.Min[name])
-		}
-	}
+	cond, cargs := cutoffCondition(f)
+	where.WriteString(cond)
+	args = append(args, cargs...)
 	args = append(args, limit)
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
@@ -116,6 +106,79 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
 	return s.finish(ctx, f, cands)
+}
+
+// cutoffCondition is the feed's tone and signal cutoffs as SQL conditions on post_pipeline, each
+// starting with " AND ", with their arguments. With rules for particular topics (TopicRules),
+// posts are split by their most likely subtopic into one group per such topic and one for the
+// rest, and each group must pass its own cutoffs.
+func cutoffCondition(f Feed) (string, []any) {
+	var sb strings.Builder
+	var args []any
+	cutoffs := func(r TopicRules) {
+		for _, c := range []struct {
+			col   string
+			rules Rules
+		}{{"tone", r.Tone}, {"signals", r.Signals}} {
+			for _, name := range slices.Sorted(maps.Keys(c.rules.Max)) {
+				sb.WriteString(" AND " + c.col + "[?] <= ?")
+				args = append(args, name, c.rules.Max[name])
+			}
+			for _, name := range slices.Sorted(maps.Keys(c.rules.Min)) {
+				sb.WriteString(" AND " + c.col + "[?] >= ?")
+				args = append(args, name, c.rules.Min[name])
+			}
+		}
+	}
+	if len(f.TopicRules) == 0 {
+		cutoffs(TopicRules{Tone: f.Tone, Signals: f.Signals})
+		return sb.String(), args
+	}
+	var subs, broads []string
+	for _, key := range slices.Sorted(maps.Keys(f.TopicRules)) {
+		if isBroad(key) {
+			broads = append(broads, key)
+		} else {
+			subs = append(subs, key)
+		}
+	}
+	// Lists for NOT IN are never empty: noTopic is no topic's path, not even a missing one's.
+	const noTopic = "\x00"
+	orNone := func(l []string) []string {
+		if len(l) == 0 {
+			return []string{noTopic}
+		}
+		return l
+	}
+	const broadExpr = "splitByChar('/', top_path)[1]"
+	sb.WriteString(" AND (")
+	groups := 0
+	group := func(match string, matchArgs []any, rules TopicRules) {
+		if groups > 0 {
+			sb.WriteString(" OR ")
+		}
+		groups++
+		sb.WriteString("(" + match)
+		args = append(args, matchArgs...)
+		cutoffs(rules)
+		sb.WriteString(")")
+	}
+	for _, s := range subs {
+		group("top_path = ?", []any{s}, f.RulesFor(s))
+	}
+	for _, b := range broads {
+		var under []string
+		for _, s := range subs {
+			if broadOf(s) == b {
+				under = append(under, s)
+			}
+		}
+		// The rules of a broad topic: those of any of its subtopics without rules of their own.
+		group(broadExpr+" = ? AND top_path NOT IN ?", []any{b, orNone(under)}, f.RulesFor(b+"/"))
+	}
+	group("top_path NOT IN ? AND "+broadExpr+" NOT IN ?", []any{orNone(subs), orNone(broads)}, TopicRules{Tone: f.Tone, Signals: f.Signals})
+	sb.WriteString(")")
+	return sb.String(), args
 }
 
 // candidateColumns lists the post_pipeline columns a candidate is read from, with scoreExpr

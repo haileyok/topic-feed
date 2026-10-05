@@ -93,7 +93,7 @@ func (pf *personalFeed) poolFor(t Tuning, now time.Time) map[string][]Post {
 	if !t.customRanking() {
 		return pools[freshnessKey(t)]
 	}
-	return RankPoolWith(raw, t.RankingFor(pf.feed.Ranking), t.Tone, t.Signals, now)
+	return RankPoolWith(raw, t.RankingFor(pf.feed.Ranking), t.Tone, t.Signals, t.TopicRules, now)
 }
 
 // freshnessKey is which of a feed's pools a tuning ranks by: "" is the feed's own ranking.

@@ -9,7 +9,7 @@ import (
 )
 
 // scriptsOfTheBuilderPage are the scripts the page at / is made of.
-var scriptsOfTheBuilderPage = []string{"app.js", "header.js", "signin-form.js", "posts.js", "mine.js"}
+var scriptsOfTheBuilderPage = []string{"app.js", "header.js", "signin-form.js", "posts.js", "mine.js", "topic-rules.js", "scores.js"}
 
 func TestEveryScriptOfTheBuilderPageIsServedAndWhatItImportsExists(t *testing.T) {
 	s := testServer(t)

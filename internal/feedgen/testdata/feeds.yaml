@@ -142,6 +142,42 @@ feeds:
     tone:
       min: {humorous: 0.5}
 
+  # Rules for particular topics (not a real feed; for the tests): the feed's own cutoffs, a broad
+  # topic that lifts one and adds its own, and a subtopic of it that wins over the broad topic.
+  - rkey: topic-rules
+    display_name: Topic rules
+    description: Tests of rules for particular topics.
+    paths: [technology, world_news, gaming/video_games]
+    min_prob: 0.5
+    tone:
+      max: {outraged: 0.3}
+      weights: {humorous: 1}
+    signals:
+      max: {critical: 0.5}
+      min: {substance: 0.25}
+    topic_rules:
+      technology:
+        signals: {max: {critical: 1}, min: {news: 0.25}}
+      technology/ai:
+        signals: {max: {critical: 0.75}}
+        tone: {min: {informative: 0.5}, weights: {outraged: -2}}
+      world_news/europe:
+        tone: {max: {outraged: 1}}
+
+  # Rules only for topics, on a feed of every topic.
+  - rkey: any-topic-rules
+    display_name: Any topic rules
+    description: Tests of rules for particular topics on a feed of every topic.
+    paths: ["*"]
+    min_prob: 0.5
+    topic_rules:
+      us_politics:
+        signals: {max: {critical: 0.25}}
+      us_politics/elections:
+        signals: {min: {news: 0.5}}
+      humor:
+        tone: {min: {humorous: 0.9}}
+
   # Built for each viewer from the posts they liked (see `personal` above). Needs FEEDGEN_WELCOME_POST.
   - rkey: for-you
     display_name: For you

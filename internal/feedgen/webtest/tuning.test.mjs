@@ -1248,3 +1248,76 @@ test("the page makes no requests it shouldn't, and sends JSON only where it mean
     "POST /api/me/preview", "PUT /api/me/tuning",
   ]);
 });
+
+// ---------- rules for particular topics ----------
+
+const ruleCard = (p, path) => doc(p).querySelector(`.topic-rule[data-topic="${path}"]`);
+const ruleInput = (p, path, key, name, which) => p.$(`me-rules-${path.replace(/[^a-z0-9]+/gi, "-")}-${key}-${name}-${which}`);
+
+test("topic rules: a topic gets its own setting for a score, starting from the feed-wide one, and only that is sent", async () => {
+  const p = await openTuned();
+  const group = groupOf(p, "Rules for particular topics");
+  assert.ok(group, "a group for them");
+  assert.equal(group.open, false, "folded away until a topic has some");
+  slide(p, dialInput(p, "signals", "critical", "max"), 0.3); // critical posts left out everywhere
+  await settled(p);
+
+  // Every broad topic and every subtopic that can be added can have rules.
+  const add = p.$("me-rules-add-topic");
+  const options = [...add.querySelectorAll("option")].map((o) => o.value).filter(Boolean);
+  assert.ok(options.includes("sports") && options.includes(BASEBALL) && options.includes(AI), options.join());
+  pick(p, add, "sports");
+  assert.ok(ruleCard(p, "sports"), "a card for the whole broad topic");
+  assert.match(ruleCard(p, "sports").textContent, /All of Sports/);
+  assert.ok(!p.$("me-rules-add-topic").querySelector('option[value="sports"]'), "it can't be added twice");
+  await settled(p);
+  assert.deepEqual(lastPreview(p), { signals: { max: { critical: 0.3 } } }, "a topic with no score of its own changes nothing");
+
+  pick(p, ruleCard(p, "sports").querySelector("select"), "signals:critical");
+  assert.equal(ruleInput(p, "sports", "signals", "critical", "max").value, "0.3", "it starts as the feed-wide setting");
+  slide(p, ruleInput(p, "sports", "signals", "critical", "max"), 1);
+  await settled(p);
+  assert.deepEqual(lastPreview(p), { signals: { max: { critical: 0.3 } }, topicRules: { sports: { signals: { max: { critical: 1 } } } } },
+    "critical sports posts are let in");
+  assert.equal(barState(p), "dirty");
+  assert.equal(groupOf(p, "Rules for particular topics").querySelector(".knob-changed").textContent, "1 changed");
+
+  // A subtopic of it, with a boost of its own.
+  pick(p, p.$("me-rules-add-topic"), BASEBALL);
+  pick(p, ruleCard(p, BASEBALL).querySelector("select"), "tone:humorous");
+  slide(p, ruleInput(p, BASEBALL, "tone", "humorous", "boost"), 2);
+  await settled(p);
+  assert.deepEqual(lastPreview(p).topicRules, {
+    sports: { signals: { max: { critical: 1 } } },
+    [BASEBALL]: { tone: { max: { humorous: 1 }, weights: { humorous: 2 } } },
+  });
+
+  // Taking a score away, then the topic.
+  ruleCard(p, BASEBALL).querySelector('.dial[data-score="humorous"] .link-btn').click();
+  await settled(p);
+  assert.deepEqual(lastPreview(p).topicRules, { sports: { signals: { max: { critical: 1 } } } });
+  [...ruleCard(p, "sports").querySelectorAll(".topic-rule-head .link-btn")][0].click();
+  assert.equal(ruleCard(p, "sports"), null);
+  await settled(p);
+  assert.deepEqual(lastPreview(p), { signals: { max: { critical: 0.3 } } });
+});
+
+test("topic rules: saved ones are shown, saved again as they were, and the group puts them all back", async () => {
+  const saved = { topicRules: { sports: { signals: { max: { critical: 1 } } }, [AI]: { tone: { max: { outraged: 0.2 }, min: { informative: 0.5 }, weights: { humorous: -1 } } } } };
+  const p = await openTuned({ tuning: { status: 200, body: tuningBody({ tuning: saved }) } });
+  // Previewed as saved. Every score a topic sets is sent with a maximum, which says the score is the
+  // topic's: a maximum of 1 cuts nothing, so this is the same as what was saved.
+  assert.deepEqual(lastPreview(p), { topicRules: { sports: { signals: { max: { critical: 1 } } },
+    [AI]: { tone: { max: { outraged: 0.2, informative: 1, humorous: 1 }, min: { informative: 0.5 }, weights: { humorous: -1 } } } } });
+  assert.equal(barState(p), "hidden", "and nothing is changed by showing them");
+  assert.equal(groupOf(p, "Rules for particular topics").open, true, "open when there are some");
+  assert.equal(ruleInput(p, AI, "tone", "outraged", "max").value, "0.2");
+  assert.equal(ruleInput(p, AI, "tone", "informative", "min").value, "0.5");
+  assert.equal(ruleInput(p, AI, "tone", "humorous", "boost").value, "-1");
+  assert.equal(ruleInput(p, "sports", "signals", "critical", "max").value, "1");
+  groupOf(p, "Rules for particular topics").querySelector(".knob-head .link-btn").click();
+  assert.equal(doc(p).querySelectorAll(".topic-rule").length, 0, "reset takes every topic's rules away");
+  await settled(p);
+  assert.deepEqual(lastPreview(p), {});
+  assert.equal(barState(p), "dirty");
+});

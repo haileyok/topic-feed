@@ -102,6 +102,14 @@ type Tuning struct {
 	// configuration (see Rules): Max and Min leave posts out, Weights lift or sink them.
 	Tone    Rules `json:"tone,omitzero"`
 	Signals Rules `json:"signals,omitzero"`
+	// TopicRules replace Tone and Signals, score by score, for posts about particular broad topics
+	// or subtopics (see TopicRules).
+	TopicRules map[string]TopicRules `json:"topicRules,omitempty"`
+}
+
+// rulesFor is the viewer's tone and signal rules for a post whose most likely subtopic is topPath.
+func (t Tuning) rulesFor(topPath string) TopicRules {
+	return rulesFor(TopicRules{Tone: t.Tone, Signals: t.Signals}, t.TopicRules, topPath)
 }
 
 // RankingTuning changes the numbers a feed ranks with (see Ranking). A nil field is the feed's.
@@ -181,6 +189,15 @@ func (t Tuning) Validate(topics map[string]bool) error {
 		if !strings.Contains(path, "/") || !topics[path] {
 			return fmt.Errorf("%q is not a subtopic", path)
 		}
+	}
+	// Rules can be for a subtopic or for a whole broad topic.
+	known := map[string]bool{}
+	for path := range topics {
+		known[path] = true
+		known[broadOf(path)] = true
+	}
+	if err := validateTopicRules(t.TopicRules, known, checkRules); err != nil {
+		return err
 	}
 	return t.check()
 }
@@ -271,7 +288,10 @@ func (t Tuning) check() error {
 	if err := checkRules("tone", t.Tone, Tones); err != nil {
 		return err
 	}
-	return checkRules("signal", t.Signals, Signals)
+	if err := checkRules("signal", t.Signals, Signals); err != nil {
+		return err
+	}
+	return validateTopicRules(t.TopicRules, nil, checkRules)
 }
 
 // IsZero reports whether the tuning changes nothing.
@@ -279,7 +299,7 @@ func (t Tuning) IsZero() bool {
 	return len(t.Topics) == 0 && (t.Freshness == "" || t.Freshness == FreshnessBalanced) && t.AuthorGap == nil && t.MinEngagement == nil &&
 		t.HalfLifeDays == 0 && t.LookbackDays == 0 && t.MinLikes == 0 && t.Interests == 0 && t.WindowHours == 0 &&
 		t.MinTopicProb == 0 && t.MaxServes == 0 && t.ListSize == 0 && t.Ranking.isZero() && !t.HidePromo && !t.ShowSeen &&
-		t.Tone.IsZero() && t.Signals.IsZero()
+		t.Tone.IsZero() && t.Signals.IsZero() && len(t.TopicRules) == 0
 }
 
 // IsZero reports whether the rules say nothing.
@@ -374,7 +394,27 @@ func (t Tuning) customRanking() bool {
 		}
 		return false
 	}
-	return !t.Ranking.isZero() || nonZero(t.Tone.Weights) || nonZero(t.Signals.Weights)
+	if !t.Ranking.isZero() || nonZero(t.Tone.Weights) || nonZero(t.Signals.Weights) {
+		return true
+	}
+	// Rules for a topic change the ranking when they boost a score, or take away a boost the
+	// viewer's own rules give it.
+	for _, o := range t.TopicRules {
+		if len(o.Tone.Weights) > 0 || len(o.Signals.Weights) > 0 {
+			return true
+		}
+		for name := range o.Tone.names() {
+			if t.Tone.Weights[name] != 0 {
+				return true
+			}
+		}
+		for name := range o.Signals.names() {
+			if t.Signals.Weights[name] != 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Config is the personal feed's configuration with the viewer's settings applied.
@@ -445,7 +485,8 @@ func (t Tuning) Hides(p Post) bool {
 			return true
 		}
 	}
-	return !t.Tone.Allows(p.Tone) || !t.Signals.Allows(p.Signals)
+	r := t.rulesFor(p.TopPath)
+	return !r.Tone.Allows(p.Tone) || !r.Signals.Allows(p.Signals)
 }
 
 // belowMinEngagement reports whether a post has been reacted to less than cfg asks (its likes,

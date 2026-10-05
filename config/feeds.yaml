@@ -40,6 +40,18 @@
 #                                               # nudge: weight * probability is added
 #                                               # to the ranking prior; nothing removed
 #
+#   signals       optional; the same, on the model's signal scores (substance, critical, ...)
+#   topic_rules   optional; tone and signals for posts about particular topics, keyed by broad
+#                 topic or subtopic. A post counts as about its most likely subtopic. Each
+#                 score a topic names replaces the feed's own rule for that score (a subtopic's
+#                 win over its broad topic's); scores it doesn't name keep the feed's. A max of
+#                 1 lets every post through, so it lifts the feed's own cutoff:
+#
+#                   signals: {max: {critical: 0.3}}
+#                   topic_rules:
+#                     us_politics: {signals: {max: {critical: 1}}}           # critical is fine here
+#                     us_politics/elections: {signals: {max: {critical: 0.1}}}  # but not here
+#
 #   personal      makes the feed a different one for each viewer, built from the posts they
 #                 liked and reposted; paths, min_prob and exclude then don't apply (use
 #                 `personal: {}` for the defaults). A viewer's interests are the subtopics of

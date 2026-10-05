@@ -93,6 +93,13 @@ test("a max age and how much popularity counts are saved with the feed", () => {
   assert.ok(!("max_age_minutes" in mine.feedBody(spec(), { name: "N" })), "no max age: the whole day, left out");
 });
 
+test("rules for particular topics are saved with the feed, and left out when there are none", () => {
+  const rules = { us_politics: { signals: { max: { critical: 1 } } } };
+  assert.deepEqual(mine.feedBody(spec({ topic_rules: rules }), { name: "N" }).topic_rules, rules);
+  assert.ok(!("topic_rules" in mine.feedBody(spec(), { name: "N" })));
+  assert.ok(!("topic_rules" in mine.feedBody(spec({ topic_rules: {} }), { name: "N" })));
+});
+
 test("names and descriptions are cut to what Bluesky allows", () => {
   const body = mine.feedBody(spec(), { name: "🐱".repeat(40), description: "d".repeat(400) });
   assert.equal(Array.from(body.display_name).length, 24);

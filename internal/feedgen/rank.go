@@ -11,7 +11,7 @@ import (
 type ScoreParts struct {
 	// Prior is what a post is worth before anyone has reacted: 1, plus the model's substance and
 	// general-interest scores, less the feed's penalty for promotional posts, plus the feed's tone
-	// and signal nudges; never under 0.1.
+	// and signal nudges (its rules for the post's topic, see TopicRules); never under 0.1.
 	Prior float64 `json:"prior"`
 	// Engagement is its likes, reposts, replies and quotes, each at the feed's weight, raised to
 	// the feed's engagement power.
@@ -26,8 +26,9 @@ type ScoreParts struct {
 func ScoreBreakdown(p Post, f Feed, now time.Time) ScoreParts {
 	r := f.Ranking
 	s := p.Signals
+	rules := f.RulesFor(p.TopPath)
 	prior := max(0.1, 1+float64(s["substance"])+float64(s["general_interest"])-r.PromoPenalty*float64(s["promo"])+
-		f.Tone.Nudge(p.Tone)+f.Signals.Nudge(s))
+		rules.Tone.Nudge(p.Tone)+rules.Signals.Nudge(s))
 	eng := p.Engagement(r.Weights)
 	if pw := r.power(); pw != 1 {
 		eng = math.Pow(eng, pw)

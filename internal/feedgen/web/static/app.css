@@ -308,6 +308,19 @@ input[type="range"].neg::-moz-range-thumb { border-color: var(--danger); }
 .dial-grid output { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-2); text-align: right; font-weight: 600; }
 .dial.active { background: var(--accent-soft); }
 
+/* ---------- rules for particular topics (topic-rules.js) ---------- */
+
+.topic-rules { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 10px; }
+.topic-rule { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 10px 4px; }
+.topic-rule-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.topic-rule-head strong { display: block; font-size: 14px; }
+.topic-rule-head .link-btn { white-space: nowrap; }
+.topic-rule-sub { display: block; font-size: 12px; color: var(--text-3); }
+.topic-rule .dial-head .link-btn { margin-left: auto; font-size: 12px; }
+.topic-rule .dial-desc { display: none; }
+.topic-rule .section-hint { margin: 0 0 8px; }
+.topic-rules-add { width: 100%; margin-bottom: 8px; font-size: 13px; }
+
 /* ---------- actions ---------- */
 
 .name-row { display: grid; grid-template-columns: 1fr; gap: 8px; }

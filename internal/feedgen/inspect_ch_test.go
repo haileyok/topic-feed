@@ -158,7 +158,17 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 		for _, v := range f.Exclude {
 			thresholds = append(thresholds, v)
 		}
-		for _, r := range []Rules{f.Tone, f.Signals} {
+		rules := []Rules{f.Tone, f.Signals}
+		for p, o := range f.TopicRules {
+			rules = append(rules, o.Tone, o.Signals)
+			// Posts about the topics with rules of their own, too.
+			if isBroad(p) {
+				feedPaths = append(feedPaths, subsOfBroad[p]...)
+			} else {
+				feedPaths = append(feedPaths, p)
+			}
+		}
+		for _, r := range rules {
 			for _, m := range []map[string]float32{r.Max, r.Min} {
 				for _, v := range m {
 					thresholds = append(thresholds, v)

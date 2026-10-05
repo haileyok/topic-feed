@@ -240,13 +240,14 @@ func Assemble(prof Profile, pool map[string][]Post, skip func(Post) bool, size, 
 // left to Assemble, which keeps authors apart across the whole feed rather than within one
 // subtopic.
 func RankPool(pool map[string][]Post, r Ranking, now time.Time) map[string][]Post {
-	return RankPoolWith(pool, r, Rules{}, Rules{}, now)
+	return RankPoolWith(pool, r, Rules{}, Rules{}, nil, now)
 }
 
-// RankPoolWith is RankPool with boosts on the model's tone and signal scores (see Rules.Nudge).
-func RankPoolWith(pool map[string][]Post, r Ranking, tone, signals Rules, now time.Time) map[string][]Post {
+// RankPoolWith is RankPool with boosts on the model's tone and signal scores (see Rules.Nudge),
+// and in place of them, score by score, the boosts of topics' own rules (see TopicRules).
+func RankPoolWith(pool map[string][]Post, r Ranking, tone, signals Rules, topics map[string]TopicRules, now time.Time) map[string][]Post {
 	r.AuthorGap = 0
-	f := Feed{Ranking: r, Tone: tone, Signals: signals}
+	f := Feed{Ranking: r, Tone: tone, Signals: signals, TopicRules: topics}
 	out := make(map[string][]Post, len(pool))
 	for path, ps := range pool {
 		out[path] = Rank(slices.Clone(ps), f, now)

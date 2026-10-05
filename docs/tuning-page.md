@@ -107,6 +107,7 @@ zero where zero isn't a value (a count), is the feed's own.
 | `ranking` | The numbers the feed ranks with, each optional (0 is a value): `gravity` (0-10), `freshEvery` (0-50), `promoPenalty` (0-10), the weights of a `like`, `repost`, `reply` and `quote` (0-20), and `engagementPower` (0.2-1: how much popularity counts; engagement is raised to it, so below 1 a post with thousands of likes can't stay on top for hours). They apply after `freshness`. |
 | `hidePromo` | Leaves out posts the model scores as ads, engagement bait, spam, or self-promotion. |
 | `tone`, `signals` | Cutoffs and boosts on every score the model gives, as in a feed's own configuration (`Rules`): `max` and `min` (0-1, and a minimum can't be above its maximum) leave posts out, `weights` (-10 to 10) lift or sink them. |
+| `topicRules` | `tone` and `signals` for particular topics, keyed by subtopic or broad topic (the broad topics of the subtopics that can be added; at most 50). For posts whose most likely subtopic is in a topic, each score it names replaces the viewer's own rule for that score, and a subtopic's win over its broad topic's (`TopicRules`). The page always sends a `max` for each score a topic names, 1 when it cuts nothing, so a topic can lift a cutoff. Boosts in them rank the viewer's own way, as `ranking` does. |
 
 ## How the feed applies a tuning (built, steps 1-2)
 

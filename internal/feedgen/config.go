@@ -50,6 +50,9 @@ type Feed struct {
 	// signal scores (see Rules).
 	Tone    Rules `yaml:"tone"`
 	Signals Rules `yaml:"signals"`
+	// TopicRules replace Tone and Signals, score by score, for posts about particular topics
+	// (see TopicRules), e.g. {us_politics: {signals: {max: {critical: 1}}}}.
+	TopicRules map[string]TopicRules `yaml:"topic_rules"`
 	// MaxPosts caps the feed's candidates, newest first (0: FEEDGEN_MAX_POSTS). Busy
 	// topics need more to reach back as far as quiet ones.
 	MaxPosts int `yaml:"max_posts"`
@@ -452,6 +455,9 @@ func (f Feed) validate(paths map[string]bool) error {
 		return fmt.Errorf("feed %q: %w", f.Rkey, err)
 	}
 	if err := f.Signals.validate("signal", Signals); err != nil {
+		return fmt.Errorf("feed %q: %w", f.Rkey, err)
+	}
+	if err := validateTopicRules(f.TopicRules, paths, func(kind string, r Rules, names []string) error { return r.validate(kind, names) }); err != nil {
 		return fmt.Errorf("feed %q: %w", f.Rkey, err)
 	}
 	if r.FreshEvery == 1 {

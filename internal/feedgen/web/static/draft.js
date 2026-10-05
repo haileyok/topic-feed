@@ -6,6 +6,7 @@
 // for the numbers of the ranking) wherever that goes.
 
 import { newDial, dialActive } from "./scores.js";
+import { topicRulesPayload, topicRulesFrom } from "./topic-rules.js";
 
 // ---------- an interest's slider ----------
 
@@ -39,7 +40,7 @@ const num = (v) => typeof v === "number" && Number.isFinite(v);
 
 /** emptyDraft is a tuning that changes nothing. */
 export function emptyDraft() {
-  return { topics: {}, freshness: "balanced", hidePromo: false, showSeen: false, settings: {}, ranking: {}, tone: {}, signals: {} };
+  return { topics: {}, freshness: "balanced", hidePromo: false, showSeen: false, settings: {}, ranking: {}, tone: {}, signals: {}, topicRules: {} };
 }
 
 function dialsFrom(rules) {
@@ -71,6 +72,7 @@ export function draftFrom(t) {
   for (const k of RANKING_KEYS) if (num(r[k])) d.ranking[k] = r[k];
   d.tone = dialsFrom(t.tone);
   d.signals = dialsFrom(t.signals);
+  d.topicRules = topicRulesFrom(t.topicRules);
   return d;
 }
 
@@ -123,6 +125,8 @@ export function payloadOf(draft, defaults, natural) {
   if (Object.keys(tone).length > 0) t.tone = tone;
   const signals = rulesOf(draft.signals);
   if (Object.keys(signals).length > 0) t.signals = signals;
+  const topicRules = topicRulesPayload(draft.topicRules);
+  if (Object.keys(topicRules).length > 0) t.topicRules = topicRules;
   return t;
 }
 
