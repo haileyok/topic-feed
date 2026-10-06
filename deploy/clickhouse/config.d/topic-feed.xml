@@ -1,6 +1,19 @@
 <clickhouse>
-    <!-- The machine also trains on the GPU and serves the classifier; cap ClickHouse at 64GB of the 256GB. -->
-    <max_server_memory_usage>68719476736</max_server_memory_usage>
+    <!-- The machine also trains on the GPU and serves the classifier. The Framework Desktop's 128GB
+         is shared with the GPU (32GB reserved for it in the BIOS), leaving about 91GB for the
+         system; cap ClickHouse at 32GB of that. -->
+    <max_server_memory_usage>34359738368</max_server_memory_usage>
+
+    <!-- ClickHouse's own log tables have no expiry by default. query_log alone grew ~23GB a day
+         (186GB after 8 days on the previous machine), which would fill the 931GB disk in about a
+         month. These settings merge into the defaults; only the expiry is added. -->
+    <query_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></query_log>
+    <processors_profile_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></processors_profile_log>
+    <trace_log><ttl>event_date + INTERVAL 3 DAY DELETE</ttl></trace_log>
+    <part_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></part_log>
+    <metric_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></metric_log>
+    <asynchronous_metric_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></asynchronous_metric_log>
+    <query_views_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></query_views_log>
 
     <logger>
         <level>information</level>
