@@ -74,6 +74,22 @@ var (
 		Buckets: []float64{.05, .1, .25, .5, 1, 2, 4},
 	}, []string{"feed"})
 
+	metricScoreCache = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "feedgen_score_cache_lookups_total",
+		Help: "Posts from filtered feeds' sources looked up in the score cache, by result (hit, miss: asked ClickHouse).",
+	}, []string{"result"})
+
+	metricScoreCacheEntries = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "feedgen_score_cache_entries",
+		Help: "Posts in the filtered feeds' score cache.",
+	})
+
+	metricScoreLookupSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "feedgen_score_lookup_seconds",
+		Help:    "Time to read posts' scores from ClickHouse for filtered feeds, by the days read (since_posts: only since the posts were made; all).",
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5},
+	}, []string{"days"})
+
 	metricForwardedInteractions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "feedgen_forwarded_interactions_total",
 		Help: "Interactions sent on to filtered feeds' sources, by filtered feed and outcome (ok, signin, error, dropped).",

@@ -86,7 +86,7 @@ func newFiltered(ctx context.Context, s *settings, store *feedgen.Store, feeds *
 		tokens = connector
 		log.Info("filtered feeds: sign-in on", "audiences", audiences)
 	}
-	ff := feedgen.NewFilteredFeeds(sources, store, tokens, log)
+	ff := feedgen.NewFilteredFeeds(sources, feedgen.NewScoreCache(store), tokens, log)
 	ff.SignInPost = signInPost
 	ff.LeftOut = leftOut
 	return ff, connector, nil

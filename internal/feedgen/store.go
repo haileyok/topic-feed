@@ -25,9 +25,10 @@ const maxQuerySize = 16 << 20
 // right because every version of a post_pipeline row has the same indexed_at (the pipeline, the
 // rescore and the picture retry copy it from the post), so a post's versions share a partition.
 // The exception is a post indexed again on another day (about 0.003% of posts, after a
-// re-index): both rows can come back, and Rank and mergeCandidates keep one of them by URI. Do
-// not use it for lookups by URI: the primary key already narrows those, and such a post would
-// count twice.
+// re-index): both rows can come back, and Rank and mergeCandidates keep one of them by URI. A
+// lookup by URI gains from it only with a time limit as well (ScorePosts): the primary key narrows
+// a single URI, but a batch of URIs spread over the key range touches nearly every granule of
+// every day. Such a lookup must keep one row per URI itself.
 const perPartitionFinal = ` SETTINGS do_not_merge_across_partitions_select_final = 1`
 
 // Store builds feeds from ClickHouse.

@@ -65,6 +65,56 @@ func stripSQLComments(s string) string {
 	return strings.Join(out, "\n")
 }
 
+// TestScorePostsClickHouse checks ScorePosts against post_pipeline: recent posts are found while only
+// the days since they were made are read, a post indexed again on another day gives its newest
+// scores, a post the pipeline dropped counts as unscored, and a batch with a record key that isn't a
+// TID reads every day.
+func TestScorePostsClickHouse(t *testing.T) {
+	s := scratchFilteredStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	recent, yesterday, reindexed, dropped := postAt(now.Add(-2*time.Hour)), postAt(now.Add(-30*time.Hour)),
+		postAt(now.Add(-72*time.Hour)), postAt(now.Add(-time.Hour))
+	insert := func(uri string, indexed, processed time.Time, model, top string) {
+		t.Helper()
+		if err := s.Conn.Exec(ctx, `INSERT INTO post_pipeline (uri, did, indexed_at, processed_at, feed_policy, model, path_probs, top_path)
+			VALUES (?, 'did:plc:abc', ?, ?, 'ok', ?, map(?, 0.9), ?)`, uri, indexed, processed, model, top, top); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert(recent, now.Add(-2*time.Hour), now.Add(-2*time.Hour), "v5", "art/photography")
+	insert(yesterday, now.Add(-30*time.Hour), now.Add(-30*time.Hour), "v5", "gaming/video_games")
+	insert(reindexed, now.Add(-72*time.Hour), now.Add(-72*time.Hour), "v4", "sports/baseball")
+	insert(reindexed, now.Add(-time.Hour), now.Add(-time.Hour), "v5", "sports/american_football")
+	insert(dropped, now.Add(-time.Hour), now.Add(-time.Hour), "", "")
+
+	check := func(name string, uris []string) {
+		t.Helper()
+		got, err := s.ScorePosts(ctx, uris)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := map[string]string{recent: "art/photography", yesterday: "gaming/video_games", reindexed: "sports/american_football"}
+		for uri, top := range want {
+			if p := got[uri]; !p.Scored || p.TopPath != top {
+				t.Errorf("%s: %s got %+v, want top path %s", name, uri, p, top)
+			}
+		}
+		if _, ok := got[dropped]; ok {
+			t.Errorf("%s: the dropped post came back as scored", name)
+		}
+		if len(got) != len(want) {
+			t.Errorf("%s: %d posts, want %d", name, len(got), len(want))
+		}
+	}
+	uris := []string{recent, yesterday, reindexed, dropped}
+	if _, ok := indexedSince(uris, now); !ok {
+		t.Fatal("these posts should be read by date")
+	}
+	check("by date", uris)
+	check("every day", append(uris, "at://did:plc:abc/app.bsky.feed.post/self"))
+}
+
 func TestLeftOutPostsClickHouse(t *testing.T) {
 	s := scratchFilteredStore(t)
 	ctx := context.Background()

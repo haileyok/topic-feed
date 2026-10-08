@@ -33,22 +33,42 @@ func (s *Store) ScorePosts(ctx context.Context, uris []string) (map[string]Score
 		return out, nil
 	}
 	var rows []struct {
-		URI        string             `ch:"uri"`
-		PathProbs  map[string]float32 `ch:"path_probs"`
-		BroadProbs map[string]float32 `ch:"broad_probs"`
-		Tone       map[string]float32 `ch:"tone"`
-		Signals    map[string]float32 `ch:"signals"`
-		TopPath    string             `ch:"top_path"`
+		URI         string             `ch:"uri"`
+		PathProbs   map[string]float32 `ch:"path_probs"`
+		BroadProbs  map[string]float32 `ch:"broad_probs"`
+		Tone        map[string]float32 `ch:"tone"`
+		Signals     map[string]float32 `ch:"signals"`
+		TopPath     string             `ch:"top_path"`
+		ProcessedAt time.Time          `ch:"processed_at"`
 	}
-	// The table is ordered by uri, so this reads only the parts' granules that hold these posts.
-	// Posts the pipeline dropped have no model and count as never scored.
-	if err := s.Conn.Select(ctx, &rows, `
-		SELECT uri, path_probs, broad_probs, tone, signals, top_path
+	// Posts the pipeline dropped have no model and count as never scored. The table is ordered by
+	// uri, but a page's posts are spread over the whole key range, so the lookup touches nearly every
+	// granule of each day it reads. Source feeds' posts are recent, so most days can be skipped: read
+	// only the days since the posts were made (indexedSince), merging each day on its own, which is
+	// what lets ClickHouse skip the others. A post indexed again on another day can then come back
+	// once per day; the newest processing wins, as FINAL would have it.
+	query := `
+		SELECT uri, path_probs, broad_probs, tone, signals, top_path, processed_at
 		FROM post_pipeline FINAL
-		WHERE uri IN ? AND model != ''`, uris); err != nil {
+		WHERE uri IN ? AND model != ''`
+	args := []any{uris}
+	days := "all"
+	if since, ok := indexedSince(uris, time.Now()); ok {
+		query += ` AND indexed_at >= ?` + perPartitionFinal
+		args = append(args, since)
+		days = "since_posts"
+	}
+	start := time.Now()
+	if err := s.Conn.Select(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("select scores: %w", err)
 	}
+	metricScoreLookupSeconds.WithLabelValues(days).Observe(time.Since(start).Seconds())
+	newest := make(map[string]time.Time, len(rows))
 	for _, r := range rows {
+		if at, ok := newest[r.URI]; ok && !r.ProcessedAt.After(at) {
+			continue
+		}
+		newest[r.URI] = r.ProcessedAt
 		out[r.URI] = ScoredPost{URI: r.URI, Scored: true, PathProbs: r.PathProbs, BroadProbs: r.BroadProbs,
 			Tone: r.Tone, Signals: r.Signals, TopPath: r.TopPath}
 	}
