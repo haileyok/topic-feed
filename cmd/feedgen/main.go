@@ -175,7 +175,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		}
 	}()
 
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("feedgen"))
 	if err != nil {
 		return err
 	}

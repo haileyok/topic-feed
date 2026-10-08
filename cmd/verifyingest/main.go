@@ -81,7 +81,7 @@ func run() error {
 	fmt.Printf("archive: %d post creates in seqs (%d, %d], event time %s .. %s\n",
 		len(uris), *after, *before, minT.Format(time.RFC3339), maxT.Format(time.RFC3339))
 
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("verifyingest"))
 	if err != nil {
 		return err
 	}

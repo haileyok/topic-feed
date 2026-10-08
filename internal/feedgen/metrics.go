@@ -11,6 +11,12 @@ var (
 		Help: "Feed skeleton requests, by feed (rkey, or 'unknown') and HTTP status.",
 	}, []string{"feed", "status"})
 
+	metricSkeletonSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "feedgen_skeleton_seconds",
+		Help:    "Time to answer a feed skeleton request, by feed (rkey; 'user' for other people's feeds) and kind (topic, personal, filtered).",
+		Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5},
+	}, []string{"feed", "kind"})
+
 	metricAuth = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "feedgen_viewer_auth_total",
 		Help: "Viewer credentials on skeleton requests: ok, invalid (served anyway), or none.",

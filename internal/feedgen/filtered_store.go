@@ -59,7 +59,7 @@ func (s *Store) ScorePosts(ctx context.Context, uris []string) (map[string]Score
 		days = "since_posts"
 	}
 	start := time.Now()
-	if err := s.Conn.Select(ctx, &rows, query, args...); err != nil {
+	if err := s.Conn.Select(chdb.Op(ctx, "score_lookup"), &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("select scores: %w", err)
 	}
 	metricScoreLookupSeconds.WithLabelValues(days).Observe(time.Since(start).Seconds())

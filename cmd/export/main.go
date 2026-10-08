@@ -69,7 +69,7 @@ func run() error {
 		return err
 	}
 	ctx := context.Background()
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("export"))
 	if err != nil {
 		return err
 	}

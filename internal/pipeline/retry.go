@@ -70,6 +70,7 @@ func (p *Pipeline) RetryPictures(ctx context.Context, cfg RetryConfig) {
 }
 
 func (p *Pipeline) retryRound(ctx context.Context, cfg RetryConfig) error {
+	ctx = chdb.Op(ctx, "picture_retry")
 	// Sweep: every recent post whose pictures didn't all download and that isn't queued yet. The
 	// sweep (rather than queueing at write time) also catches a crash between writing a post and
 	// queueing it. Posts that were deleted, and posts of inactive accounts, are left out: their

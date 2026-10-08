@@ -11,6 +11,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
+	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/labelpolicy"
 )
 
@@ -62,7 +63,7 @@ type Removed struct {
 func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) ([]Post, Removed, error) {
 	// The lookups below pass every candidate's URI; with max_posts at 10,000 that is
 	// ~700 KB of query text, past ClickHouse's 256 KB default.
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"max_query_size": maxQuerySize}))
+	ctx = chdb.Op(ctx, "feed_build", clickhouse.Settings{"max_query_size": maxQuerySize})
 	policies := []string{labelpolicy.OK}
 	if f.AllowAdult {
 		policies = append(policies, labelpolicy.AdultOnly)
@@ -99,7 +100,7 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	args = append(args, limit)
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
-	err := s.Conn.Select(ctx, &cands, `
+	err := s.Conn.Select(chdb.Op(ctx, "candidates"), &cands, `
 		SELECT `+candidateColumns(scoreExpr)+`
 		FROM post_pipeline FINAL
 		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND `+match+where.String()+`
@@ -251,15 +252,15 @@ func (s *Store) finish(ctx context.Context, f Feed, cands []candidate) ([]Post, 
 			dids = append(dids, c.DID)
 		}
 	}
-	deleted, err := s.deleted(ctx, dids, uris)
+	deleted, err := s.deleted(chdb.Op(ctx, "deleted"), dids, uris)
 	if err != nil {
 		return nil, rm, err
 	}
-	inactive, err := s.inactive(ctx, dids)
+	inactive, err := s.inactive(chdb.Op(ctx, "inactive"), dids)
 	if err != nil {
 		return nil, rm, err
 	}
-	labels, err := s.Policy.Current(ctx, s.Conn, append(slices.Clone(uris), dids...))
+	labels, err := s.Policy.Current(chdb.Op(ctx, "labels"), s.Conn, append(slices.Clone(uris), dids...))
 	if err != nil {
 		return nil, rm, err
 	}
@@ -279,7 +280,7 @@ func (s *Store) finish(ctx context.Context, f Feed, cands []candidate) ([]Post, 
 				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs, Tone: c.Tone})
 		}
 	}
-	if err := s.engagement(ctx, out); err != nil {
+	if err := s.engagement(chdb.Op(ctx, "engagement"), out); err != nil {
 		return nil, rm, err
 	}
 	return out, rm, nil
@@ -394,7 +395,7 @@ func (s *Store) Volumes(ctx context.Context) (map[string]float64, error) {
 		Key string `ch:"key"`
 		N   uint64 `ch:"n"`
 	}
-	err := s.Conn.Select(ctx, &rows, `
+	err := s.Conn.Select(chdb.Op(ctx, "topic_volumes"), &rows, `
 		SELECT key, count() AS n FROM (
 			SELECT arrayConcat(
 				arrayFilter(k -> path_probs[k] >= 0.5, mapKeys(path_probs)),

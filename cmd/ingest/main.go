@@ -61,7 +61,7 @@ func run(log *slog.Logger) error {
 		}
 	}()
 
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("ingest"))
 	if err != nil {
 		return err
 	}

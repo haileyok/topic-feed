@@ -41,7 +41,7 @@ func run(taxPath, labelConfig, out string, perTopic int) error {
 		out = labelreport.DefaultDir(tax, labelConfig)
 	}
 	ctx := context.Background()
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("labelreport"))
 	if err != nil {
 		return err
 	}

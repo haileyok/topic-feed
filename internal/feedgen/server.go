@@ -280,6 +280,13 @@ type skeletonResponse struct {
 }
 
 func (s *Server) handleSkeleton(c echo.Context) error {
+	// How long each feed takes to answer, by kind: topic feeds are served from memory, personal feeds
+	// from the viewer's state (built from ClickHouse when it is missing or old), filtered feeds ask
+	// their source and look the posts' scores up.
+	start, label, kind := time.Now(), "unknown", "unknown"
+	defer func() {
+		metricSkeletonSeconds.WithLabelValues(label, kind).Observe(time.Since(start).Seconds())
+	}()
 	fail := func(status int, feed, name, msg string) error {
 		metricRequests.WithLabelValues(feed, strconv.Itoa(status)).Inc()
 		return c.JSON(status, xrpcError{Error: name, Message: msg})
@@ -291,7 +298,7 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 	if _, _, ok := s.feeds.Posts(key); !ok {
 		return fail(http.StatusBadRequest, "unknown", "UnknownFeed", "unknown feed")
 	}
-	label := feedLabel(key)
+	label, kind = feedLabel(key), "topic"
 	limit := defaultLimit
 	if v := c.QueryParam("limit"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -301,9 +308,11 @@ func (s *Server) handleSkeleton(c echo.Context) error {
 		limit = n
 	}
 	if s.Personal != nil && s.Personal.Serves(key) {
+		kind = "personal"
 		return s.personalSkeleton(c, key, limit, fail)
 	}
 	if f, ok := s.feeds.Lookup(key); ok && f.Filtered != nil {
+		kind = "filtered"
 		return s.filteredSkeleton(c, f, limit, fail)
 	}
 	items, next, ready, err := s.feeds.Page(c.Request().Context(), key, c.QueryParam("cursor"), limit)

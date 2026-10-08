@@ -98,6 +98,7 @@ const likesAndReposts = `(
 )`
 
 func (s *Store) LikeProfile(ctx context.Context, did string, since, now time.Time, halfLife time.Duration) (LikeData, error) {
+	ctx = chdb.Op(ctx, "personal_likes")
 	out := LikeData{Mass: map[string]float64{}, Liked: map[string]struct{}{}}
 	react := []any{did, since, did, since}
 
@@ -149,6 +150,7 @@ func (s *Store) LikeProfile(ctx context.Context, did string, since, now time.Tim
 }
 
 func (s *Store) ViewerSeen(ctx context.Context, did string, since time.Time) (SeenData, error) {
+	ctx = chdb.Op(ctx, "personal_seen")
 	out := SeenData{Confirmed: map[string]struct{}{}, Serves: map[string]int{}}
 	// Any interaction with a post in any of our feeds (seen, liked, "show less", ...) means
 	// the viewer has met it. feed_interactions isn't sorted by viewer, so this reads the
@@ -178,7 +180,7 @@ func (s *Store) ViewerSeen(ctx context.Context, did string, since time.Time) (Se
 }
 
 func (s *Store) TopicPool(ctx context.Context, q PoolQuery) (map[string][]Post, error) {
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"max_query_size": maxQuerySize}))
+	ctx = chdb.Op(ctx, "personal_pool", clickhouse.Settings{"max_query_size": maxQuerySize})
 	cands, err := s.poolCandidates(ctx, q)
 	if err != nil {
 		return nil, err

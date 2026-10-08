@@ -65,7 +65,7 @@ func run(log *slog.Logger, cmd, root, policyPath, appviewURL string, rps float64
 	if os.Getenv("CLICKHOUSE_PASSWORD") == "" {
 		return errors.New("CLICKHOUSE_PASSWORD must be set")
 	}
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("images"))
 	if err != nil {
 		return err
 	}

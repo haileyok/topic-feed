@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
+	"github.com/haileyok/topic-feed/internal/chdb"
 )
 
 // getPostsBatch is the most URIs app.bsky.feed.getPosts accepts per call.
@@ -123,7 +125,7 @@ func (q *QuoteResolver) fromClickHouse(ctx context.Context, need map[string]bool
 }
 
 func (q *QuoteResolver) lookupChunk(ctx context.Context, uris []string, found map[string]string) error {
-	rows, err := q.Conn.Query(ctx, "SELECT uri, argMax(text, indexed_at) FROM post_texts WHERE uri IN (?) GROUP BY uri", uris)
+	rows, err := q.Conn.Query(chdb.Op(ctx, "quote_lookup"), "SELECT uri, argMax(text, indexed_at) FROM post_texts WHERE uri IN (?) GROUP BY uri", uris)
 	if err != nil {
 		return err
 	}
