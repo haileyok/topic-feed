@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -100,49 +101,49 @@ func (s *Store) LikeProfile(ctx context.Context, did string, since, now time.Tim
 	out := LikeData{Mass: map[string]float64{}, Liked: map[string]struct{}{}}
 	react := []any{did, since, did, since}
 
-	// The classified posts' subtopics, each like worth less the older it is. likes is
-	// sorted by actor, so reading one viewer's is cheap; post_pipeline is sorted by uri.
-	var mass []struct {
-		Path string  `ch:"path"`
-		Mass float64 `ch:"mass"`
-	}
-	args := append([]any{now, halfLife.Seconds()}, react...)
-	args = append(args, react...)
-	if err := s.Conn.Select(ctx, &mass, `
-		SELECT path, sum(prob * pow(0.5, greatest(0, dateDiff('second', l.liked_at, ?)) / ?)) AS mass
-		FROM (SELECT subject_uri, max(indexed_at) AS liked_at FROM `+likesAndReposts+` GROUP BY subject_uri) AS l
-		INNER JOIN (
-			SELECT uri, path_probs FROM post_pipeline FINAL
-			WHERE model != '' AND uri IN (SELECT subject_uri FROM `+likesAndReposts+`)
-		) AS pp ON l.subject_uri = pp.uri
-		ARRAY JOIN mapKeys(pp.path_probs) AS path, mapValues(pp.path_probs) AS prob
-		GROUP BY path`, args...); err != nil {
-		return out, fmt.Errorf("select interests: %w", err)
-	}
-	for _, m := range mass {
-		out.Mass[m.Path] = m.Mass
-	}
-
-	var n uint64
-	args = append(append([]any{}, react...), react...)
-	if err := s.Conn.QueryRow(ctx, `
-		SELECT count() FROM (SELECT DISTINCT subject_uri FROM `+likesAndReposts+`) AS l
-		INNER JOIN (
-			SELECT uri FROM post_pipeline FINAL
-			WHERE model != '' AND uri IN (SELECT subject_uri FROM `+likesAndReposts+`)
-		) AS pp ON l.subject_uri = pp.uri`, args...).Scan(&n); err != nil {
-		return out, fmt.Errorf("count classified likes: %w", err)
-	}
-	out.Posts = int(n)
-
+	// Every post they liked or reposted, with when they last did. likes is sorted by actor, so
+	// reading one viewer's is cheap.
 	var liked []struct {
-		URI string `ch:"subject_uri"`
+		URI     string    `ch:"subject_uri"`
+		LikedAt time.Time `ch:"liked_at"`
 	}
-	if err := s.Conn.Select(ctx, &liked, `SELECT DISTINCT subject_uri FROM `+likesAndReposts, react...); err != nil {
+	if err := s.Conn.Select(ctx, &liked, `
+		SELECT subject_uri, max(indexed_at) AS liked_at FROM `+likesAndReposts+` GROUP BY subject_uri`, react...); err != nil {
 		return out, fmt.Errorf("select liked posts: %w", err)
 	}
+	likedAt := make(map[string]time.Time, len(liked))
 	for _, l := range liked {
 		out.Liked[l.URI] = struct{}{}
+		likedAt[l.URI] = l.LikedAt
+	}
+	if len(liked) == 0 {
+		return out, nil
+	}
+
+	// The classified ones' subtopics. post_pipeline is sorted by uri, but liked posts are spread over
+	// the whole key range and over every day the table keeps, so this reads most of it; it is read
+	// once, and the interests and the count of classified posts both come from what it returns.
+	var scored []struct {
+		URI       string             `ch:"uri"`
+		PathProbs map[string]float32 `ch:"path_probs"`
+	}
+	if err := s.Conn.Select(ctx, &scored, `
+		SELECT uri, path_probs FROM post_pipeline FINAL
+		WHERE model != '' AND uri IN (SELECT subject_uri FROM `+likesAndReposts+`)`, react...); err != nil {
+		return out, fmt.Errorf("select interests: %w", err)
+	}
+	// Each like is worth less the older it is: half as much every halfLife.
+	for _, p := range scored {
+		at, ok := likedAt[p.URI]
+		if !ok {
+			continue // liked after the first read
+		}
+		age := max(0, now.Unix()-at.Unix())
+		weight := math.Pow(0.5, float64(age)/halfLife.Seconds())
+		for path, prob := range p.PathProbs {
+			out.Mass[path] += float64(prob) * weight
+		}
+		out.Posts++
 	}
 	return out, nil
 }
