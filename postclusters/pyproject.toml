@@ -1,0 +1,18 @@
+[project]
+name = "topic-feed-postclusters"
+version = "0.1.0"
+description = "Embed posts, group them into small segments of the embedding space, link the segments into a graph, and have an LLM name them. An exploration for reviewing the clusters; nothing here serves anything."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "clickhouse-connect>=0.8",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "faiss-cpu",
+    "python-igraph>=0.11",
+    "umap-learn",
+    "matplotlib",
+]
+
+[tool.uv]
+package = false
