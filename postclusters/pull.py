@@ -16,7 +16,10 @@ land together and a sample is a set of whole shards). Each row is one distinct t
 Posts whose document is shorter than 15 characters are left out ("lol", a lone emoji): there is
 nothing to embed. Read-only on the database.
 
-Usage: pull.py [--days 5] [--shards 0-3]
+Usage: pull.py [--days 5] [--shards 0-3] [--window-of 0-3]
+
+Pulling more shards later: pass --window-of with shards already pulled (and not to be pulled again), so the new
+shards cover the same stretch of time as those, not the last 5 days up to now.
 """
 import argparse
 import time
@@ -26,9 +29,16 @@ import pandas as pd
 from common import DATA, NSHARDS, clickhouse, shard_list
 
 
-def query(days: int, shard: int) -> str:
+def query(days: int, shard: int, window: tuple[str, str] | None = None) -> str:
     # Every column of the inner query is prefixed d_, so that the names of the outputs (uri, did,
     # indexed_at ...) can't be taken by ClickHouse for the columns used inside the aggregates.
+    # The last `days` days up to now, or a fixed (since, until) window, so that shards pulled at different times
+    # cover the same stretch of time.
+    if window:
+        since, until = window
+        when = lambda col: f"{col} >= parseDateTime64BestEffort('{since}') AND {col} <= parseDateTime64BestEffort('{until}')"
+    else:
+        when = lambda col: f"{col} > now() - INTERVAL {days} DAY"
     return f"""
         WITH d AS (
             SELECT p.uri AS d_uri, p.did AS d_did, p.indexed_at AS d_at,
@@ -40,9 +50,9 @@ def query(days: int, shard: int) -> str:
                    pp.signals['promo'] AS d_promo, pp.signals['news'] AS d_news
             FROM posts AS p FINAL
             LEFT JOIN (SELECT uri, top_path, top_path_p, top_broad, tone, signals
-                       FROM post_pipeline FINAL WHERE indexed_at > now() - INTERVAL {days} DAY AND model != '') AS pp
+                       FROM post_pipeline FINAL WHERE {when('indexed_at')} AND model != '') AS pp
                    ON pp.uri = p.uri
-            WHERE p.indexed_at > now() - INTERVAL {days} DAY
+            WHERE {when('p.indexed_at')}
         )
         SELECT argMin(d_uri, d_at) AS uri, argMin(d_did, d_at) AS did, min(d_at) AS indexed_at,
                any(d_doc) AS doc, count() AS n_posts, uniqExact(d_did) AS n_authors,
@@ -60,13 +70,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--days', type=int, default=5)
     ap.add_argument('--shards', default='0-3', help="shards to pull: '0-3', '0,5' or 'all' (a quarter of the posts is 0-3)")
+    ap.add_argument('--window-of', default=None, help="pull the stretch of time that these already-pulled shards cover (e.g. '0-3') instead of the last --days days up to now")
     a = ap.parse_args()
+    window = None
+    if a.window_of:
+        ts = pd.concat([pd.read_parquet(DATA / 'posts' / f'shard-{s:02d}.parquet', columns=['indexed_at'])['indexed_at'] for s in shard_list(a.window_of)])
+        window = (ts.min().strftime('%Y-%m-%dT%H:%M:%SZ'), ts.max().strftime('%Y-%m-%dT%H:%M:%SZ'))
+        print(f'window of shards {a.window_of}: {window[0]} to {window[1]} UTC', flush=True)
     out = DATA / 'posts'
     out.mkdir(parents=True, exist_ok=True)
     c = clickhouse()
     for s in shard_list(a.shards):
         t = time.time()
-        df = c.query_df(query(a.days, s))
+        df = c.query_df(query(a.days, s, window))
         df['indexed_at'] = pd.to_datetime(df['indexed_at'], utc=True)
         df.to_parquet(out / f'shard-{s:02d}.parquet')
         print(f'shard {s:02d}: {len(df):,} distinct texts, {int(df["n_posts"].sum()):,} posts ({time.time() - t:.0f}s)', flush=True)

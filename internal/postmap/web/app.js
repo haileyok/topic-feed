@@ -266,6 +266,9 @@ function flyTo(cx, cy, scale) {
 }
 function flyToNode(nd, mult = 2.4) { flyTo(nd.x, nd.y, Math.min(S.W, S.H) / (2 * Math.max(nd.r * mult, 0.01))); }
 
+// How many posts there are against the 855,000 the point size and opacity were tuned on: more posts, finer and fainter points.
+const density = () => clamp(Math.sqrt(900000 / S.n), 0.55, 1);
+
 let drawQueued = false;
 function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
 
@@ -278,8 +281,8 @@ function draw() {
   gl.useProgram(prog);
   gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
   gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
-  gl.uniform1f(U.u_size, clamp(1.7 + Math.log2(zoom) * 0.9, 1.7, 10));
-  gl.uniform1f(U.u_alpha, clamp(0.6 + Math.log2(zoom) * 0.1, 0.6, 0.92));
+  gl.uniform1f(U.u_size, clamp(1.7 * density() + Math.log2(zoom) * 0.9, 1.2, 10));
+  gl.uniform1f(U.u_alpha, clamp(0.6 * density() + Math.log2(zoom) * 0.1, 0.4, 0.92));
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
   gl.drawArrays(gl.POINTS, 0, S.n);
   drawLabels();

@@ -17,13 +17,14 @@ which needs no database.
 
 ```sh
 cd postclusters
-uv run python pull.py --shards 0-3          # a quarter of the posts (about 855,000 distinct texts)
-uv run python embed.py --shards 0-3         # about 150 posts/s, so about 1.6 h; resumable
-uv run python cluster.py --shards 0-3       # about 8 min; ~2,400 segments, ~55 areas
-uv run python label.py --model haiku        # about 10 min, about $3 at list price
+uv run python pull.py --shards 0-3          # a quarter of the posts (about 855,000 distinct texts); seconds per shard
+uv run python pull.py --shards 4-15 --window-of 0-3   # the rest, over the same stretch of time as shards 0-3
+uv run python embed.py --shards 0-15        # about 150 posts/s, so about 1.6 h per 4 shards; resumable
+uv run python cluster.py --shards 0-15      # about 100 min and 14 GB for all 16 (a quarter: 8 min); 9,768 segments, 75 areas
+uv run python label.py --model haiku        # about 27 min for 9,768 segments (--workers 12)
 uv run python label.py --model haiku --areas
 uv run python report.py                     # data/clusters/report.html and map.png
-uv run python build_snapshot.py --shards 0-3   # about 5 min; data/snapshot/<UTC>/ and the "latest" link
+uv run python build_snapshot.py --shards 0-15  # about 35 min for all 16 (a quarter: 5 min); data/snapshot/<UTC>/ and the "latest" link
 uv run python -m unittest                   # tests of the logic
 ```
 
@@ -47,7 +48,7 @@ go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADD
 node tools/cdp.mjs tools/scenarios/postmap.mjs   # headless checks of the page (needs the service; CHROMIUM=...)
 ```
 
-The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 120 MB for 855,000
+The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 470 MB for 3.4 million
 posts) and never serves `posts.jsonl` or `texts.txt` whole.
 
 Positions mean two things. Where a segment sits among the others comes from a UMAP of the segment centres, nudged so that segments sized by their posts do not overlap, so
@@ -73,19 +74,21 @@ vary most in that segment, and that is all it says.
 - `label.py` asks for JSON and checks the answer's shape; post text is passed as data with an instruction to
   ignore instructions inside it.
 
-## What the first run found
+## What the runs found
 
-The last five days (2026-10-04 to 10-09), a quarter of the posts (shards 0 to 3 of 16): 854,907 distinct texts, 910,003 posts
-(counting repeats), 2,443 segments (median 335 posts), 56 areas. Labelled with Claude Haiku 4.5 through the AI
-gateway.
+The last five days (2026-10-04 to 10-09), all 16 shards: 3,418,707 distinct texts, 3,638,264 posts (counting repeats),
+9,768 segments (median 334 posts), 75 areas. Labelled with Claude Haiku 4.5 through the AI gateway (27 minutes, no
+failures).
 
-- Haiku rates 63% of segments coherent (4 or 5), 25% incoherent (1 or 2), holding about the same shares of the
-  posts. Where the existing 117-subtopic classifier's top subtopic is at least half of a segment, Haiku rates it
-  coherent more often (52% of coherent segments against 15% of incoherent ones), so the ratings are not just the
-  model agreeing with itself.
-- Of the posts, 27% are discussion, 26% personal updates, 16% news links; about 8% of segments (8% of posts) are
-  bots, spam or templates.
-- 554 segments (23%) were described as having posts on opposing sides; 70 segments mention AI, 29 of those with
-  an opposing-sides axis. Some of the axes are filler ("easy vs hard to do").
-- Luna (`gpt-5.6-luna`) was compared with Haiku on 80 segments: near-identical titles, Luna more lenient on
-  coherence (3.8 against 3.05 on average) and about twice as slow. Haiku was used for everything.
+- Haiku rates 72% of segments coherent (4 or 5) and 19% incoherent (1 or 2), holding the same shares of the posts.
+- Of the posts, 29% are discussion, 23% personal updates, 16% news links; 13% of segments (13% of posts) are bots, spam
+  or ads.
+- 2,091 segments (21%) were described as having posts on opposing sides; 126 segment titles mention AI. Some of the
+  axes are filler ("easy vs hard to do").
+
+The first run, on a quarter of the posts (shards 0 to 3): 854,907 distinct texts, 2,443 segments, 56 areas. Haiku rated
+63% of segments coherent and 25% incoherent. Where the existing 117-subtopic classifier's top subtopic was at least half
+of a segment, Haiku rated it coherent more often (52% of coherent segments against 15% of incoherent ones), so the
+ratings are not just the model agreeing with itself (not re-measured on all 16 shards). Luna (`gpt-5.6-luna`) was compared
+with Haiku on 80 of those segments: near-identical titles, Luna more lenient on coherence (3.8 against 3.05 on average)
+and about twice as slow. Haiku was used for everything.
