@@ -12,7 +12,7 @@ EXPORT       ?= /data/exports/v1-latest
 COMPOSE  := docker compose --env-file $(ENV_FILE) -f deploy/docker-compose.yml
 CH       := $(COMPOSE) exec -T clickhouse sh -c 'clickhouse-client --user topicfeed --password "$$CLICKHOUSE_PASSWORD" --database topicfeed --multiquery'
 
-.PHONY: up down ps logs schema ch test backup install-backup label label-logs export install-classifier classifier-logs feeds feeds-logs feeds-publish feeds-welcome profile-web images-resolve images-fetch images-purge images-stats
+.PHONY: up down ps logs schema ch test backup install-backup label label-logs export install-classifier classifier-logs feeds feeds-logs postmap postmap-logs feeds-publish feeds-welcome profile-web images-resolve images-fetch images-purge images-stats
 
 # Run long-lived services from the main checkout (~/bluesky/topic-feed), not from a
 # worktree: compose resolves ./clickhouse/config.d relative to the checkout it runs in.
@@ -52,6 +52,12 @@ feeds: ## Build and (re)start the feed generator, picking up config/feeds.yaml (
 
 feeds-logs:
 	$(COMPOSE) --profile feeds logs --tail=100 -f feedgen
+
+postmap: ## Build and (re)start the post map on 127.0.0.1:8740, serving the newest snapshot under postclusters/data/snapshot
+	$(COMPOSE) --profile postmap up -d --build --force-recreate --wait postmap
+
+postmap-logs:
+	$(COMPOSE) --profile postmap logs --tail=100 -f postmap
 
 feeds-publish: ## Write every feed in config/feeds.yaml to the owner's account (DRY=1 to only print; CODE=<emailed code> for email 2FA)
 	$(COMPOSE) --profile feeds run --rm --build feedgen publish $(if $(DRY),-dry-run,) $(if $(CODE),-code $(CODE),)

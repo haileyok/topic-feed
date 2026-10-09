@@ -38,6 +38,40 @@ services:
       retries: 30
       start_period: 10s
 
+  # The post map: every recent post on a 2D map, in segments an LLM has named. Reads the snapshots
+  # postclusters/build_snapshot.py writes under postclusters/data/snapshot and picks up a new
+  # one within a minute; needs no database. Shows the text of public posts with no access
+  # control, so it listens on the loopback address only: reach it through an SSH tunnel.
+  postmap:
+    profiles: ["postmap"]
+    build:
+      context: ..
+      dockerfile: deploy/go.Dockerfile
+      args:
+        CMD: postmap
+    image: topic-feed/postmap:local
+    container_name: topic-feed-postmap
+    restart: unless-stopped
+    environment:
+      POSTMAP_DIR: /snapshot
+      HTTP_ADDR: ":8740"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ../postclusters/data/snapshot:/snapshot:ro
+    ports:
+      - "127.0.0.1:8740:8740"
+    healthcheck:
+      # distroless has no curl: the binary itself answers a health probe.
+      test: ["CMD", "/app", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "3"
+
   # Browsable labeling reports: http://<this machine>:8090/ lists every report under
   # /data/reports; each has an index.html viewer. Reachable from the internal network:
   # the only active interface is the LAN (eno1). Don't expose this machine publicly

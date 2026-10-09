@@ -4,6 +4,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
+import build_snapshot as bs
 import cluster
 import label
 import report
@@ -235,6 +236,52 @@ class ReportTest(unittest.TestCase):
             self.assertTrue(report.AI_WORDS.search(yes), yes)
         for no in ('said the maid', 'rain and mail', 'Hawaii trip'):
             self.assertFalse(report.AI_WORDS.search(no), no)
+
+
+class SnapshotTest(unittest.TestCase):
+    def test_within_layout_is_centred_and_scaled_to_the_ninetieth_percentile(self):
+        rng = np.random.default_rng(0)
+        emb = rng.normal(size=(300, 40)) * np.linspace(3, 0.1, 40)  # variance concentrated in the first directions
+        xy = bs.within_layout(emb)
+        self.assertEqual(xy.shape, (300, 2))
+        self.assertLess(abs(xy.mean()), 0.1)
+        self.assertAlmostEqual(float(np.percentile(np.hypot(xy[:, 0], xy[:, 1]), 90)), 1.0, delta=0.1)
+
+    def test_within_layout_keeps_similar_posts_close(self):
+        rng = np.random.default_rng(1)
+        a = rng.normal(size=(1, 30)) * 3
+        b = -a
+        emb = np.concatenate([a + 0.1 * rng.normal(size=(80, 30)), b + 0.1 * rng.normal(size=(80, 30))])
+        xy = bs.within_layout(emb)
+        within = np.hypot(*(xy[:80].mean(axis=0) - xy[:80]).T).mean()
+        between = np.hypot(*(xy[:80].mean(axis=0) - xy[80:].mean(axis=0)))
+        self.assertGreater(between, 4 * within)
+
+    def test_tiny_segments_get_distinct_positions(self):
+        for n in (1, 2):
+            xy = bs.within_layout(np.random.default_rng(0).normal(size=(n, 10)))
+            self.assertEqual(xy.shape, (n, 2))
+            self.assertTrue(np.isfinite(xy).all())
+        self.assertGreater(np.hypot(*(bs.within_layout(np.ones((2, 5)))[0] - bs.within_layout(np.ones((2, 5)))[1])), 0.1)
+
+    def test_identical_vectors_do_not_break_the_layout(self):
+        xy = bs.within_layout(np.ones((50, 20)))
+        self.assertTrue(np.isfinite(xy).all())
+
+    def test_unit_scale_and_nearest_distance(self):
+        pts = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 10.0], [10.0, 10.0], [5.0, 5.0]])
+        sc = bs.unit_scale(pts, pct=100)
+        self.assertAlmostEqual(float(np.abs(sc).max()), 1.0)
+        d = bs.nearest_distance(np.array([[0.0, 0.0], [3.0, 4.0], [100.0, 0.0]]))
+        np.testing.assert_allclose(d, [5.0, 5.0, np.hypot(97.0, 4.0)])  # the far point's nearest is (3, 4)
+
+    def test_percentages_become_bytes_and_missing_values_take_the_default(self):
+        self.assertEqual(list(bs.to_u8([0, 0.5, 1, 2, -1, float('nan')])), [0, 127, 255, 255, 0, 0])
+        self.assertEqual(list(bs.to_u8([float('nan')], default=128)), [128])
+
+    def test_text_line_is_one_lowercase_line(self):
+        self.assertEqual(bs.text_line('Hello\n\nWORLD\t again  '), 'hello world again')
+        self.assertNotIn('\n', bs.text_line('a\nb\r\nc'))
 
 
 if __name__ == '__main__':

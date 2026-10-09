@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post map</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Post map</h1>
+  <div id="search-wrap">
+    <input id="search" type="search" placeholder="Find a topic, or words in a post (press /)" autocomplete="off" spellcheck="false">
+    <div id="results" hidden></div>
+  </div>
+  <div id="modes" role="group" aria-label="Colour by">
+    <button data-mode="0" class="on" title="Each area its own colour, its segments shades of it">Area</button>
+    <button data-mode="1" title="How well the labelling model found one coherent subject in the segment, 1 to 5">Coherence</button>
+    <button data-mode="2" title="What kind of posts the segment is: discussion, news links, bots, ...">Kind</button>
+    <button data-mode="3" title="The existing classifier's critical score for each post">Critical</button>
+    <button data-mode="4" title="The existing classifier's sentiment for each post, red negative to blue positive">Sentiment</button>
+    <button data-mode="5" title="The existing classifier's outraged tone for each post">Outraged</button>
+  </div>
+  <div id="filter-wrap">
+    <button id="filter-btn" aria-expanded="false">Filters</button>
+    <div id="filters" hidden>
+      <label><input type="checkbox" id="f-bots"> Hide bots, spam and ads</label>
+      <label><input type="checkbox" id="f-adult"> Hide adult content</label>
+      <label><input type="checkbox" id="f-sides"> Only segments with opposing sides</label>
+      <label>Coherence at least
+        <select id="f-coh"><option value="0">any</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+      </label>
+      <div class="note" id="f-count"></div>
+    </div>
+  </div>
+  <span id="meta"></span>
+</header>
+<main>
+  <nav id="outline" aria-label="Areas and segments"></nav>
+  <div id="stage">
+    <canvas id="gl"></canvas>
+    <canvas id="labels"></canvas>
+    <div id="tip" hidden></div>
+    <div id="legend"></div>
+    <div id="loading">Loading the map…</div>
+  </div>
+  <aside id="drawer" hidden></aside>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
