@@ -41,7 +41,8 @@ services:
   # The post map: every recent post on a 2D map, in segments an LLM has named. Reads the snapshots
   # postclusters/build_snapshot.py writes under postclusters/data/snapshot and picks up a new
   # one within a minute; needs no database. Shows the text of public posts with no access
-  # control, so it listens on the loopback address only: reach it through an SSH tunnel.
+  # control: it is reachable from the internal network (like the viewer below) and must not be
+  # exposed publicly.
   postmap:
     profiles: ["postmap"]
     build:
@@ -59,7 +60,7 @@ services:
     volumes:
       - ../postclusters/data/snapshot:/snapshot:ro
     ports:
-      - "127.0.0.1:8740:8740"
+      - "0.0.0.0:8740:8740"
     healthcheck:
       # distroless has no curl: the binary itself answers a health probe.
       test: ["CMD", "/app", "-healthcheck"]

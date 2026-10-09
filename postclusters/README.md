@@ -42,13 +42,12 @@ posts by the words in them (at least 3 characters; matching posts are ringed on 
 and ads, adult content, segments without opposing sides, or segments below a coherence.
 
 ```sh
-make postmap                     # container on 127.0.0.1:8740; picks up a new snapshot within a minute
-go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADDR)
+make postmap                     # container on port 8740 of the internal network; picks up a new snapshot within a minute
+go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADDR; listens on 127.0.0.1 unless HTTP_ADDR says otherwise)
 node tools/cdp.mjs tools/scenarios/postmap.mjs   # headless checks of the page (needs the service; CHROMIUM=...)
 ```
 
-The service shows the text of public posts and has no access control: it listens on the loopback address, so reach
-it through an SSH tunnel. It loads every post's lower-cased text into memory for search (about 120 MB for 855,000
+The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 120 MB for 855,000
 posts) and never serves `posts.jsonl` or `texts.txt` whole.
 
 Positions mean two things. Where a segment sits among the others comes from a UMAP of the segment centres, so
