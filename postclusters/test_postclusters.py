@@ -268,12 +268,22 @@ class SnapshotTest(unittest.TestCase):
         xy = bs.within_layout(np.ones((50, 20)))
         self.assertTrue(np.isfinite(xy).all())
 
-    def test_unit_scale_and_nearest_distance(self):
+    def test_unit_scale(self):
         pts = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 10.0], [10.0, 10.0], [5.0, 5.0]])
         sc = bs.unit_scale(pts, pct=100)
         self.assertAlmostEqual(float(np.abs(sc).max()), 1.0)
-        d = bs.nearest_distance(np.array([[0.0, 0.0], [3.0, 4.0], [100.0, 0.0]]))
-        np.testing.assert_allclose(d, [5.0, 5.0, np.hypot(97.0, 4.0)])  # the far point's nearest is (3, 4)
+
+    def test_pack_separates_clumps_and_sizes_discs_by_weight(self):
+        rng = np.random.default_rng(0)
+        home = np.concatenate([rng.normal(scale=0.01, size=(60, 2)), rng.normal(scale=0.5, size=(40, 2)) + 3])
+        weight = np.concatenate([np.full(60, 100.0), np.full(40, 400.0)])
+        p, r = bs.pack(home, weight, iters=1500)
+        self.assertAlmostEqual(float(r[60] / r[0]), 2.0, places=6)  # area follows the weight, so radius its square root
+        d = np.hypot(*(p[:, None] - p[None]).transpose(2, 0, 1))
+        np.fill_diagonal(d, np.inf)
+        overlap = (r[:, None] + r[None] - d) / np.minimum(r[:, None], r[None])
+        self.assertLess(float(np.percentile(overlap[np.isfinite(d)], 99.9)), 0.3)  # a little tail overlap, no stacking
+        self.assertLess(float(np.hypot(*(p[:60].mean(axis=0) - home[:60].mean(axis=0)))), 1.0)  # the clump stays where it was
 
     def test_percentages_become_bytes_and_missing_values_take_the_default(self):
         self.assertEqual(list(bs.to_u8([0, 0.5, 1, 2, -1, float('nan')])), [0, 127, 255, 255, 0, 0])

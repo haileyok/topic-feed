@@ -14,11 +14,12 @@ data/snapshot/latest):
   posts.off       uint64 byte offset of each line of posts.jsonl, little endian, plus a final end offset
   texts.txt       each post's text, lowercased with whitespace flattened, one per line, for text search
 
-Where posts go. A segment sits where cluster.py's UMAP of the segment centres put it. Inside it a post is placed by
-the first two principal components of the embeddings of the segment's posts, scaled so the segment fills about half
-the distance to its nearest neighbour: posts that are alike sit near each other, and neighbouring segments overlap
-little. Distances between segments are as meaningful as that UMAP, and no more; distances inside a segment mean
-that the posts are alike along the directions that vary most among them.
+Where posts go. cluster.py's UMAP of the segment centres says roughly where each segment belongs, but it leaves tight
+clumps and wide gaps. So each segment gets a disc whose area follows its number of posts, and the discs are pushed
+apart until they hardly overlap, each held near its UMAP position by a weak spring (pack()). Inside its disc a post
+is placed by the first two principal components of the embeddings of the segment's posts. Distances between
+segments are as meaningful as that UMAP, and no more; distances inside a segment mean that the posts are alike
+along the directions that vary most among them.
 
 Usage: build_snapshot.py [--shards 0-3] [--models haiku]
 """
@@ -28,7 +29,7 @@ import time
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import cKDTree
+from scipy.spatial import ConvexHull, cKDTree
 
 import cluster
 import report
@@ -42,10 +43,38 @@ def unit_scale(xy, pct=99.5):
     return xy / max(float(np.percentile(np.abs(xy), pct)), 1e-9)
 
 
-def nearest_distance(xy):
-    """For each point, the distance to the nearest other point."""
-    d, _ = cKDTree(xy).query(xy, k=2)
-    return d[:, 1]
+def pack(home, weight, cover=0.45, iters=6000, seed=0):
+    """Give each segment a disc whose area follows its size and push the discs apart until they no longer overlap,
+    while a weak spring keeps each near `home`, the position the UMAP gave it. Returns (centres, radii).
+
+    The UMAP of segment centres leaves tight clumps and wide gaps, which would draw as many small islands in a lot
+    of empty space. Here the discs together cover `cover` of the convex hull of the UMAP positions, so the map
+    reads as one body of posts with the segments in it sized by how many posts they hold."""
+    rng = np.random.default_rng(seed)
+    home = np.asarray(home, dtype=np.float64)
+    w = np.asarray(weight, dtype=np.float64)
+    r = np.sqrt(w)
+    r *= np.sqrt(cover * ConvexHull(home).volume / (np.pi * np.sum(r * r)))
+    p = home + rng.normal(scale=1e-4, size=home.shape)
+    rmax = float(r.max())
+    for it in range(iters):
+        pairs = cKDTree(p).query_pairs(2 * rmax, output_type='ndarray')
+        if len(pairs):
+            i, j = pairs[:, 0], pairs[:, 1]
+            d = p[j] - p[i]
+            dist = np.hypot(d[:, 0], d[:, 1])
+            over = r[i] + r[j] - dist
+            hit = over > 0
+            i, j, d, dist, over = i[hit], j[hit], d[hit], dist[hit], over[hit]
+            u = d / np.maximum(dist, 1e-12)[:, None]
+            step = 0.5 * 0.8 * over[:, None] * u
+            move = np.zeros_like(p)
+            np.add.at(move, i, -step)
+            np.add.at(move, j, step)
+            p += move
+        if it < iters - 500:
+            p += 0.002 * (home - p)  # the last iterations only separate
+    return p, r
 
 
 def within_layout(emb, rng=None):
@@ -103,8 +132,8 @@ def main():
     print(f'{len(posts):,} posts, {nseg} segments, {len(lab)} labels ({time.time() - t0:.0f}s)', flush=True)
 
     # Positions.
-    cxy = unit_scale(segs[['x', 'y']].to_numpy())
-    radius = 0.5 * nearest_distance(cxy + np.random.default_rng(1).normal(scale=1e-6, size=cxy.shape))
+    cxy, radius = pack(unit_scale(segs[['x', 'y']].to_numpy()), segs['n_texts'].to_numpy())
+    radius = 0.95 * radius  # a segment's 90th-percentile post lands just inside its disc; the tails touch the neighbours
     order = np.argsort(seg, kind='stable')
     bounds = np.searchsorted(seg[order], np.arange(nseg + 1))
     xy = np.zeros((len(posts), 2), dtype=np.float32)

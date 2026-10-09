@@ -50,7 +50,7 @@ node tools/cdp.mjs tools/scenarios/postmap.mjs   # headless checks of the page (
 The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 120 MB for 855,000
 posts) and never serves `posts.jsonl` or `texts.txt` whole.
 
-Positions mean two things. Where a segment sits among the others comes from a UMAP of the segment centres, so
+Positions mean two things. Where a segment sits among the others comes from a UMAP of the segment centres, nudged so that segments sized by their posts do not overlap, so
 distances between segments are as meaningful as that UMAP and no more. Inside a segment a post is placed by the first two
 principal components of the segment's own embeddings: posts that sit close are alike along the directions that
 vary most in that segment, and that is all it says.

@@ -278,8 +278,8 @@ function draw() {
   gl.useProgram(prog);
   gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
   gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
-  gl.uniform1f(U.u_size, clamp(1.2 + Math.log2(zoom) * 0.9, 1.2, 10));
-  gl.uniform1f(U.u_alpha, clamp(0.45 + Math.log2(zoom) * 0.12, 0.45, 0.9));
+  gl.uniform1f(U.u_size, clamp(1.7 + Math.log2(zoom) * 0.9, 1.7, 10));
+  gl.uniform1f(U.u_alpha, clamp(0.6 + Math.log2(zoom) * 0.1, 0.6, 0.92));
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
   gl.drawArrays(gl.POINTS, 0, S.n);
   drawLabels();
@@ -311,7 +311,7 @@ function drawLabels() {
   const items = [];
   if (zoom < 3.2) {
     for (const a of S.areas) {
-      if (a.r * S.view.scale < 26) continue;
+      if (a.r * S.view.scale < 22) continue;
       if (sel && sel.type === 'area' && sel.id !== a.id) continue;
       items.push({ kind: 'area', nd: a, text: a.title, count: a.posts, weight: a.posts, color: S.areaColor[a.id] });
     }
@@ -331,18 +331,30 @@ function drawLabels() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   let drawn = 0;
   for (const it of vis) {
-    if (drawn > 120) break;
-    const rpx = it.nd.r * S.view.scale, fs = it.kind === 'area' ? clamp(rpx * 0.12, 12, 18) : clamp(rpx * 0.5, 11, 14);
-    let text = it.text;
-    if (text.length > 44) text = text.slice(0, 43) + '…';
+    if (drawn > 90) break;
+    const rpx = it.nd.r * S.view.scale, fs = it.kind === 'area' ? clamp(rpx * 0.1, 14, 19) : 13;
+    const lines = splitTitle(it.text, it.kind === 'area' ? 24 : 34);
     ctx.font = `600 ${fs}px system-ui, sans-serif`;
-    const w = ctx.measureText(text).width, hgt = fs * 1.6;
-    const rect = { x: it.p[0] - w / 2 - 4, y: it.p[1] - hgt / 2, w: w + 8, h: hgt, kind: it.kind, id: it.nd.id };
-    if (labelRects.some((r) => rect.x < r.x + r.w && rect.x + rect.w > r.x && rect.y < r.y + r.h && rect.y + rect.h > r.y)) continue;
+    const lh = fs * 1.25, w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, hgt = lh * lines.length + 8;
+    const rect = { x: it.p[0] - w / 2, y: it.p[1] - hgt / 2, w, h: hgt, kind: it.kind, id: it.nd.id };
+    if (labelRects.some((r) => rect.x - 3 < r.x + r.w && rect.x + rect.w + 3 > r.x && rect.y - 2 < r.y + r.h && rect.y + rect.h + 2 > r.y)) continue;
     labelRects.push(rect); drawn++;
-    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(10,12,18,0.92)'; ctx.fillStyle = it.kind === 'area' ? '#fff' : '#e6e8ee';
-    ctx.strokeText(text, it.p[0], it.p[1]); ctx.fillText(text, it.p[0], it.p[1]);
+    // A dark pill, so the text reads against any colour behind it, with a bar in the area's or segment's own colour.
+    ctx.fillStyle = 'rgba(10,12,18,0.86)'; ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgb(${it.color})`; ctx.beginPath(); ctx.roundRect(rect.x + 4, rect.y + 5, 3, rect.h - 10, 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    lines.forEach((l, k) => ctx.fillText(l, rect.x + 5 + (rect.w - 5) / 2, rect.y + 4 + lh * (k + 0.5)));
   }
+}
+
+// A title on one line, or on two split at the space nearest the middle; each line is cut to fit.
+function splitTitle(t, max) {
+  const cut = (x) => (x.length > max + 6 ? x.slice(0, max + 5) + '…' : x);
+  if (t.length <= max) return [t];
+  let best = -1;
+  for (let i = 0; i < t.length; i++) if (t[i] === ' ' && (best < 0 || Math.abs(i - t.length / 2) < Math.abs(best - t.length / 2))) best = i;
+  return best < 0 ? [cut(t)] : [cut(t.slice(0, best)), cut(t.slice(best + 1))];
 }
 
 // ---------- pointer ----------
