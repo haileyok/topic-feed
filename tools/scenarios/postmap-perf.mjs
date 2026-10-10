@@ -48,11 +48,21 @@ export default async (page) => {
         frames.push(now - last); last = now;
       }
       ev('pointerup', x, y);
+      // zooming with a wheel: a notch every 70 ms for 1.5 s, then the same out; the gaps between animation frames throughout
+      await settle();
+      const zf = [];
+      {
+        let prev = await new Promise((res) => requestAnimationFrame(res)), stop = false, k = 0;
+        const timer = setInterval(() => { if (k >= 44) { stop = true; return; } const dy = k < 22 ? -100 : 100; k++; cv.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: r.x + S.W / 2, clientY: r.y + S.H / 2, bubbles: true, cancelable: true })); }, 70);
+        while (!stop) { const now = await new Promise((res) => requestAnimationFrame(res)); zf.push(now - prev); prev = now; }
+        clearInterval(timer);
+      }
       const med = (a) => [...a].sort((p, q) => p - q)[a.length >> 1];
-      return { stats: JSON.stringify(m.stats), zoom: ${zoom}, idleMs: Math.round(med(idle)), drawMs: Math.round(med(draws)), labelsMs: +med(labels).toFixed(1), dragFrameMs: Math.round(med(frames)), dragFps: +(1000 / med(frames)).toFixed(1), n: S.n };
+      const p95 = (a) => [...a].sort((p, q) => p - q)[Math.floor(a.length * 0.95)];
+      return { stats: JSON.stringify(m.stats), zoom: ${zoom}, idleMs: Math.round(med(idle)), drawMs: Math.round(med(draws)), labelsMs: +med(labels).toFixed(1), dragFrameMs: Math.round(med(frames)), dragFps: +(1000 / med(frames)).toFixed(1), zoomMed: Math.round(med(zf)), zoomP95: Math.round(p95(zf)), zoomMax: Math.round(Math.max(...zf)), n: S.n };
     })()`));
   }
-  console.log('zoom  idle redraw(ms)  draw call(ms)  labels(ms)  drag frame(ms)  drag fps');
-  for (const r of rows) console.log(String(r.zoom).padEnd(6) + String(r.idleMs).padEnd(16) + String(r.drawMs).padEnd(15) + String(r.labelsMs).padEnd(12) + String(r.dragFrameMs).padEnd(16) + r.dragFps + '   ' + r.stats);
+  console.log('zoom  idle redraw(ms)  draw call(ms)  labels(ms)  drag frame(ms)  drag fps   wheel-zoom frame ms: median  p95  max');
+  for (const r of rows) console.log(String(r.zoom).padEnd(6) + String(r.idleMs).padEnd(16) + String(r.drawMs).padEnd(15) + String(r.labelsMs).padEnd(12) + String(r.dragFrameMs).padEnd(16) + String(r.dragFps).padEnd(11) + `${r.zoomMed}  ${r.zoomP95}  ${r.zoomMax}`.padEnd(22) + r.stats);
   return page.logs.length ? { logs: page.logs } : undefined;
 };

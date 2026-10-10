@@ -15,7 +15,7 @@ export default async (page) => {
   // Lit pixels: read the canvas back in the same task as the draw.
   const lit = () => page.eval(`(() => {
     const m = window.__map, gl = m.gl, w = gl.canvas.width, h = gl.canvas.height;
-    m.draw();
+    m.settle();  // the picture is added up a slice per frame: draw all of it, from scratch
     const px = new Uint8Array(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     let n = 0;
@@ -40,6 +40,26 @@ export default async (page) => {
   const frac = await lit();
   check('points are drawn', frac > 0.01, frac.toFixed(4));
   await page.screenshot(shots + '-overview.png');
+
+  // The page's furniture: the bar at the top, the lists, the legend and the zoom buttons sit inside the window, apart.
+  const ui = await page.eval(`(() => {
+    const r = (sel) => { const e = document.querySelector(sel); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, r: b.right, b: b.bottom, w: b.width, h: b.height }; };
+    const parts = ['#brand', '#search-wrap', '#modes', '#filter-wrap'].map(r);
+    const touch = (a, b) => a.x < b.r - 1 && a.r > b.x + 1 && a.y < b.b - 1 && a.b > b.y + 1;
+    let overlaps = 0;
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) if (touch(parts[i], parts[j])) overlaps++;
+    const o = r('#outline'), lg = r('#legend'), z = r('#zoom'), headerBottom = Math.max(...parts.map((p) => p.b));
+    return { overlaps, vw: innerWidth, vh: innerHeight, scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight,
+      headerRight: Math.max(...parts.map((p) => p.r)), headerBottom, outline: o, legend: lg, zoom: z,
+      outlineBelowHeader: o.y >= headerBottom, outlineInside: o.x >= 0 && o.r <= innerWidth && o.b <= innerHeight,
+      legendInside: lg.x >= 0 && lg.r <= innerWidth && lg.b <= innerHeight, zoomInside: z.x >= 0 && z.r <= innerWidth && z.b <= innerHeight,
+      legendClear: !touch(lg, o) && !touch(lg, z), modeButtons: document.querySelectorAll('#modes button').length };
+  })()`);
+  check('the bar at the top has no overlapping parts', ui.overlaps === 0, JSON.stringify(ui.parts));
+  check('the bar fits in the window', ui.headerRight <= ui.vw, `${ui.headerRight} of ${ui.vw}`);
+  check('the page does not scroll', ui.scrollW <= ui.vw && ui.scrollH <= ui.vh, `${ui.scrollW}x${ui.scrollH} in ${ui.vw}x${ui.vh}`);
+  check('the list of areas sits below the bar, inside the window', ui.outlineBelowHeader && ui.outlineInside, JSON.stringify(ui.outline));
+  check('legend and zoom buttons are inside the window and apart', ui.legendInside && ui.zoomInside && ui.legendClear, JSON.stringify({ l: ui.legend, z: ui.zoom }));
 
   // Colour modes all draw something and change the picture.
   for (let mode = 1; mode <= 5; mode++) {
@@ -73,6 +93,13 @@ export default async (page) => {
   check('segment drawer lists neighbouring segments', seg.nb >= 1, seg.nb);
   check('segment drawer has breadcrumbs through its area', seg.crumbs.includes('›'), seg.crumbs);
   check('view flew in on the segment', seg.zoom > 3, seg.zoom.toFixed(1));
+  const dr = await page.eval(`(() => {
+    const d = document.querySelector('#drawer').getBoundingClientRect(), z = document.querySelector('#zoom').getBoundingClientRect(), c = document.querySelector('#drawer .close').getBoundingClientRect();
+    return { x: d.x, y: d.y, r: d.right, b: d.bottom, zoomRight: z.right, closeInside: c.x >= d.x && c.right <= d.right && c.y >= d.y, vw: innerWidth, vh: innerHeight, hasClass: document.body.classList.contains('has-drawer') };
+  })()`);
+  check('the drawer is inside the window, below the bar', dr.x >= 0 && dr.r <= dr.vw && dr.b <= dr.vh && dr.y >= ui.headerBottom, JSON.stringify(dr));
+  check('the zoom buttons make room for the drawer', dr.hasClass && dr.zoomRight <= dr.x, JSON.stringify(dr));
+  check('the drawer\'s close button is in the drawer', dr.closeInside);
   await page.screenshot(shots + '-segment.png');
 
   // Search inside the segment.
@@ -130,7 +157,9 @@ export default async (page) => {
 
   // Filters: hiding bots and spam leaves fewer lit pixels and says how many segments remain.
   await page.eval('history.replaceState(null, "", location.pathname)');
-  await page.wait(400);  // a view that has just moved draws a thinned set of points until it has been still for a moment
+  // from a known state: nothing selected, the whole map, and still for a moment (a view that has just moved is drawn thinned)
+  await page.eval('(() => { const m = window.__map; m.S.sel = null; m.S.hits = []; m.setMode(0); m.S.view = m.wholeView(); })()');
+  await page.wait(500);
   const before = await lit();
   await page.eval(`(() => { const c = document.querySelector('#f-bots'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
   const after = await lit();
@@ -151,16 +180,38 @@ export default async (page) => {
   // Moving the view draws fewer points (so that it stays smooth); once it is still, all of them come back.
   await page.eval('(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit }; m.draw(); })()');
   await page.wait(500);
+  await page.waitFor('window.__map.stats.complete', 60000);
   const still = await page.eval('({ ...window.__map.stats })');
-  const rect = await page.eval('(() => { const r = document.querySelector("#labels").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()');
-  await page.wheel(rect[0], rect[1], -120);
-  await page.wait(60);
-  const moving = await page.eval('({ ...window.__map.stats })');
-  await page.wait(700);
+  // a wheel step, then the stats of the third frame after it: the view is moving, so only a budget's worth is drawn
+  const moving = await page.eval(`(async () => {
+    const m = window.__map, cv = document.querySelector('#labels'), r = cv.getBoundingClientRect();
+    m.setBudget(100000);  // what a slow GPU would have settled on
+    cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, bubbles: true, cancelable: true }));
+    for (let k = 0; k < 3; k++) await new Promise((res) => requestAnimationFrame(res));
+    return { ...m.stats };
+  })()`);
+  await page.waitFor('window.__map.stats.complete', 120000);
   const settled = await page.eval('({ ...window.__map.stats })');
   check('a still view draws every point in it', still.level === 2 && still.points >= still.visible * 0.99, JSON.stringify(still));
   check('a moving view draws fewer points', moving.level < 2 && moving.points < still.points / 2, JSON.stringify(moving));
   check('the full set returns when it stops', settled.level === 2 && settled.points >= settled.visible * 0.99, JSON.stringify(settled));
+
+  // The buttons: zoom in and out, the whole map, hide and show the list of areas, and the keys for them.
+  await page.eval('(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit }; m.stats.n = 0; })()');
+  const z0 = await page.eval('window.__map.S.view.scale');
+  await page.eval('document.querySelector("#zoom-in").click()');
+  await page.waitFor(`window.__map.S.view.scale > ${z0} * 1.6`, 8000);
+  check('the zoom-in button zooms in', true);
+  await page.eval('document.querySelector("#zoom-out").click()');
+  await page.waitFor(`window.__map.S.view.scale < ${z0} * 1.2`, 8000);
+  check('the zoom-out button zooms out', true);
+  await page.key('+');
+  await page.waitFor(`window.__map.S.view.scale > ${z0} * 1.4`, 8000);
+  check('the + key zooms in', true);
+  await page.eval('document.querySelector("#zoom-fit").click()');
+  await page.waitFor(`Math.abs(window.__map.S.view.scale - ${z0}) / ${z0} < 0.45 && !document.body.classList.contains("zooming")`, 8000);
+  const toggled = await page.eval('(() => { const b = document.querySelector("#outline-toggle"); b.click(); const off = document.body.classList.contains("outline-off") && getComputedStyle(document.querySelector("#outline")).visibility === "hidden"; b.click(); return [off, getComputedStyle(document.querySelector("#outline")).visibility === "visible"]; })()');
+  check('the list of areas can be hidden and shown', toggled[0] && toggled[1], JSON.stringify(toggled));
 
   // Escape clears, and a direct link restores a selection.
   await page.key('Escape');

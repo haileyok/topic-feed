@@ -60,13 +60,18 @@ and ads, adult content, segments without opposing sides, or segments below a coh
 make postmap                     # container on port 8740 of the internal network; picks up a new snapshot within a minute
 go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADDR; listens on 127.0.0.1 unless HTTP_ADDR says otherwise)
 node tools/cdp.mjs tools/scenarios/postmap.mjs        # headless checks of the page (needs the service; CHROMIUM=...)
-node tools/cdp.mjs tools/scenarios/postmap-perf.mjs   # draw and drag speed at several zooms, to compare versions of the page
+node tools/cdp.mjs tools/scenarios/postmap-perf.mjs   # draw, drag and wheel-zoom speed at several zooms, to compare versions of the page
+node tools/cdp.mjs tools/scenarios/postmap-mobile.mjs # the page in a phone-sized window
 ```
 
-The page keeps panning and zooming smooth with 3.4 million points: the points are sorted into blocks of the map so a
-view draws only the blocks it shows; while the view moves only a share of each block's points are drawn, as many as the
-last frames' speed allows (and all of them again when it stops); labels are laid out once for a zoom and a stretch of
-map, drawn from cached images, so moving the view only copies the ones on screen.
+The page keeps panning and zooming smooth with 3.4 million points. The points are sorted into blocks of the map so a
+view draws only the blocks it shows. While the view moves only a share of each block's points are drawn, as many as the
+last frames' speed allows; when it stops the rest are added a slice per frame, not in one long frame. The points are
+added up (not blended over each other) in a half-float texture and tone-mapped, so dense places glow and sparse ones stay
+dim whatever the zoom. Wheel steps ease toward a target about the cursor, a released drag glides, and flights ease in and
+out. Labels are laid out once for a zoom and a stretch of map and drawn from cached images, so moving the view only
+copies the ones on screen. Panels over the map are translucent but not blurred (blur over a canvas that changes every
+frame is slow on many GPUs). Keys: `/` search, `+` `-` zoom, `0` the whole map, `Esc` clear.
 
 The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 470 MB for 3.4 million
 posts) and never serves `posts.jsonl` or `texts.txt` whole.

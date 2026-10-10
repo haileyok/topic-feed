@@ -58,10 +58,15 @@ function hsl(hh, s, l) {
 }
 
 async function boot() {
+  const say = (t) => { $('#loading-text').textContent = t; };
+  say('Finding the latest map…');
   const { id } = await getJSON('/api/latest');
+  say('Fetching the posts…');
   const base = `/snap/${id}/`;
   const bin = (n) => fetch(base + n).then((r) => r.arrayBuffer());
   const [map, xyb, segb, ob, sb, cb] = await Promise.all([getJSON(base + 'map.json'), bin('xy.f32'), bin('seg.u16'), bin('outraged.u8'), bin('sentiment.u8'), bin('critical.u8')]);
+  say('Placing every post…');
+  await new Promise((r) => setTimeout(r, 0));
   S.id = id; S.map = map; S.segs = map.segments; S.areas = map.areas; S.n = map.n_posts;
   S.xy = new Float32Array(xyb); S.seg = new Uint16Array(segb);
   S.outr = new Uint8Array(ob); S.sent = new Uint8Array(sb); S.crit = new Uint8Array(cb);
@@ -86,7 +91,8 @@ async function boot() {
   const [xs, ys] = [col(0), col(1)], at = (v, q) => v[Math.min(v.length - 1, Math.floor(q * v.length))];
   const [x0, y0, x1, y1] = [at(xs, 0.005), at(ys, 0.005), at(xs, 0.995), at(ys, 0.995)];
   S.bounds = [x0, y0, x1, y1];
-  $('#meta').textContent = `${fmtN(S.n)} posts (${fmtN(map.n_posts_total)} counting repeats) · ${S.segs.length} segments · ${S.areas.length} areas · ${when(map.from)} to ${when(map.to)}`;
+  $('#meta').textContent = `${fmtN(S.n)} posts · ${S.segs.length} topics · 5 days`;
+  $('#meta').title = `${S.n.toLocaleString()} distinct posts (${map.n_posts_total.toLocaleString()} counting repeats) in ${S.segs.length} segments and ${S.areas.length} areas, ${when(map.from)} to ${when(map.to)}`;
   buildGrid();
   buildSpatial();
   initGL();
@@ -94,7 +100,8 @@ async function boot() {
   resize();
   setPalette();
   fitView();
-  $('#loading').hidden = true;
+  $('#loading').style.opacity = '0';
+  setTimeout(() => { $('#loading').hidden = true; }, 380);
   requestDraw();
   route();
 }
@@ -170,21 +177,22 @@ function blocksCount(b) {
   return blkSum[(b[3] + 1) * W + b[2] + 1] - blkSum[b[1] * W + b[2] + 1] - blkSum[(b[3] + 1) * W + b[0]] + blkSum[b[1] * W + b[0]];
 }
 
-// Draw the points of levels 0..top in the blocks b, as few runs as the layout allows.
-function drawBlocks(top, b) {
-  stats.calls = 0; stats.points = 0;
-  const draw = (from, count) => { gl.drawArrays(gl.POINTS, from, count); stats.calls++; stats.points += count; };
-  for (let l = 0; l <= top; l++) {
+// The runs [first, count] of points of levels l0..l1 in the blocks b: one run per stretch of blocks that sit next to
+// each other in the arrays, so a view that shows many whole rows is a handful of runs.
+function levelRuns(l0, l1, b) {
+  const out = [];
+  for (let l = l0; l <= l1; l++) {
     let from = -1, to = -1;
     for (let y = b[1]; y <= b[3]; y++) {
       const first = blk[l * NB + y * BG + b[0]], end = blk[l * NB + y * BG + b[2] + 1];
       if (end <= first) continue;
       if (first === to) { to = end; continue; }
-      if (from >= 0) draw(from, to - from);
+      if (from >= 0) out.push([from, to - from]);
       from = first; to = end;
     }
-    if (from >= 0) draw(from, to - from);
+    if (from >= 0) out.push([from, to - from]);
   }
+  return out;
 }
 
 function eachNear(wx, wy, radius, fn) {
@@ -244,24 +252,58 @@ void main() {
   gl_PointSize = u_size * u_dpr;
   v_col = vec4(col, pal.a * u_alpha);
 }`;
+// Points are added up (not blended over each other) into a texture, a soft round dab each, so where posts are dense
+// the picture glows and where they are few it stays dim.
 const FS = `#version 300 es
 precision mediump float;
 in vec4 v_col; out vec4 o;
 void main() {
-  vec2 d = gl_PointCoord - 0.5; float r = length(d);
-  if (r > 0.5) discard;
-  o = vec4(v_col.rgb, v_col.a * smoothstep(0.5, 0.3, r));
+  float r = length(gl_PointCoord - 0.5) * 2.0;
+  if (r > 1.0) discard;
+  float w = 1.0 - r * r;
+  o = vec4(v_col.rgb * (v_col.a * w * w), 1.0);
 }`;
+// What was added up becomes the picture: scaled by how much of the view has been drawn so far, squeezed into the
+// range the screen has without changing hue, and laid over a dark background.
+const TONE_VS = `#version 300 es
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const TONE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D u_acc; uniform float u_gain; uniform float u_exposure; uniform vec2 u_size;
+out vec4 o;
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_size;
+  vec3 acc = texture(u_acc, uv).rgb * u_gain;
+  float L = max(max(acc.r, acc.g), acc.b);
+  float k = L > 1e-5 ? (1.0 - exp(-L * u_exposure)) / L : u_exposure;
+  vec3 c = acc * k;
+  float m = max(max(c.r, c.g), c.b);
+  c = mix(c, vec3(m), 0.22 * smoothstep(0.55, 1.0, m));   // the densest places burn towards white
+  float vg = smoothstep(1.15, 0.2, length(uv - 0.5) * 1.5);
+  vec3 bg = mix(vec3(0.020, 0.024, 0.040), vec3(0.060, 0.070, 0.105), vg);
+  o = vec4(bg * (1.0 - m) + c, 1.0);
+}`;
+
+let toneProg, toneU = {}, toneVao, fbo = null, fboTex = null, fboW = 0, fboH = 0, fboFloat = true;
+
+function program(vs, fs) {
+  const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  return pr;
+}
 
 function initGL() {
   gl = $('#gl').getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
-  if (!gl) { $('#loading').textContent = 'This page needs WebGL 2.'; $('#loading').hidden = false; throw new Error('no webgl2'); }
-  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-  prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  if (!gl) { $('#loading-text').textContent = 'This page needs WebGL 2.'; $('#loading').hidden = false; throw new Error('no webgl2'); }
+  fboFloat = !!gl.getExtension('EXT_color_buffer_float');
+  prog = program(VS, FS);
   for (const u of ['u_center', 'u_scale', 'u_res', 'u_mode', 'u_size', 'u_dpr', 'u_alpha', 'u_pal']) U[u] = gl.getUniformLocation(prog, u);
+  toneProg = program(TONE_VS, TONE_FS);
+  for (const u of ['u_acc', 'u_gain', 'u_exposure', 'u_size']) toneU[u] = gl.getUniformLocation(toneProg, u);
+  toneVao = gl.createVertexArray();
   gl.bindVertexArray(gl.createVertexArray());
   const buf = (data, name, size, type, integer) => {
     const loc = gl.getAttribLocation(prog, name), b = gl.createBuffer();
@@ -272,10 +314,31 @@ function initGL() {
   buf(glXY, 'a_pos', 2, gl.FLOAT, false);
   buf(glSeg, 'a_seg', 1, gl.UNSIGNED_SHORT, true);
   buf(glMisc, 'a_misc', 4, gl.UNSIGNED_BYTE, true);
+  pointsVao = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
   palTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, palTex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+}
+let pointsVao;
+
+// The texture the points are added up in, as big as the canvas. Half floats where the GPU renders to them (so many
+// points can add up past 1), else plain 8-bit, where they stop at 1.
+function ensureFbo() {
+  const w = $('#gl').width, h = $('#gl').height;
+  if (fbo && w === fboW && h === fboH) return;
+  if (fbo) { gl.deleteFramebuffer(fbo); gl.deleteTexture(fboTex); }
+  fboW = w; fboH = h; acc = null;
+  for (const half of fboFloat ? [true, false] : [false]) {
+    fboTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, fboTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, half ? gl.RGBA16F : gl.RGBA8, w, h, 0, gl.RGBA, half ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) { stats.half = half; break; }
+    gl.deleteFramebuffer(fbo); gl.deleteTexture(fboTex); fbo = null;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 const passes = (sg) => {
@@ -292,6 +355,7 @@ function cohColor(c) { return [[225, 70, 70], [235, 140, 60], [235, 215, 80], [1
 // Each segment's colour (for the modes that colour by segment) and how visible it is: a filtered-out segment all
 // but vanishes, and everything outside the selection is dimmed.
 function setPalette() {
+  palVersion++;
   const n = S.segs.length, rows = Math.ceil(n / PW), data = new Uint8Array(PW * rows * 4);
   segAlpha = new Uint8Array(n);
   let shown = 0, shownPosts = 0;
@@ -321,21 +385,71 @@ function resize() {
   S.W = st.clientWidth; S.H = st.clientHeight;
   for (const c of [$('#gl'), $('#labels')]) { c.width = Math.round(S.W * S.dpr); c.height = Math.round(S.H * S.dpr); }
   plan = null;
+  if (gl) ensureFbo();
   if (S.n) { const [x0, y0, x1, y1] = S.bounds; S.fit = Math.min(S.W / (x1 - x0), S.H / (y1 - y0)) * 0.92; }
   requestDraw();
 }
-function fitView() { const [x0, y0, x1, y1] = S.bounds; S.view = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, scale: S.fit }; }
+// The view that shows the whole map in the part of the window the panels leave free.
+function wholeView() {
+  const [x0, y0, x1, y1] = S.bounds, left = document.body.classList.contains('outline-off') || S.W < 760 ? 0 : 304, top = S.W < 760 ? 176 : 68;
+  const scale = Math.min((S.W - left - 24) / (x1 - x0), (S.H - top - 24) / (y1 - y0));
+  return { cx: (x0 + x1) / 2 - (left / 2) / scale, cy: (y0 + y1) / 2 - (top / 2) / scale, scale: Math.max(scale, S.fit * 0.7) };
+}
+function fitView() { S.view = wholeView(); }
 
-let anim = null;
+// ---------- moving the view ----------
+//
+// Wheel steps, a drag that is let go of, and flights to a topic all become motion over time: a wheel step sets where the
+// zoom is heading (about the point under the cursor) and each frame closes part of the gap; a released drag glides to a
+// stop; a flight eases between two views.
+
+const M = { fly: null, zoom: null, vel: null, last: 0, id: 0 };
+function stopMotion() { M.fly = null; M.zoom = null; M.vel = null; }
+function startMotion() { if (!M.id) { M.last = performance.now(); M.id = requestAnimationFrame(motion); } }
+function motion(now) {
+  M.id = 0;
+  const dt = clamp(now - M.last, 1, 50);
+  M.last = now;
+  let moving = false;
+  if (M.fly) {
+    const f = M.fly, t = clamp((now - f.t0) / f.dur, 0, 1), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const scale = Math.exp(Math.log(f.from.scale) + (Math.log(f.to.scale) - Math.log(f.from.scale)) * e);
+    // the centre moves so that the path across the map looks straight whatever the zoom does
+    const u = f.from.scale === f.to.scale ? e : (1 / scale - 1 / f.from.scale) / (1 / f.to.scale - 1 / f.from.scale);
+    S.view = { cx: f.from.cx + (f.to.cx - f.from.cx) * u, cy: f.from.cy + (f.to.cy - f.from.cy) * u, scale };
+    if (t >= 1) M.fly = null;
+    moving = true;
+  } else {
+    if (M.zoom) {
+      const z = M.zoom, ls = Math.log(S.view.scale), lt = Math.log(z.target);
+      let nl = ls + (lt - ls) * (1 - Math.exp(-dt / 85));
+      if (Math.abs(lt - nl) < 0.0006) { nl = lt; M.zoom = null; }
+      S.view.scale = Math.exp(nl);
+      S.view.cx = z.wx - (z.ax - S.W / 2) / S.view.scale; S.view.cy = z.wy - (z.ay - S.H / 2) / S.view.scale;
+      moving = true;
+    }
+    if (M.vel) {
+      const v = M.vel;
+      S.view.cx -= v.x * dt / S.view.scale; S.view.cy -= v.y * dt / S.view.scale;
+      const k = Math.exp(-dt / 230);
+      v.x *= k; v.y *= k;
+      if (Math.hypot(v.x, v.y) < 0.02) M.vel = null;
+      moving = true;
+    }
+  }
+  if (moving) { touch(); requestDraw(); startMotion(); }
+}
 function flyTo(cx, cy, scale) {
-  const from = { ...S.view }, t0 = performance.now();
-  const step = (now) => {
-    const t = clamp((now - t0) / 450, 0, 1), e = 1 - Math.pow(1 - t, 3);
-    S.view = { cx: from.cx + (cx - from.cx) * e, cy: from.cy + (cy - from.cy) * e, scale: Math.exp(Math.log(from.scale) + (Math.log(scale) - Math.log(from.scale)) * e) };
-    touch(); requestDraw();
-    if (t < 1) anim = requestAnimationFrame(step);
-  };
-  cancelAnimationFrame(anim); anim = requestAnimationFrame(step);
+  stopMotion();
+  M.fly = { from: { ...S.view }, to: { cx, cy, scale }, t0: performance.now(), dur: 650 };
+  startMotion();
+}
+// Zoom by a factor about a point of the screen (the middle by default).
+function zoomBy(f, ax = S.W / 2, ay = S.H / 2) {
+  M.fly = null; M.vel = null;
+  const [wx, wy] = toWorld(ax, ay), base = M.zoom ? M.zoom.target : S.view.scale;
+  M.zoom = { target: clamp(base * f, S.fit * 0.7, S.fit * 2000), ax, ay, wx, wy };
+  touch(); startMotion();
 }
 function flyToNode(nd, mult = 2.4) { flyTo(nd.x, nd.y, Math.min(S.W, S.H) / (2 * Math.max(nd.r * mult, 0.01))); }
 
@@ -349,9 +463,14 @@ function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationF
 let lastInput = 0, lastDraw = 0, lastWasBusy = false, frameEma = 16, settleTimer = 0, budget = 600000;
 function touch() { lastInput = performance.now(); }
 
+// What has been added up in the texture for the current view: runs of points still to draw, and how many were drawn.
+let acc = null, palVersion = 0;
+const EXPOSURE = 1.5;
+
 function draw() {
   drawQueued = false;
   if (!gl || !S.n) return;
+  ensureFbo();
   const now = performance.now(), busy = now - lastInput < 150;
   if (busy && lastWasBusy && now - lastDraw < 250) {
     // frames are paced by how fast the GPU keeps up: slow ones shrink the budget of points, fast ones grow it
@@ -362,27 +481,69 @@ function draw() {
   if (busy) { clearTimeout(settleTimer); settleTimer = setTimeout(requestDraw, 170); }
 
   const zoom = S.view.scale / S.fit, b = viewBlocks();
-  let top = 2;
+  const sig = [S.view.cx, S.view.cy, S.view.scale, S.mode, palVersion, S.W, S.H, S.dpr].join(',');
+  let level = 2;
   if (b && busy) {
     const est = blocksCount(b);
-    top = 0;
-    for (let l = 2; l >= 0; l--) if (est * CUM[l] <= budget) { top = l; break; }
+    level = 0;
+    for (let l = 2; l >= 0; l--) if (est * CUM[l] <= budget) { level = l; break; }
   }
-  const frac = CUM[top], thin = frac < 1;
-  gl.viewport(0, 0, $('#gl').width, $('#gl').height);
-  gl.clearColor(0.055, 0.063, 0.086, 1); gl.clear(gl.COLOR_BUFFER_BIT);
-  if (b) {
-    gl.useProgram(prog);
-    gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
-    gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
-    // fewer points are drawn a little larger and denser, so the picture keeps its look while it moves
-    gl.uniform1f(U.u_size, clamp(1.7 * density() + Math.log2(zoom) * 0.9, 1.2, 10) * (thin ? Math.min(1.7, 1 + 0.28 * Math.log2(1 / frac)) : 1));
-    gl.uniform1f(U.u_alpha, clamp((0.6 * density() + Math.log2(zoom) * 0.1) * (thin ? 1.25 : 1), 0.4, 0.95));
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
-    stats.level = top; stats.visible = blocksCount(b); stats.budget = Math.round(budget);
-    drawBlocks(top, b);
+  if (!acc || acc.sig !== sig) {
+    // a new picture: start again, the sparse levels first
+    acc = { sig, b, est: b ? blocksCount(b) : 0, level, runs: b ? levelRuns(0, level, b) : [], idx: 0, drawn: 0 };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, fboW, fboH);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  } else if (b && level > acc.level) {
+    // the view has stopped: the levels that were left out are added, a slice per frame
+    acc.runs = acc.runs.concat(levelRuns(acc.level + 1, level, b)); acc.level = level;
   }
+  if (acc.idx < acc.runs.length) drawSlice(busy, zoom);
+  present();
   drawLabels();
+  if (acc.idx < acc.runs.length || acc.level < 2 && !busy) requestDraw();
+  stats.level = acc.level; stats.visible = acc.est; stats.budget = Math.round(budget); stats.points = acc.drawn;
+  stats.complete = acc.idx >= acc.runs.length && acc.level === 2;
+}
+
+// Draw runs of points onto the texture: all that are left when the view is moving (its levels were chosen to fit the
+// budget), else a slice of about a budget's worth, the rest on the next frames.
+function drawSlice(all, zoom) {
+  const limit = all ? Infinity : Math.max(budget, 150000);
+  const size = clamp(1.7 * density() + Math.log2(zoom) * 0.9, 1.2, 10);
+  // Each dab adds `alpha` where it lands. Spread the points that overlap on average to about 0.55, and from the second
+  // zoom step on raise it up to 8 times (measured on the real map: where the view is zoomed in the posts are further
+  // apart, and the same alpha leaves them dim), so that a view at any zoom comes out with its middle tones about as bright.
+  const overlap = acc.est * size * size / (S.W * S.H);
+  const alpha = clamp(0.55 / Math.max(overlap, 0.55) * clamp(1 + 3.5 * Math.log2(Math.max(zoom, 1)), 1, 8), 0.012, 1.6);
+  stats.alpha = +alpha.toFixed(4); stats.overlap = +overlap.toFixed(2);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, fboW, fboH);
+  gl.useProgram(prog); gl.bindVertexArray(pointsVao);
+  gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
+  gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
+  gl.uniform1f(U.u_size, size); gl.uniform1f(U.u_alpha, alpha);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  let n = 0;
+  while (acc.idx < acc.runs.length && n < limit) {
+    const run = acc.runs[acc.idx], take = Math.min(run[1], limit - n);
+    gl.drawArrays(gl.POINTS, run[0], take);
+    n += take; acc.drawn += take;
+    if (take < run[1]) { run[0] += take; run[1] -= take; } else acc.idx++;
+  }
+  gl.disable(gl.BLEND);
+}
+
+function present() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, $('#gl').width, $('#gl').height);
+  gl.useProgram(toneProg); gl.bindVertexArray(toneVao);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fboTex);
+  gl.uniform1i(toneU.u_acc, 1);
+  gl.uniform1f(toneU.u_gain, Math.max(1, acc.est / Math.max(acc.drawn, 1)));
+  gl.uniform1f(toneU.u_exposure, EXPOSURE);
+  gl.uniform2f(toneU.u_size, fboW, fboH);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.activeTexture(gl.TEXTURE0);
 }
 
 // ---------- labels and overlay ----------
@@ -411,14 +572,14 @@ function drawLabels() {
   // map around the view and a zoom, and moving the view just draws the ones that are on screen.
   const key = `${sel ? sel.type + sel.id : ''}|${JSON.stringify(S.filters)}|${zoom < 3.2}|${zoom >= 2}`;
   const [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(S.W, S.H);
-  if (!plan || plan.key !== key || Math.abs(Math.log(S.view.scale / plan.scale)) > 0.08 || wx0 < plan.rect[0] || wy0 < plan.rect[1] || wx1 > plan.rect[2] || wy1 > plan.rect[3]) plan = buildPlan(key, zoom);
+  if (!plan || plan.key !== key || Math.abs(Math.log(S.view.scale / plan.scale)) > (M.zoom || M.fly ? 0.35 : 0.04) || wx0 < plan.rect[0] || wy0 < plan.rect[1] || wx1 > plan.rect[2] || wy1 > plan.rect[3]) { const t = performance.now(); plan = buildPlan(key, zoom); stats.planMs = +(performance.now() - t).toFixed(1); }
   let drawn = 0;
   for (const it of plan.items) {
-    const [x, y] = toScreen(it.wx, it.wy), w = it.bmp.w, h = it.bmp.h;
+    const [x, y] = toScreen(it.wx, it.wy), w = it.w, h = it.h;
     if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > S.W || y - h / 2 > S.H) continue;
     if (++drawn > 90) break;
     labelRects.push({ x: x - w / 2, y: y - h / 2, w, h, kind: it.kind, id: it.id });
-    ctx.drawImage(it.bmp.cv, x - w / 2, y - h / 2, w, h);
+    ctx.drawImage((it.bmp || (it.bmp = labelBitmap(it.kind, it.text, it.color, it.fs))).cv, x - w / 2, y - h / 2, w, h);
   }
 }
 
@@ -445,30 +606,45 @@ function buildPlan(key, zoom) {
     }
   }
   items.sort((a, b) => (a.kind === b.kind ? b.weight - a.weight : a.kind === 'area' ? -1 : 1));
-  const placed = [], out = [];
+  // collisions are looked up in a hash of the screen in cells, so that a few thousand candidates stay cheap
+  const out = [], grid = new Map(), CELL = 80, cellsOf = (r, f) => {
+    for (let cx = Math.floor((r.x - 3) / CELL); cx <= Math.floor((r.x + r.w + 3) / CELL); cx++) for (let cy = Math.floor((r.y - 2) / CELL); cy <= Math.floor((r.y + r.h + 2) / CELL); cy++) if (f(cx * 100003 + cy)) return true;
+    return false;
+  };
   for (const it of items) {
-    const fs = it.kind === 'area' ? Math.round(clamp(it.nd.r * S.view.scale * 0.1, 14, 19)) : 13, bmp = labelBitmap(it.kind, it.text, it.color, fs);
-    const [sx, sy] = toScreen(it.nd.x, it.nd.y), r = { x: sx - bmp.w / 2, y: sy - bmp.h / 2, w: bmp.w, h: bmp.h };
-    if (placed.some((q) => r.x - 3 < q.x + q.w && r.x + r.w + 3 > q.x && r.y - 2 < q.y + q.h && r.y + r.h + 2 > q.y)) continue;
-    placed.push(r);
-    out.push({ kind: it.kind, id: it.nd.id, wx: it.nd.x, wy: it.nd.y, bmp });
+    const fs = it.kind === 'area' ? Math.round(clamp(it.nd.r * S.view.scale * 0.1, 14, 19)) : 13, sz = labelSize(it.kind, it.text, fs);
+    const [sx, sy] = toScreen(it.nd.x, it.nd.y), r = { x: sx - sz.w / 2, y: sy - sz.h / 2, w: sz.w, h: sz.h };
+    if (cellsOf(r, (k) => (grid.get(k) || []).some((q) => r.x - 3 < q.x + q.w && r.x + r.w + 3 > q.x && r.y - 2 < q.y + q.h && r.y + r.h + 2 > q.y))) continue;
+    cellsOf(r, (k) => { (grid.get(k) || grid.set(k, []).get(k)).push(r); return false; });
+    out.push({ kind: it.kind, id: it.nd.id, wx: it.nd.x, wy: it.nd.y, text: it.text, color: it.color, fs, w: sz.w, h: sz.h, bmp: null });
     if (out.length >= 600) break;
   }
   return { key, scale: S.view.scale, rect, items: out };
 }
 
+// How big a label is, worked out once and kept (measuring text is cheap; making the picture of it is not, so that is
+// left until a label is on screen).
+const labelCache = new Map(), sizeCache = new Map();
+let measureCtx = null;
+function labelSize(kind, text, fs) {
+  const k = `${kind}|${text}|${fs}`;
+  let z = sizeCache.get(k);
+  if (z) return z;
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  const lines = splitTitle(text, kind === 'area' ? 24 : 34), lh = fs * 1.25;
+  measureCtx.font = `600 ${fs}px system-ui, sans-serif`;
+  z = { lines, lh, w: Math.ceil(Math.max(...lines.map((l) => measureCtx.measureText(l).width)) + 20), h: Math.ceil(lh * lines.length + 8) };
+  sizeCache.set(k, z);
+  return z;
+}
+
 // A label drawn once onto a canvas of its own and kept, so that a frame only has to copy it: a dark pill, so the text
 // reads against any colour behind it, with a bar in the area's or segment's own colour.
-const labelCache = new Map();
-let measureCtx = null;
 function labelBitmap(kind, text, color, fs) {
   const k = `${kind}|${text}|${color}|${fs}|${S.dpr}`;
   let b = labelCache.get(k);
   if (b) return b;
-  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
-  const font = `600 ${fs}px system-ui, sans-serif`, lines = splitTitle(text, kind === 'area' ? 24 : 34);
-  measureCtx.font = font;
-  const lh = fs * 1.25, w = Math.ceil(Math.max(...lines.map((l) => measureCtx.measureText(l).width)) + 20), h = Math.ceil(lh * lines.length + 8);
+  const { lines, lh, w, h } = labelSize(kind, text, fs);
   const cv = document.createElement('canvas');
   cv.width = Math.ceil(w * S.dpr); cv.height = Math.ceil(h * S.dpr);
   const c = cv.getContext('2d');
@@ -476,7 +652,7 @@ function labelBitmap(kind, text, color, fs) {
   c.fillStyle = 'rgba(10,12,18,0.86)'; c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 1;
   c.beginPath(); c.roundRect(0.5, 0.5, w - 1, h - 1, 6); c.fill(); c.stroke();
   c.fillStyle = `rgb(${color})`; c.beginPath(); c.roundRect(4, 5, 3, h - 10, 2); c.fill();
-  c.fillStyle = '#fff'; c.font = font; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#fff'; c.font = `600 ${fs}px system-ui, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
   lines.forEach((l, i) => c.fillText(l, 5 + (w - 5) / 2, 4 + lh * (i + 0.5)));
   b = { cv, w, h };
   labelCache.set(k, b);
@@ -500,9 +676,9 @@ function initPointer() {
   let down = null, pinch = null;
   cv.addEventListener('pointerdown', (e) => {
     cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.offsetX, e.offsetY]);
-    down = { x: e.offsetX, y: e.offsetY, moved: false, view: { ...S.view } };
+    down = { x: e.offsetX, y: e.offsetY, moved: false, view: { ...S.view }, samples: [] };
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: S.view.scale }; }
-    cancelAnimationFrame(anim);
+    stopMotion();
   });
   cv.addEventListener('pointermove', (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, [e.offsetX, e.offsetY]);
@@ -513,7 +689,12 @@ function initPointer() {
     if (down && pts.has(e.pointerId)) {
       const dx = e.offsetX - down.x, dy = e.offsetY - down.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) { down.moved = true; cv.classList.add('drag'); hideTip(); }
-      if (down.moved) { S.view.cx = down.view.cx - dx / S.view.scale; S.view.cy = down.view.cy - dy / S.view.scale; touch(); requestDraw(); }
+      if (down.moved) {
+        S.view.cx = down.view.cx - dx / S.view.scale; S.view.cy = down.view.cy - dy / S.view.scale; touch(); requestDraw();
+        const t = performance.now();
+        down.samples.push([t, e.offsetX, e.offsetY]);
+        while (down.samples.length > 2 && t - down.samples[0][0] > 90) down.samples.shift();
+      }
       return;
     }
     hoverAt(e.offsetX, e.offsetY);
@@ -522,16 +703,23 @@ function initPointer() {
     pts.delete(e.pointerId); cv.classList.remove('drag');
     if (pts.size < 2) pinch = null;
     if (down && !down.moved && pts.size === 0) click(e.offsetX, e.offsetY);
+    if (down && down.moved && !pinch && pts.size === 0 && down.samples.length > 1) {
+      // let go while moving: the view keeps gliding
+      const a = down.samples[0], z = down.samples[down.samples.length - 1], dt = z[0] - a[0];
+      if (dt > 10 && performance.now() - z[0] < 80) {
+        const vx = (z[1] - a[1]) / dt, vy = (z[2] - a[2]) / dt;
+        if (Math.hypot(vx, vy) > 0.15) { M.vel = { x: vx, y: vy }; startMotion(); }
+      }
+    }
     if (pts.size === 0) down = null;
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
   cv.addEventListener('pointerleave', hideTip);
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const [wx, wy] = toWorld(e.offsetX, e.offsetY);
-    S.view.scale = clamp(S.view.scale * Math.exp(-e.deltaY * 0.0016), S.fit * 0.7, S.fit * 2000);
-    S.view.cx = wx - (e.offsetX - S.W / 2) / S.view.scale; S.view.cy = wy - (e.offsetY - S.H / 2) / S.view.scale;
-    cancelAnimationFrame(anim); hideTip(); touch(); requestDraw();
+    const dy = clamp(e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY, -300, 300);
+    zoomBy(Math.exp(-dy * 0.0017), e.offsetX, e.offsetY);
+    hideTip();
   }, { passive: false });
 }
 
@@ -675,7 +863,7 @@ function showDrawer() {
     d.hidden = false;
   }
   d.scrollTop = 0;
-  requestAnimationFrame(resize);
+  document.body.classList.toggle('has-drawer', !d.hidden);
 }
 
 function postCard(p, opts = {}) {
@@ -845,6 +1033,23 @@ function initSearch() {
   });
 }
 
+// The buttons: the list of areas, zoom, the whole map. And the keys for the same.
+function initChrome() {
+  if (innerWidth < 760) document.body.classList.add('outline-off');
+  const toggle = $('#outline-toggle');
+  toggle.setAttribute('aria-pressed', String(!document.body.classList.contains('outline-off')));
+  toggle.addEventListener('click', () => { toggle.setAttribute('aria-pressed', String(document.body.classList.toggle('outline-off') === false)); });
+  $('#zoom-in').addEventListener('click', () => zoomBy(1.7));
+  $('#zoom-out').addEventListener('click', () => zoomBy(1 / 1.7));
+  $('#zoom-fit').addEventListener('click', () => { const v = wholeView(); flyTo(v.cx, v.cy, v.scale); });
+  document.addEventListener('keydown', (e) => {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '+' || e.key === '=') zoomBy(1.7);
+    else if (e.key === '-' || e.key === '_') zoomBy(1 / 1.7);
+    else if (e.key === '0') $('#zoom-fit').click();
+  });
+}
+
 function initFilters() {
   $('#filter-btn').addEventListener('click', () => { const f = $('#filters'); f.hidden = !f.hidden; $('#filter-btn').setAttribute('aria-expanded', String(!f.hidden)); });
   const apply = () => {
@@ -874,6 +1079,8 @@ document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('cl
 window.addEventListener('resize', resize);
 window.addEventListener('hashchange', route);
 // A handle for the headless checks in tools/scenarios/postmap.mjs.
-window.__map = { S, stats, draw, drawLabels, selectArea, selectSeg, selectPost, runSearch, setMode, nearest, toScreen, toWorld, flyTo, get labelRects() { return labelRects; }, get gl() { return gl; } };
-initPointer(); initSearch(); initFilters(); setMode(0);
-boot().catch((e) => { $('#loading').textContent = 'Could not load the map: ' + e.message; console.error(e); });
+window.__map = { S, stats, wholeView, setBudget(v) { budget = v; },
+  // draw the picture for the current view from scratch, all of it, now (the headless checks read pixels)
+  settle() { lastInput = 0; acc = null; draw(); for (let k = 0; k < 200 && !stats.complete; k++) draw(); }, draw, drawLabels, selectArea, selectSeg, selectPost, runSearch, setMode, nearest, toScreen, toWorld, flyTo, get labelRects() { return labelRects; }, get gl() { return gl; } };
+initPointer(); initSearch(); initFilters(); initChrome(); setMode(0);
+boot().catch((e) => { $('#loading-text').textContent = 'Could not load the map: ' + e.message; $('#loading .bar').hidden = true; console.error(e); });

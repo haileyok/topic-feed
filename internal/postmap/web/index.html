@@ -3,28 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Post map</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <canvas id="labels"></canvas>
+</div>
+
 <header>
-  <h1>Post map</h1>
-  <div id="search-wrap">
-    <input id="search" type="search" placeholder="Find a topic, or words in a post (press /)" autocomplete="off" spellcheck="false">
-    <div id="results" hidden></div>
+  <div id="brand" class="glass">
+    <button id="outline-toggle" aria-label="Show or hide the list of areas" aria-pressed="true" title="Areas and segments"><span></span></button>
+    <div class="titles"><h1>Post map</h1><span id="meta"></span></div>
   </div>
-  <div id="modes" role="group" aria-label="Colour by">
-    <button data-mode="0" class="on" title="Each area its own colour, its segments shades of it">Area</button>
-    <button data-mode="1" title="How well the labelling model found one coherent subject in the segment, 1 to 5">Coherence</button>
-    <button data-mode="2" title="What kind of posts the segment is: discussion, news links, bots, ...">Kind</button>
-    <button data-mode="3" title="The existing classifier's critical score for each post">Critical</button>
-    <button data-mode="4" title="The existing classifier's sentiment for each post, red negative to blue positive">Sentiment</button>
-    <button data-mode="5" title="The existing classifier's outraged tone for each post">Outraged</button>
+  <div id="search-wrap" class="glass">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg>
+    <input id="search" type="search" placeholder="Find a topic, or words in a post" autocomplete="off" spellcheck="false" aria-label="Search">
+    <kbd>/</kbd>
+    <div id="results" class="glass" hidden></div>
+  </div>
+  <div id="modes" class="glass" role="group" aria-label="Colour by">
+    <button data-mode="0" class="on" title="Each area its own colour, its segments shades of it"><i class="ic ic-area"></i>Area</button>
+    <button data-mode="1" title="How well the labelling model found one coherent subject in the segment, 1 to 5"><i class="ic ic-coh"></i>Coherence</button>
+    <button data-mode="2" title="What kind of posts the segment is: discussion, news links, bots, ..."><i class="ic ic-kind"></i>Kind</button>
+    <button data-mode="3" title="The existing classifier's critical score for each post"><i class="ic ic-ramp"></i>Critical</button>
+    <button data-mode="4" title="The existing classifier's sentiment for each post, red negative to blue positive"><i class="ic ic-ramp"></i>Sentiment</button>
+    <button data-mode="5" title="The existing classifier's outraged tone for each post"><i class="ic ic-ramp"></i>Outraged</button>
   </div>
   <div id="filter-wrap">
-    <button id="filter-btn" aria-expanded="false">Filters</button>
-    <div id="filters" hidden>
+    <button id="filter-btn" class="glass" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8.5 15h3"/></svg>Filters</button>
+    <div id="filters" class="glass" hidden>
       <label><input type="checkbox" id="f-bots"> Hide bots, spam and ads</label>
       <label><input type="checkbox" id="f-adult"> Hide adult content</label>
       <label><input type="checkbox" id="f-sides"> Only segments with opposing sides</label>
@@ -34,19 +45,20 @@
       <div class="note" id="f-count"></div>
     </div>
   </div>
-  <span id="meta"></span>
 </header>
-<main>
-  <nav id="outline" aria-label="Areas and segments"></nav>
-  <div id="stage">
-    <canvas id="gl"></canvas>
-    <canvas id="labels"></canvas>
-    <div id="tip" hidden></div>
-    <div id="legend"></div>
-    <div id="loading">Loading the map…</div>
-  </div>
-  <aside id="drawer" hidden></aside>
-</main>
+
+<nav id="outline" class="glass" aria-label="Areas and segments"></nav>
+<aside id="drawer" class="glass" hidden></aside>
+
+<div id="tip" class="glass" hidden></div>
+<div id="legend" class="glass"></div>
+<div id="zoom" class="glass" role="group" aria-label="Zoom">
+  <button id="zoom-in" aria-label="Zoom in" title="Zoom in (+)">+</button>
+  <button id="zoom-out" aria-label="Zoom out" title="Zoom out (-)">&minus;</button>
+  <button id="zoom-fit" aria-label="Show the whole map" title="Whole map (0)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
+</div>
+<div id="loading"><div class="mark"></div><div id="loading-text">Loading the map…</div><div class="bar"><i></i></div></div>
+
 <script type="module" src="app.js"></script>
 </body>
 </html>
