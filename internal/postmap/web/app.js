@@ -69,6 +69,7 @@ async function boot() {
   await new Promise((r) => setTimeout(r, 0));
   S.id = id; S.map = map; S.segs = map.segments; S.areas = map.areas; S.n = map.n_posts;
   S.xy = new Float32Array(xyb); S.seg = new Uint16Array(segb);
+  S.segArea = Uint16Array.from(map.segments, (sg) => sg.area);
   S.outr = new Uint8Array(ob); S.sent = new Uint8Array(sb); S.crit = new Uint8Array(cb);
   if (S.xy.length !== 2 * S.n || S.seg.length !== S.n) throw new Error('the map files do not agree');
 
@@ -389,11 +390,55 @@ function resize() {
   if (S.n) { const [x0, y0, x1, y1] = S.bounds; S.fit = Math.min(S.W / (x1 - x0), S.H / (y1 - y0)) * 0.92; }
   requestDraw();
 }
-// The view that shows the whole map in the part of the window the panels leave free.
-function wholeView() {
-  const [x0, y0, x1, y1] = S.bounds, left = document.body.classList.contains('outline-off') || S.W < 760 ? 0 : 304, top = S.W < 760 ? 176 : 68;
-  const scale = Math.min((S.W - left - 24) / (x1 - x0), (S.H - top - 24) / (y1 - y0));
-  return { cx: (x0 + x1) / 2 - (left / 2) / scale, cy: (y0 + y1) / 2 - (top / 2) / scale, scale: Math.max(scale, S.fit * 0.7) };
+// ---------- where to look ----------
+//
+// The panels cover parts of the window. Where the map is to be looked at, and how big, is worked out for the part they
+// leave free: the bar at the top, the list on the left if it is shown, and the drawer on the right (at the bottom on
+// a phone) if it is, or is about to be, open.
+
+function insets(withDrawer) {
+  const small = S.W < 760;
+  return {
+    left: document.body.classList.contains('outline-off') || small ? 0 : 304,
+    right: withDrawer && !small ? 424 : 0,
+    top: small ? 176 : 68,
+    bottom: withDrawer && small ? Math.round(S.H * 0.54) : 12,
+  };
+}
+// The view with the map point (wx, wy) in the middle of the free part of the window.
+function placeAt(wx, wy, scale, withDrawer = true) {
+  const I = insets(withDrawer);
+  return { cx: wx - ((I.left - I.right) / 2) / scale, cy: wy - ((I.top - I.bottom) / 2) / scale, scale };
+}
+// The view that puts the box in the middle of the free part, as big as fits but no smaller than minScale (a click
+// never takes the view out beyond the whole map) and no bigger than maxScale.
+function viewForBox(x0, y0, x1, y1, withDrawer, minScale, maxScale) {
+  const I = insets(withDrawer), fw = S.W - I.left - I.right - 48, fh = S.H - I.top - I.bottom - 48;
+  const scale = clamp(Math.min(fw / Math.max(x1 - x0, 1e-6), fh / Math.max(y1 - y0, 1e-6)), minScale, maxScale);
+  return placeAt((x0 + x1) / 2, (y0 + y1) / 2, scale, withDrawer);
+}
+// The view that shows the whole map.
+function wholeView(withDrawer = document.body.classList.contains('has-drawer')) {
+  const [x0, y0, x1, y1] = S.bounds;
+  return viewForBox(x0, y0, x1, y1, withDrawer, S.fit * 0.7, S.fit * 5);
+}
+// The box holding the middle of some points: from the lo-th to the hi-th share of each coordinate.
+function middleBox(xs, ys, lo = 0.08, hi = 0.92) {
+  const sx = Float64Array.from(xs).sort(), sy = Float64Array.from(ys).sort(), at = (v, q) => v[Math.min(v.length - 1, Math.floor(q * (v.length - 1) + 0.5))];
+  return [at(sx, lo), at(sy, lo), at(sx, hi), at(sy, hi)];
+}
+// Look at an area or a segment: the middle 80% of its posts, fitted in the free part of the window.
+function focusOn(kind, id) {
+  const want = kind === 'area' ? S.areas[id].texts : S.segs[id].n_texts, stride = Math.max(1, Math.floor(want / 8000));
+  const xs = [], ys = [], seg = S.seg, xy = S.xy, sa = S.segArea;
+  let k = 0;
+  for (let i = 0; i < S.n; i++) {
+    if ((kind === 'seg' ? seg[i] === id : sa[seg[i]] === id) && k++ % stride === 0) { xs.push(xy[2 * i]); ys.push(xy[2 * i + 1]); }
+  }
+  const nd = kind === 'area' ? S.areas[id] : S.segs[id];
+  const [x0, y0, x1, y1] = xs.length ? middleBox(xs, ys) : [nd.x, nd.y, nd.x, nd.y];
+  const v = viewForBox(x0, y0, x1, y1, true, S.fit * 1.15, S.fit * 40);
+  flyTo(v.cx, v.cy, v.scale);
 }
 function fitView() { S.view = wholeView(); }
 
@@ -415,8 +460,9 @@ function motion(now) {
     const f = M.fly, t = clamp((now - f.t0) / f.dur, 0, 1), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const scale = Math.exp(Math.log(f.from.scale) + (Math.log(f.to.scale) - Math.log(f.from.scale)) * e);
     // the centre moves so that the path across the map looks straight whatever the zoom does
-    const u = f.from.scale === f.to.scale ? e : (1 / scale - 1 / f.from.scale) / (1 / f.to.scale - 1 / f.from.scale);
-    S.view = { cx: f.from.cx + (f.to.cx - f.from.cx) * u, cy: f.from.cy + (f.to.cy - f.from.cy) * u, scale };
+    // (for flights that hardly change the zoom that ratio is 0/0, and is not used; a flight ends exactly on its target)
+    const u = Math.abs(Math.log(f.to.scale / f.from.scale)) < 1e-3 ? e : (1 / scale - 1 / f.from.scale) / (1 / f.to.scale - 1 / f.from.scale);
+    S.view = t >= 1 ? { ...f.to } : { cx: f.from.cx + (f.to.cx - f.from.cx) * u, cy: f.from.cy + (f.to.cy - f.from.cy) * u, scale };
     if (t >= 1) M.fly = null;
     moving = true;
   } else {
@@ -451,7 +497,6 @@ function zoomBy(f, ax = S.W / 2, ay = S.H / 2) {
   M.zoom = { target: clamp(base * f, S.fit * 0.7, S.fit * 2000), ax, ay, wx, wy };
   touch(); startMotion();
 }
-function flyToNode(nd, mult = 2.4) { flyTo(nd.x, nd.y, Math.min(S.W, S.H) / (2 * Math.max(nd.r * mult, 0.01))); }
 
 // How many posts there are against the 855,000 the point size and opacity were tuned on: more posts, finer and fainter points.
 const density = () => clamp(Math.sqrt(900000 / S.n), 0.55, 1);
@@ -764,15 +809,15 @@ function refresh() { setPalette(); showDrawer(); highlightOutline(); }
 
 function selectArea(id, fly = true) {
   S.sel = { type: 'area', id }; S.hits = []; refresh(); setHash('area/' + id);
-  if (fly) flyToNode(S.areas[id], 1.6);
+  if (fly) focusOn('area', id);
 }
 function selectSeg(id, fly = true) {
   S.sel = { type: 'seg', id }; S.hits = []; refresh(); setHash('seg/' + id);
-  if (fly) flyToNode(S.segs[id], 3);
+  if (fly) focusOn('seg', id);
 }
 async function selectPost(i, fly = false) {
   S.sel = { type: 'post', id: i }; refresh(); setHash('post/' + i);
-  if (fly) flyTo(S.xy[2 * i], S.xy[2 * i + 1], Math.max(S.view.scale, S.fit * 40));
+  if (fly) { const v = placeAt(S.xy[2 * i], S.xy[2 * i + 1], Math.max(S.view.scale, S.fit * 40)); flyTo(v.cx, v.cy, v.scale); }
   try { await fetchPosts([i, ...nearPosts(i, 6)]); } catch { /* the drawer says so */ }
   if (S.sel && S.sel.type === 'post' && S.sel.id === i) showDrawer();
 }
@@ -984,10 +1029,10 @@ async function runSearch(q) {
     S.hits = r.posts.map((p) => p.i); S.hitQuery = q; S.sel = { type: 'search' };
     setPalette(); showDrawer(); highlightOutline(); setHash('q/' + encodeURIComponent(q));
     if (S.hits.length) {
-      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-      for (const i of S.hits) { const x = S.xy[2 * i], y = S.xy[2 * i + 1]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-      const span = Math.max(x1 - x0, y1 - y0, 0.02);
-      flyTo((x0 + x1) / 2, (y0 + y1) / 2, Math.min(S.W, S.H) / (span * 1.4));
+      const xs = S.hits.map((i) => S.xy[2 * i]), ys = S.hits.map((i) => S.xy[2 * i + 1]);
+      const [x0, y0, x1, y1] = S.hits.length < 20 ? middleBox(xs, ys, 0, 1) : middleBox(xs, ys, 0.05, 0.95);
+      const v = viewForBox(x0, y0, x1, y1, true, S.fit * 1.15, S.fit * 40);
+      flyTo(v.cx, v.cy, v.scale);
     }
   } catch (e) { console.error(e); }
 }
@@ -1079,7 +1124,7 @@ document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('cl
 window.addEventListener('resize', resize);
 window.addEventListener('hashchange', route);
 // A handle for the headless checks in tools/scenarios/postmap.mjs.
-window.__map = { S, stats, wholeView, setBudget(v) { budget = v; },
+window.__map = { S, stats, wholeView, get moving() { return !!(M.fly || M.zoom || M.vel); }, setBudget(v) { budget = v; },
   // draw the picture for the current view from scratch, all of it, now (the headless checks read pixels)
   settle() { lastInput = 0; acc = null; draw(); for (let k = 0; k < 200 && !stats.complete; k++) draw(); }, draw, drawLabels, selectArea, selectSeg, selectPost, runSearch, setMode, nearest, toScreen, toWorld, flyTo, get labelRects() { return labelRects; }, get gl() { return gl; } };
 initPointer(); initSearch(); initFilters(); initChrome(); setMode(0);

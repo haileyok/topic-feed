@@ -23,6 +23,20 @@ export default async (page) => {
     return n / (w * h);
   })()`);
 
+  // Where the view ends up after choosing an area or a segment: how zoomed in it is against the whole map, and the share of
+  // the posts that are in the window (not behind the panels at the sides).
+  const looking = async (kind, id) => (await page.waitFor('!window.__map.moving', 60000), await page.eval(`(() => {
+    const m = window.__map, S = m.S, whole = m.wholeView(false).scale;
+    let n = 0, shown = 0;
+    for (let i = 0; i < S.n; i += 7) {
+      if (${JSON.stringify(kind)} === 'seg' ? S.seg[i] !== ${id} : S.segArea[S.seg[i]] !== ${id}) continue;
+      n++;
+      const [x, y] = m.toScreen(S.xy[2 * i], S.xy[2 * i + 1]);
+      if (x > 304 && x < S.W - 424 && y > 68 && y < S.H) shown++;
+    }
+    return { zoomVsWhole: +(S.view.scale / whole).toFixed(2), members: n, shown: n ? +(shown / n).toFixed(2) : 1 };
+  })()`));
+
   const info = await page.eval(`(() => {
     const m = window.__map, S = m.S, st = document.querySelector('#stage').getBoundingClientRect();
     const cov = document.elementFromPoint(st.x + st.width / 2, st.y + st.height / 2);
@@ -75,6 +89,9 @@ export default async (page) => {
   const area = await page.eval(`({ hidden: document.querySelector('#drawer').hidden, h2: document.querySelector('#drawer h2')?.textContent,
     hash: location.hash, sel: document.querySelectorAll('#outline .node-row.sel').length })`);
   check('area drawer opens', !area.hidden && area.h2, area.h2);
+  await page.wait(500);  // the flight takes 650 ms
+  const lookArea = await looking('area', 0);
+  check('choosing an area does not zoom out beyond the whole map', lookArea.zoomVsWhole >= 1.1, JSON.stringify(lookArea));
   check('area is in the hash', area.hash === '#area/' + (await page.eval('window.__map.S.areas[0].id')), area.hash);
   check('outline marks the area', area.sel === 1, area.sel);
   await page.screenshot(shots + '-area.png');
@@ -92,7 +109,9 @@ export default async (page) => {
   check('segment drawer shows tone bars', seg.bars >= 6, seg.bars);
   check('segment drawer lists neighbouring segments', seg.nb >= 1, seg.nb);
   check('segment drawer has breadcrumbs through its area', seg.crumbs.includes('›'), seg.crumbs);
-  check('view flew in on the segment', seg.zoom > 3, seg.zoom.toFixed(1));
+  await page.wait(500);
+  const lookSeg = await looking('seg', segId);
+  check('choosing a segment zooms in on it, not out', lookSeg.zoomVsWhole >= 1.1, JSON.stringify(lookSeg));
   const dr = await page.eval(`(() => {
     const d = document.querySelector('#drawer').getBoundingClientRect(), z = document.querySelector('#zoom').getBoundingClientRect(), c = document.querySelector('#drawer .close').getBoundingClientRect();
     return { x: d.x, y: d.y, r: d.right, b: d.bottom, zoomRight: z.right, closeInside: c.x >= d.x && c.right <= d.right && c.y >= d.y, vw: innerWidth, vh: innerHeight, hasClass: document.body.classList.contains('has-drawer') };
@@ -195,6 +214,30 @@ export default async (page) => {
   check('a still view draws every point in it', still.level === 2 && still.points >= still.visible * 0.99, JSON.stringify(still));
   check('a moving view draws fewer points', moving.level < 2 && moving.points < still.points / 2, JSON.stringify(moving));
   check('the full set returns when it stops', settled.level === 2 && settled.points >= settled.visible * 0.99, JSON.stringify(settled));
+
+  // No area or segment, however spread out, takes the view out beyond the whole map or in absurdly far.
+  const flights = await page.eval(`(async () => {
+    const m = window.__map, S = m.S, out = [];
+    const ids = [...S.areas].sort((a, b) => b.r - a.r).slice(0, 4).map((a) => ['area', a.id]).concat([...S.segs].sort((a, b) => b.r - a.r).slice(0, 3).map((g) => ['seg', g.id]), [...S.segs].filter((g) => g.r === 0).slice(0, 2).map((g) => ['seg', g.id]));
+    for (const [kind, id] of ids) {
+      kind === 'area' ? m.selectArea(id) : m.selectSeg(id);
+      await new Promise((r) => setTimeout(r, 100));
+      for (let k = 0; k < 600 && m.moving; k++) await new Promise((r) => setTimeout(r, 100));
+      out.push({ kind, id, zoomVsWhole: +(S.view.scale / m.wholeView(false).scale).toFixed(2) });
+    }
+    return out;
+  })()`);
+  check('the widest areas and segments do not zoom the view out', flights.every((f) => f.zoomVsWhole >= 1.1), JSON.stringify(flights.filter((f) => f.zoomVsWhole < 1.1)));
+  check('the tiniest segments do not zoom in absurdly far', flights.every((f) => f.zoomVsWhole <= 60), JSON.stringify(flights.filter((f) => f.zoomVsWhole > 60)));
+
+  // A compact segment (its posts close together) ends up in view, in the part of the window the panels leave free.
+  const compact = await page.eval('window.__map.S.segs.filter((g) => g.n_texts >= 300 && g.r > 0.003 && g.r < 0.06)[0]?.id ?? -1');
+  if (compact >= 0) {
+    await page.eval(`window.__map.selectSeg(${compact})`);
+    await page.wait(1000);
+    const lookCompact = await looking('seg', compact);
+    check('a compact segment is in view after choosing it', lookCompact.members >= 30 && lookCompact.shown >= 0.6, JSON.stringify(lookCompact));
+  }
 
   // The buttons: zoom in and out, the whole map, hide and show the list of areas, and the keys for them.
   await page.eval('(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit }; m.stats.n = 0; })()');
