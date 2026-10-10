@@ -59,8 +59,14 @@ and ads, adult content, segments without opposing sides, or segments below a coh
 ```sh
 make postmap                     # container on port 8740 of the internal network; picks up a new snapshot within a minute
 go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADDR; listens on 127.0.0.1 unless HTTP_ADDR says otherwise)
-node tools/cdp.mjs tools/scenarios/postmap.mjs   # headless checks of the page (needs the service; CHROMIUM=...)
+node tools/cdp.mjs tools/scenarios/postmap.mjs        # headless checks of the page (needs the service; CHROMIUM=...)
+node tools/cdp.mjs tools/scenarios/postmap-perf.mjs   # draw and drag speed at several zooms, to compare versions of the page
 ```
+
+The page keeps panning and zooming smooth with 3.4 million points: the points are sorted into blocks of the map so a
+view draws only the blocks it shows; while the view moves only a share of each block's points are drawn, as many as the
+last frames' speed allows (and all of them again when it stops); labels are laid out once for a zoom and a stretch of
+map, drawn from cached images, so moving the view only copies the ones on screen.
 
 The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 470 MB for 3.4 million
 posts) and never serves `posts.jsonl` or `texts.txt` whole.

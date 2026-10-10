@@ -130,6 +130,7 @@ export default async (page) => {
 
   // Filters: hiding bots and spam leaves fewer lit pixels and says how many segments remain.
   await page.eval('history.replaceState(null, "", location.pathname)');
+  await page.wait(400);  // a view that has just moved draws a thinned set of points until it has been still for a moment
   const before = await lit();
   await page.eval(`(() => { const c = document.querySelector('#f-bots'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
   const after = await lit();
@@ -146,6 +147,20 @@ export default async (page) => {
   const segLabels = await page.eval(`(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit * 6 }; m.draw(); return m.labelRects.filter((r) => r.kind === 'seg').length; })()`);
   check('segments are labelled when zoomed in', segLabels > 0, segLabels);
   await page.screenshot(shots + '-zoomed.png');
+
+  // Moving the view draws fewer points (so that it stays smooth); once it is still, all of them come back.
+  await page.eval('(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit }; m.draw(); })()');
+  await page.wait(500);
+  const still = await page.eval('({ ...window.__map.stats })');
+  const rect = await page.eval('(() => { const r = document.querySelector("#labels").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()');
+  await page.wheel(rect[0], rect[1], -120);
+  await page.wait(60);
+  const moving = await page.eval('({ ...window.__map.stats })');
+  await page.wait(700);
+  const settled = await page.eval('({ ...window.__map.stats })');
+  check('a still view draws every point in it', still.level === 2 && still.points >= still.visible * 0.99, JSON.stringify(still));
+  check('a moving view draws fewer points', moving.level < 2 && moving.points < still.points / 2, JSON.stringify(moving));
+  check('the full set returns when it stops', settled.level === 2 && settled.points >= settled.visible * 0.99, JSON.stringify(settled));
 
   // Escape clears, and a direct link restores a selection.
   await page.key('Escape');

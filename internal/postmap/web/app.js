@@ -88,6 +88,7 @@ async function boot() {
   S.bounds = [x0, y0, x1, y1];
   $('#meta').textContent = `${fmtN(S.n)} posts (${fmtN(map.n_posts_total)} counting repeats) · ${S.segs.length} segments · ${S.areas.length} areas · ${when(map.from)} to ${when(map.to)}`;
   buildGrid();
+  buildSpatial();
   initGL();
   buildOutline();
   resize();
@@ -101,7 +102,7 @@ async function boot() {
 // ---------- spatial index for hover and click ----------
 
 const GRID = 1000;
-let cellStart, cellItems, gx0, gy0, gcw;
+let cellStart, cellItems, gx0, gy0, gcw, ext = [0, 0, 1, 1], extW = 1;
 function buildGrid() {
   // The grid covers every post, including the few far out that the starting view leaves off the screen.
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -109,13 +110,81 @@ function buildGrid() {
     const x = S.xy[2 * i], y = S.xy[2 * i + 1];
     if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
   }
-  gx0 = x0; gy0 = y0; gcw = Math.max(x1 - x0, y1 - y0) / GRID * 1.0001;
+  ext = [x0, y0, x1, y1]; extW = Math.max(x1 - x0, y1 - y0) * 1.0001;
+  gx0 = x0; gy0 = y0; gcw = extW / GRID;
   const cs = new Int32Array(GRID * GRID + 1), cell = (i) => clamp(Math.floor((S.xy[2 * i + 1] - gy0) / gcw), 0, GRID - 1) * GRID + clamp(Math.floor((S.xy[2 * i] - gx0) / gcw), 0, GRID - 1);
   for (let i = 0; i < S.n; i++) cs[cell(i) + 1]++;
   for (let c = 0; c < GRID * GRID; c++) cs[c + 1] += cs[c];
   const fill = cs.slice(0, GRID * GRID), items = new Int32Array(S.n);
   for (let i = 0; i < S.n; i++) items[fill[cell(i)]++] = i;
   cellStart = cs; cellItems = items;
+}
+
+// ---------- the points as the GPU draws them ----------
+//
+// Drawing 3.4 million points every frame is more than most GPUs do smoothly, so the points the GPU gets are arranged
+// two ways. They are sorted into BG x BG blocks of the map, so that a view that shows part of the map draws only the
+// blocks it shows (a few draw calls, each a run of rows of blocks). And each block's points are dealt at random into
+// levels (1/32 of them, the next 3/32, the rest): while the view is being dragged or zoomed only as many levels are
+// drawn as a budget of points allows, the budget following how fast frames are coming, and when it stops everything
+// is drawn once. The order of the arrays here is not the order of the posts; glXY etc. are only for drawing.
+
+const BG = 96, NB = BG * BG, CUM = [1 / 32, 1 / 8, 1];
+let blk, blkSum, glXY, glSeg, glMisc;
+const stats = { level: 2, visible: 0, budget: 0, calls: 0, points: 0 };  // of the last frame, for the headless checks
+
+function buildSpatial() {
+  const n = S.n, [x0, y0] = ext, key = new Int32Array(n), cnt = new Int32Array(3 * NB + 1), tot = new Int32Array(NB);
+  let r32 = 2463534242;
+  for (let i = 0; i < n; i++) {
+    r32 ^= r32 << 13; r32 ^= r32 >>> 17; r32 ^= r32 << 5;
+    const r = (r32 >>> 0) / 4294967296, lvl = r < CUM[0] ? 0 : r < CUM[1] ? 1 : 2;
+    const bx = Math.min(BG - 1, Math.floor((S.xy[2 * i] - x0) / extW * BG)), by = Math.min(BG - 1, Math.floor((S.xy[2 * i + 1] - y0) / extW * BG));
+    key[i] = lvl * NB + by * BG + bx; cnt[key[i] + 1]++; tot[by * BG + bx]++;
+  }
+  for (let k = 0; k < 3 * NB; k++) cnt[k + 1] += cnt[k];
+  const pos = cnt.slice(0, 3 * NB), order = new Int32Array(n);
+  for (let i = 0; i < n; i++) order[pos[key[i]]++] = i;
+  glXY = new Float32Array(2 * n); glSeg = new Uint16Array(n); glMisc = new Uint8Array(4 * n);
+  for (let j = 0; j < n; j++) {
+    const i = order[j];
+    glXY[2 * j] = S.xy[2 * i]; glXY[2 * j + 1] = S.xy[2 * i + 1]; glSeg[j] = S.seg[i];
+    glMisc[4 * j] = S.outr[i]; glMisc[4 * j + 1] = S.sent[i]; glMisc[4 * j + 2] = S.crit[i];
+  }
+  blk = cnt;
+  // 2D prefix sums of the posts per block, to count the posts of a rectangle of blocks
+  const W = BG + 1;
+  blkSum = new Int32Array(W * W);
+  for (let y = 0; y < BG; y++) for (let x = 0; x < BG; x++) blkSum[(y + 1) * W + x + 1] = tot[y * BG + x] + blkSum[y * W + x + 1] + blkSum[(y + 1) * W + x] - blkSum[y * W + x];
+}
+
+// The blocks the view shows, [x0, y0, x1, y1], or null when it shows none.
+function viewBlocks() {
+  const [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(S.W, S.H), m = 12 / S.view.scale;
+  const f = (v, o) => Math.floor((v - o) / extW * BG);
+  const b = [Math.max(0, f(wx0 - m, ext[0])), Math.max(0, f(wy0 - m, ext[1])), Math.min(BG - 1, f(wx1 + m, ext[0])), Math.min(BG - 1, f(wy1 + m, ext[1]))];
+  return b[0] > b[2] || b[1] > b[3] ? null : b;
+}
+function blocksCount(b) {
+  const W = BG + 1;
+  return blkSum[(b[3] + 1) * W + b[2] + 1] - blkSum[b[1] * W + b[2] + 1] - blkSum[(b[3] + 1) * W + b[0]] + blkSum[b[1] * W + b[0]];
+}
+
+// Draw the points of levels 0..top in the blocks b, as few runs as the layout allows.
+function drawBlocks(top, b) {
+  stats.calls = 0; stats.points = 0;
+  const draw = (from, count) => { gl.drawArrays(gl.POINTS, from, count); stats.calls++; stats.points += count; };
+  for (let l = 0; l <= top; l++) {
+    let from = -1, to = -1;
+    for (let y = b[1]; y <= b[3]; y++) {
+      const first = blk[l * NB + y * BG + b[0]], end = blk[l * NB + y * BG + b[2] + 1];
+      if (end <= first) continue;
+      if (first === to) { to = end; continue; }
+      if (from >= 0) draw(from, to - from);
+      from = first; to = end;
+    }
+    if (from >= 0) draw(from, to - from);
+  }
 }
 
 function eachNear(wx, wy, radius, fn) {
@@ -185,7 +254,7 @@ void main() {
 }`;
 
 function initGL() {
-  gl = $('#gl').getContext('webgl2', { antialias: false, alpha: false });
+  gl = $('#gl').getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
   if (!gl) { $('#loading').textContent = 'This page needs WebGL 2.'; $('#loading').hidden = false; throw new Error('no webgl2'); }
   const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   prog = gl.createProgram();
@@ -200,11 +269,9 @@ function initGL() {
     gl.enableVertexAttribArray(loc);
     if (integer) gl.vertexAttribIPointer(loc, size, type, 0, 0); else gl.vertexAttribPointer(loc, size, type, false, 0, 0);
   };
-  buf(S.xy, 'a_pos', 2, gl.FLOAT, false);
-  buf(S.seg, 'a_seg', 1, gl.UNSIGNED_SHORT, true);
-  const misc = new Uint8Array(S.n * 4);
-  for (let i = 0; i < S.n; i++) { misc[4 * i] = S.outr[i]; misc[4 * i + 1] = S.sent[i]; misc[4 * i + 2] = S.crit[i]; }
-  buf(misc, 'a_misc', 4, gl.UNSIGNED_BYTE, true);
+  buf(glXY, 'a_pos', 2, gl.FLOAT, false);
+  buf(glSeg, 'a_seg', 1, gl.UNSIGNED_SHORT, true);
+  buf(glMisc, 'a_misc', 4, gl.UNSIGNED_BYTE, true);
   palTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, palTex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -253,6 +320,7 @@ function resize() {
   const st = $('#stage'); S.dpr = window.devicePixelRatio || 1;
   S.W = st.clientWidth; S.H = st.clientHeight;
   for (const c of [$('#gl'), $('#labels')]) { c.width = Math.round(S.W * S.dpr); c.height = Math.round(S.H * S.dpr); }
+  plan = null;
   if (S.n) { const [x0, y0, x1, y1] = S.bounds; S.fit = Math.min(S.W / (x1 - x0), S.H / (y1 - y0)) * 0.92; }
   requestDraw();
 }
@@ -264,7 +332,7 @@ function flyTo(cx, cy, scale) {
   const step = (now) => {
     const t = clamp((now - t0) / 450, 0, 1), e = 1 - Math.pow(1 - t, 3);
     S.view = { cx: from.cx + (cx - from.cx) * e, cy: from.cy + (cy - from.cy) * e, scale: Math.exp(Math.log(from.scale) + (Math.log(scale) - Math.log(from.scale)) * e) };
-    requestDraw();
+    touch(); requestDraw();
     if (t < 1) anim = requestAnimationFrame(step);
   };
   cancelAnimationFrame(anim); anim = requestAnimationFrame(step);
@@ -277,19 +345,43 @@ const density = () => clamp(Math.sqrt(900000 / S.n), 0.55, 1);
 let drawQueued = false;
 function requestDraw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(draw); } }
 
+// The view is being moved by the user: dragging, zooming or flying. Frames are cheaper then (see above).
+let lastInput = 0, lastDraw = 0, lastWasBusy = false, frameEma = 16, settleTimer = 0, budget = 600000;
+function touch() { lastInput = performance.now(); }
+
 function draw() {
   drawQueued = false;
   if (!gl || !S.n) return;
-  const zoom = S.view.scale / S.fit;
+  const now = performance.now(), busy = now - lastInput < 150;
+  if (busy && lastWasBusy && now - lastDraw < 250) {
+    // frames are paced by how fast the GPU keeps up: slow ones shrink the budget of points, fast ones grow it
+    frameEma = 0.7 * frameEma + 0.3 * (now - lastDraw);
+    budget = frameEma > 26 ? Math.max(30000, budget * 0.85) : frameEma < 15 ? Math.min(6e6, budget * 1.06) : budget;
+  }
+  lastDraw = now; lastWasBusy = busy;
+  if (busy) { clearTimeout(settleTimer); settleTimer = setTimeout(requestDraw, 170); }
+
+  const zoom = S.view.scale / S.fit, b = viewBlocks();
+  let top = 2;
+  if (b && busy) {
+    const est = blocksCount(b);
+    top = 0;
+    for (let l = 2; l >= 0; l--) if (est * CUM[l] <= budget) { top = l; break; }
+  }
+  const frac = CUM[top], thin = frac < 1;
   gl.viewport(0, 0, $('#gl').width, $('#gl').height);
   gl.clearColor(0.055, 0.063, 0.086, 1); gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.useProgram(prog);
-  gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
-  gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
-  gl.uniform1f(U.u_size, clamp(1.7 * density() + Math.log2(zoom) * 0.9, 1.2, 10));
-  gl.uniform1f(U.u_alpha, clamp(0.6 * density() + Math.log2(zoom) * 0.1, 0.4, 0.92));
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
-  gl.drawArrays(gl.POINTS, 0, S.n);
+  if (b) {
+    gl.useProgram(prog);
+    gl.uniform2f(U.u_center, S.view.cx, S.view.cy); gl.uniform1f(U.u_scale, S.view.scale);
+    gl.uniform2f(U.u_res, S.W, S.H); gl.uniform1i(U.u_mode, S.mode); gl.uniform1f(U.u_dpr, S.dpr);
+    // fewer points are drawn a little larger and denser, so the picture keeps its look while it moves
+    gl.uniform1f(U.u_size, clamp(1.7 * density() + Math.log2(zoom) * 0.9, 1.2, 10) * (thin ? Math.min(1.7, 1 + 0.28 * Math.log2(1 / frac)) : 1));
+    gl.uniform1f(U.u_alpha, clamp((0.6 * density() + Math.log2(zoom) * 0.1) * (thin ? 1.25 : 1), 0.4, 0.95));
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(U.u_pal, 0);
+    stats.level = top; stats.visible = blocksCount(b); stats.budget = Math.round(budget);
+    drawBlocks(top, b);
+  }
   drawLabels();
 }
 
@@ -315,45 +407,81 @@ function drawLabels() {
     ctx.beginPath(); ctx.arc(sx, sy, Math.max(nd.r * S.view.scale * 1.3, 10), 0, 7); ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // Which level is named follows the zoom: areas first, then segments. Labels never overlap; the biggest win.
+  // Which level is named follows the zoom: areas first, then segments. The labels are laid out once for a stretch of
+  // map around the view and a zoom, and moving the view just draws the ones that are on screen.
+  const key = `${sel ? sel.type + sel.id : ''}|${JSON.stringify(S.filters)}|${zoom < 3.2}|${zoom >= 2}`;
+  const [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(S.W, S.H);
+  if (!plan || plan.key !== key || Math.abs(Math.log(S.view.scale / plan.scale)) > 0.08 || wx0 < plan.rect[0] || wy0 < plan.rect[1] || wx1 > plan.rect[2] || wy1 > plan.rect[3]) plan = buildPlan(key, zoom);
+  let drawn = 0;
+  for (const it of plan.items) {
+    const [x, y] = toScreen(it.wx, it.wy), w = it.bmp.w, h = it.bmp.h;
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > S.W || y - h / 2 > S.H) continue;
+    if (++drawn > 90) break;
+    labelRects.push({ x: x - w / 2, y: y - h / 2, w, h, kind: it.kind, id: it.id });
+    ctx.drawImage(it.bmp.cv, x - w / 2, y - h / 2, w, h);
+  }
+}
+
+let plan = null;
+function buildPlan(key, zoom) {
+  const sel = S.sel, [wx0, wy0] = toWorld(0, 0), [wx1, wy1] = toWorld(S.W, S.H), px = 0.75 * (wx1 - wx0), py = 0.75 * (wy1 - wy0);
+  const rect = [wx0 - px, wy0 - py, wx1 + px, wy1 + py], within = (nd) => nd.x >= rect[0] && nd.x <= rect[2] && nd.y >= rect[1] && nd.y <= rect[3];
   const items = [];
   if (zoom < 3.2) {
     for (const a of S.areas) {
-      if (a.r * S.view.scale < 22) continue;
+      if (a.r * S.view.scale < 22 || !within(a)) continue;
       if (sel && sel.type === 'area' && sel.id !== a.id) continue;
-      items.push({ kind: 'area', nd: a, text: a.title, count: a.posts, weight: a.posts, color: S.areaColor[a.id] });
+      items.push({ kind: 'area', nd: a, text: a.title, weight: a.posts, color: S.areaColor[a.id] });
     }
   }
   const picked = sel && (sel.type === 'area' || sel.type === 'seg');
   if (zoom >= 2 || picked) {
     const MIN = zoom >= 2 ? 5 : 0;
     for (const sg of S.segs) {
-      if (segAlpha[sg.id] < 128 || sg.r * S.view.scale < MIN) continue;
+      if (segAlpha[sg.id] < 128 || sg.r * S.view.scale < MIN || !within(sg)) continue;
       if (sel && sel.type === 'area' && sg.area !== sel.id) continue;
       if (sel && sel.type === 'seg' && zoom < 2 && sg.id !== sel.id) continue;
-      items.push({ kind: 'seg', nd: sg, text: sg.title, count: sg.n_posts, weight: sg.n_texts, color: S.color[sg.id] });
+      items.push({ kind: 'seg', nd: sg, text: sg.title, weight: sg.n_texts, color: S.color[sg.id] });
     }
   }
-  const vis = items.map((it) => ({ ...it, p: toScreen(it.nd.x, it.nd.y) })).filter((it) => it.p[0] > -60 && it.p[1] > -30 && it.p[0] < S.W + 60 && it.p[1] < S.H + 30);
-  vis.sort((a, b) => (a.kind === b.kind ? b.weight - a.weight : a.kind === 'area' ? -1 : 1));
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  let drawn = 0;
-  for (const it of vis) {
-    if (drawn > 90) break;
-    const rpx = it.nd.r * S.view.scale, fs = it.kind === 'area' ? clamp(rpx * 0.1, 14, 19) : 13;
-    const lines = splitTitle(it.text, it.kind === 'area' ? 24 : 34);
-    ctx.font = `600 ${fs}px system-ui, sans-serif`;
-    const lh = fs * 1.25, w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, hgt = lh * lines.length + 8;
-    const rect = { x: it.p[0] - w / 2, y: it.p[1] - hgt / 2, w, h: hgt, kind: it.kind, id: it.nd.id };
-    if (labelRects.some((r) => rect.x - 3 < r.x + r.w && rect.x + rect.w + 3 > r.x && rect.y - 2 < r.y + r.h && rect.y + rect.h + 2 > r.y)) continue;
-    labelRects.push(rect); drawn++;
-    // A dark pill, so the text reads against any colour behind it, with a bar in the area's or segment's own colour.
-    ctx.fillStyle = 'rgba(10,12,18,0.86)'; ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 6); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = `rgb(${it.color})`; ctx.beginPath(); ctx.roundRect(rect.x + 4, rect.y + 5, 3, rect.h - 10, 2); ctx.fill();
-    ctx.fillStyle = '#fff';
-    lines.forEach((l, k) => ctx.fillText(l, rect.x + 5 + (rect.w - 5) / 2, rect.y + 4 + lh * (k + 0.5)));
+  items.sort((a, b) => (a.kind === b.kind ? b.weight - a.weight : a.kind === 'area' ? -1 : 1));
+  const placed = [], out = [];
+  for (const it of items) {
+    const fs = it.kind === 'area' ? Math.round(clamp(it.nd.r * S.view.scale * 0.1, 14, 19)) : 13, bmp = labelBitmap(it.kind, it.text, it.color, fs);
+    const [sx, sy] = toScreen(it.nd.x, it.nd.y), r = { x: sx - bmp.w / 2, y: sy - bmp.h / 2, w: bmp.w, h: bmp.h };
+    if (placed.some((q) => r.x - 3 < q.x + q.w && r.x + r.w + 3 > q.x && r.y - 2 < q.y + q.h && r.y + r.h + 2 > q.y)) continue;
+    placed.push(r);
+    out.push({ kind: it.kind, id: it.nd.id, wx: it.nd.x, wy: it.nd.y, bmp });
+    if (out.length >= 600) break;
   }
+  return { key, scale: S.view.scale, rect, items: out };
+}
+
+// A label drawn once onto a canvas of its own and kept, so that a frame only has to copy it: a dark pill, so the text
+// reads against any colour behind it, with a bar in the area's or segment's own colour.
+const labelCache = new Map();
+let measureCtx = null;
+function labelBitmap(kind, text, color, fs) {
+  const k = `${kind}|${text}|${color}|${fs}|${S.dpr}`;
+  let b = labelCache.get(k);
+  if (b) return b;
+  measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+  const font = `600 ${fs}px system-ui, sans-serif`, lines = splitTitle(text, kind === 'area' ? 24 : 34);
+  measureCtx.font = font;
+  const lh = fs * 1.25, w = Math.ceil(Math.max(...lines.map((l) => measureCtx.measureText(l).width)) + 20), h = Math.ceil(lh * lines.length + 8);
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(w * S.dpr); cv.height = Math.ceil(h * S.dpr);
+  const c = cv.getContext('2d');
+  c.scale(S.dpr, S.dpr);
+  c.fillStyle = 'rgba(10,12,18,0.86)'; c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(0.5, 0.5, w - 1, h - 1, 6); c.fill(); c.stroke();
+  c.fillStyle = `rgb(${color})`; c.beginPath(); c.roundRect(4, 5, 3, h - 10, 2); c.fill();
+  c.fillStyle = '#fff'; c.font = font; c.textAlign = 'center'; c.textBaseline = 'middle';
+  lines.forEach((l, i) => c.fillText(l, 5 + (w - 5) / 2, 4 + lh * (i + 0.5)));
+  b = { cv, w, h };
+  labelCache.set(k, b);
+  if (labelCache.size > 1500) labelCache.delete(labelCache.keys().next().value);
+  return b;
 }
 
 // A title on one line, or on two split at the space nearest the middle; each line is cut to fit.
@@ -380,12 +508,12 @@ function initPointer() {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, [e.offsetX, e.offsetY]);
     if (pinch && pts.size === 2) {
       const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      S.view.scale = clamp(pinch.scale * d / pinch.d, S.fit * 0.7, S.fit * 2000); down.moved = true; requestDraw(); return;
+      S.view.scale = clamp(pinch.scale * d / pinch.d, S.fit * 0.7, S.fit * 2000); down.moved = true; touch(); requestDraw(); return;
     }
     if (down && pts.has(e.pointerId)) {
       const dx = e.offsetX - down.x, dy = e.offsetY - down.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) { down.moved = true; cv.classList.add('drag'); hideTip(); }
-      if (down.moved) { S.view.cx = down.view.cx - dx / S.view.scale; S.view.cy = down.view.cy - dy / S.view.scale; requestDraw(); }
+      if (down.moved) { S.view.cx = down.view.cx - dx / S.view.scale; S.view.cy = down.view.cy - dy / S.view.scale; touch(); requestDraw(); }
       return;
     }
     hoverAt(e.offsetX, e.offsetY);
@@ -403,7 +531,7 @@ function initPointer() {
     const [wx, wy] = toWorld(e.offsetX, e.offsetY);
     S.view.scale = clamp(S.view.scale * Math.exp(-e.deltaY * 0.0016), S.fit * 0.7, S.fit * 2000);
     S.view.cx = wx - (e.offsetX - S.W / 2) / S.view.scale; S.view.cy = wy - (e.offsetY - S.H / 2) / S.view.scale;
-    cancelAnimationFrame(anim); hideTip(); requestDraw();
+    cancelAnimationFrame(anim); hideTip(); touch(); requestDraw();
   }, { passive: false });
 }
 
@@ -746,6 +874,6 @@ document.querySelectorAll('#modes button').forEach((b) => b.addEventListener('cl
 window.addEventListener('resize', resize);
 window.addEventListener('hashchange', route);
 // A handle for the headless checks in tools/scenarios/postmap.mjs.
-window.__map = { S, draw, selectArea, selectSeg, selectPost, runSearch, setMode, nearest, toScreen, toWorld, flyTo, get labelRects() { return labelRects; }, get gl() { return gl; } };
+window.__map = { S, stats, draw, drawLabels, selectArea, selectSeg, selectPost, runSearch, setMode, nearest, toScreen, toWorld, flyTo, get labelRects() { return labelRects; }, get gl() { return gl; } };
 initPointer(); initSearch(); initFilters(); setMode(0);
 boot().catch((e) => { $('#loading').textContent = 'Could not load the map: ' + e.message; console.error(e); });
