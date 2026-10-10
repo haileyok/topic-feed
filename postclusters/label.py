@@ -33,6 +33,7 @@ from common import DATA, load_env
 GATEWAY = 'https://agw.noclues.net/v1/chat/completions'
 MODELS = {
     'haiku': {'id': 'claude-haiku-4-5:api', 'params': {'max_tokens': 900, 'temperature': 0}},
+    'haiku55': {'id': 'claude-haiku-5-5:api', 'params': {'max_tokens': 900}},  # takes no temperature
     # Luna takes no temperature and counts hidden reasoning against max_completion_tokens.
     'luna': {'id': 'gpt-5.6-luna', 'params': {'max_completion_tokens': 3000}},
 }
@@ -182,8 +183,8 @@ def segment_prompt(posts, seg_size, groups):
     return USER.format(n=len(posts), size=seg_size, near=n['near'], top=n['top'], rand=n['rand'], posts=lines, kinds=', '.join(KINDS))
 
 
-def load_posts():
-    cl = pd.read_parquet(DATA / 'clusters' / 'posts.parquet')
+def load_posts(sub='clusters'):
+    cl = pd.read_parquet(DATA / sub / 'posts.parquet')
     parts = []
     for s in sorted(cl['shard'].unique()):
         d = pd.read_parquet(DATA / 'posts' / f'shard-{s:02d}.parquet', columns=['doc', 'n_authors', 'n_posts'])
@@ -205,10 +206,11 @@ def main():
     ap.add_argument('--limit', type=int, default=0, help='label a random sample of this many segments (0: all)')
     ap.add_argument('--areas', action='store_true', help='label the areas from the segment titles instead')
     ap.add_argument('--workers', type=int, default=8)
+    ap.add_argument('--dir', default='clusters', help='the folder under data/ holding posts.parquet and segments.parquet, and getting the labels')
     ap.add_argument('--seed', type=int, default=1)
     a = ap.parse_args()
     load_env()
-    out = DATA / 'clusters'
+    out = DATA / a.dir
     segs = pd.read_parquet(out / 'segments.parquet')
 
     if a.areas:
@@ -224,7 +226,7 @@ def main():
         (out / f'areas-{a.model}.json').write_text(json.dumps(res, indent=1))
         return
 
-    posts = load_posts()
+    posts = load_posts(a.dir)
     path = out / f'labels-{a.model}.jsonl'
     todo = segs['segment'].tolist()
     if a.limit:

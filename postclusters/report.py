@@ -68,8 +68,8 @@ def esc(x):
     return html.escape(str(x), quote=True)
 
 
-def read_labels(model):
-    p = DATA / 'clusters' / f'labels-{model}.jsonl'
+def read_labels(model, sub='clusters'):
+    p = DATA / sub / f'labels-{model}.jsonl'
     if not p.exists():
         return {}
     return {d['segment']: d for d in (json.loads(l) for l in p.open() if l.strip())}

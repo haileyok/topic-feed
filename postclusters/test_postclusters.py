@@ -4,6 +4,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
+import atlas_extend
+import atlas_pilot
 import build_snapshot as bs
 import cluster
 import label
@@ -292,6 +294,32 @@ class SnapshotTest(unittest.TestCase):
     def test_text_line_is_one_lowercase_line(self):
         self.assertEqual(bs.text_line('Hello\n\nWORLD\t again  '), 'hello world again')
         self.assertNotIn('\n', bs.text_line('a\nb\r\nc'))
+
+
+class AtlasTest(unittest.TestCase):
+    def test_vote_takes_the_topic_with_the_most_similarity_and_ignores_unclustered(self):
+        topics = np.array([[1, 1, 2], [-1, -1, -1], [-1, 3, 3], [0, 2, 2]])
+        sims = np.array([[0.5, 0.5, 0.9], [0.9, 0.9, 0.9], [0.9, 0.1, 0.2], [0.9, 0.3, 0.3]])
+        got = atlas_extend.vote(topics, sims, ntopics=4)
+        self.assertEqual(list(got), [1, -1, 3, 0])  # 1.0 against 0.9; none; the clustered ones only; 0.9 against 0.6
+
+    def test_vote_works_in_chunks(self):
+        rng = np.random.default_rng(0)
+        topics, sims = rng.integers(-1, 5, size=(1000, 7)), rng.random((1000, 7))
+        whole = atlas_extend.vote(topics, sims, 5)
+        self.assertTrue(((whole >= -1) & (whole < 5)).all())
+        self.assertEqual(int((whole == -1).sum()), int((topics < 0).all(axis=1).sum()))
+
+    def test_purity_is_the_share_with_their_clusters_commonest_label(self):
+        self.assertAlmostEqual(atlas_pilot.purity(np.array([0, 0, 0, 1, 1, -1]), np.array(['a', 'a', 'b', 'c', 'c', 'z'])), 0.8)
+
+    def test_hdbscan_topics_attach_nearby_noise_and_leave_far_noise(self):
+        rng = np.random.default_rng(0)
+        z = np.concatenate([rng.normal(size=(300, 3)) * 0.1, rng.normal(size=(300, 3)) * 0.1 + 5, [[0.3, 0.0, 0.0]], [[50.0, 50.0, 50.0]]])
+        labels, raw_noise = atlas_pilot.hdbscan_topics(z, 20, 4.0)
+        self.assertEqual(len(set(labels[:600])), 2)
+        self.assertEqual(labels[-1], -1)  # far from everything
+        self.assertGreaterEqual(labels[-2], 0)  # next to a topic
 
 
 if __name__ == '__main__':

@@ -108,10 +108,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--shards', default='0-3')
     ap.add_argument('--models', default='haiku')
+    ap.add_argument('--dir', default='clusters', help='the folder under data/ with the clusters (and the labels)')
+    ap.add_argument('--layout', choices=['pack', 'post'], default='pack', help="pack: segments from a UMAP of their centres, posts inside them; post: use <dir>/xy.npy, a place for every post")
     ap.add_argument('--examples', type=int, default=12)
     a = ap.parse_args()
     t0 = time.time()
-    out = DATA / 'clusters'
+    out = DATA / a.dir
 
     posts, x = cluster.load(shard_list(a.shards))
     cl = pd.read_parquet(out / 'posts.parquet')
@@ -122,7 +124,7 @@ def main():
     segs = pd.read_parquet(out / 'segments.parquet').set_index('segment')
     edges = pd.read_parquet(out / 'seg_edges.parquet')
     nseg = len(segs)
-    labels = {m: report.read_labels(m) for m in a.models.split(',')}
+    labels = {m: report.read_labels(m, a.dir) for m in a.models.split(',')}
     area_labels = {}
     for m in labels:
         p = out / f'areas-{m}.json'
@@ -132,15 +134,25 @@ def main():
     print(f'{len(posts):,} posts, {nseg} segments, {len(lab)} labels ({time.time() - t0:.0f}s)', flush=True)
 
     # Positions.
-    cxy, radius = pack(unit_scale(segs[['x', 'y']].to_numpy()), segs['n_texts'].to_numpy())
-    radius = 0.95 * radius  # a segment's 90th-percentile post lands just inside its disc; the tails touch the neighbours
     order = np.argsort(seg, kind='stable')
     bounds = np.searchsorted(seg[order], np.arange(nseg + 1))
-    xy = np.zeros((len(posts), 2), dtype=np.float32)
-    rng = np.random.default_rng(2)
-    for s in range(nseg):
-        m = order[bounds[s]:bounds[s + 1]]
-        xy[m] = cxy[s] + within_layout(x[m], rng) * radius[s]
+    if a.layout == 'post':
+        # Every post already has a place (atlas_extend.py: the UMAP of the posts); a segment is where its posts are.
+        xy = unit_scale(np.load(out / 'xy.npy')).astype(np.float32)
+        cxy, radius = np.zeros((nseg, 2)), np.zeros(nseg)
+        for s in range(nseg):
+            m = order[bounds[s]:bounds[s + 1]]
+            if len(m):
+                cxy[s] = np.median(xy[m], axis=0)
+                radius[s] = float(np.percentile(np.hypot(*(xy[m] - cxy[s]).T), 80))
+    else:
+        cxy, radius = pack(unit_scale(segs[['x', 'y']].to_numpy()), segs['n_texts'].to_numpy())
+        radius = 0.95 * radius  # a segment's 90th-percentile post lands just inside its disc; the tails touch the neighbours
+        xy = np.zeros((len(posts), 2), dtype=np.float32)
+        rng = np.random.default_rng(2)
+        for s in range(nseg):
+            m = order[bounds[s]:bounds[s + 1]]
+            xy[m] = cxy[s] + within_layout(x[m], rng) * radius[s]
     print(f'positions ({time.time() - t0:.0f}s)', flush=True)
 
     # Segments and areas.

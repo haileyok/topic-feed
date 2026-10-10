@@ -80,11 +80,11 @@ async function boot() {
   for (const sg of S.segs) { tot += sg.n_texts; for (const k of ['outraged', 'sentiment', 'critical', 'spam', 'promo', 'news']) sum[k] = (sum[k] || 0) + sg[k] * sg.n_texts; }
   for (const k in sum) S.avg[k] = sum[k] / tot;
 
-  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  for (let i = 0; i < S.n; i++) {
-    const x = S.xy[2 * i], y = S.xy[2 * i + 1];
-    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-  }
+  // The view starts on where nearly all the posts are: the 0.5th to 99.5th percentile of each coordinate (a few
+  // stray posts far out would otherwise shrink everything).
+  const col = (o) => { const v = new Float32Array(Math.ceil(S.n / 7)); for (let i = 0, k = 0; i < S.n; i += 7, k++) v[k] = S.xy[2 * i + o]; return v.sort(); };
+  const [xs, ys] = [col(0), col(1)], at = (v, q) => v[Math.min(v.length - 1, Math.floor(q * v.length))];
+  const [x0, y0, x1, y1] = [at(xs, 0.005), at(ys, 0.005), at(xs, 0.995), at(ys, 0.995)];
   S.bounds = [x0, y0, x1, y1];
   $('#meta').textContent = `${fmtN(S.n)} posts (${fmtN(map.n_posts_total)} counting repeats) · ${S.segs.length} segments · ${S.areas.length} areas · ${when(map.from)} to ${when(map.to)}`;
   buildGrid();
@@ -100,10 +100,15 @@ async function boot() {
 
 // ---------- spatial index for hover and click ----------
 
-const GRID = 700;
+const GRID = 1000;
 let cellStart, cellItems, gx0, gy0, gcw;
 function buildGrid() {
-  const [x0, y0, x1, y1] = S.bounds;
+  // The grid covers every post, including the few far out that the starting view leaves off the screen.
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < S.n; i++) {
+    const x = S.xy[2 * i], y = S.xy[2 * i + 1];
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
   gx0 = x0; gy0 = y0; gcw = Math.max(x1 - x0, y1 - y0) / GRID * 1.0001;
   const cs = new Int32Array(GRID * GRID + 1), cell = (i) => clamp(Math.floor((S.xy[2 * i + 1] - gy0) / gcw), 0, GRID - 1) * GRID + clamp(Math.floor((S.xy[2 * i] - gx0) / gcw), 0, GRID - 1);
   for (let i = 0; i < S.n; i++) cs[cell(i) + 1]++;

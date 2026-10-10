@@ -82,20 +82,26 @@ export default async (page) => {
   const inside = await page.eval(`[...document.querySelectorAll('#drawer .mini ~ div .post')].length`);
   check('search inside a segment finds posts', inside >= 1, `${inside} for ${word}`);
 
-  // Hover over a point shows a tooltip; clicking opens the post.
-  await page.eval(`window.__map.flyTo(window.__map.S.segs[${segId}].x, window.__map.S.segs[${segId}].y, window.__map.S.fit * 60)`);
-  await page.wait(800);
-  const spot = await page.eval(`(() => {
+  // Hover over a point shows a tooltip; clicking opens the post. A post of the segment that no label covers, found by
+  // centring the view on candidates in turn (set directly, and drawn at once: the flight is not what is tested here).
+  const spot0 = await page.eval(`(() => {
     const m = window.__map, S = m.S, r = document.querySelector('#labels').getBoundingClientRect();
-    for (let i = 0; i < S.n; i++) {
-      if (S.seg[i] !== ${segId}) continue;
-      const [x, y] = m.toScreen(S.xy[2 * i], S.xy[2 * i + 1]);
-      if (m.labelRects.some((q) => x >= q.x - 10 && x <= q.x + q.w + 10 && y >= q.y - 10 && y <= q.y + q.h + 10)) continue;
-      if (x > 40 && y > 40 && x < S.W - 40 && y < S.H - 40 && m.nearest(...m.toWorld(x, y), 6 / S.view.scale) === i) return { i, x: r.x + x, y: r.y + y };
+    const mine = [];
+    for (let i = 0; i < S.n && mine.length < 4000; i++) if (S.seg[i] === ${segId}) mine.push(i);
+    const why = { tried: 0, covered: 0, notNearest: 0, posts: mine.length, sel: JSON.stringify(S.sel) };
+    for (const i of mine.filter((_, k) => k % 7 === 0).slice(0, 80)) {
+      why.tried++;
+      S.view = { cx: S.xy[2 * i], cy: S.xy[2 * i + 1], scale: S.fit * 60 };
+      m.draw();
+      const x = S.W / 2, y = S.H / 2;
+      if (m.labelRects.some((q) => x >= q.x - 12 && x <= q.x + q.w + 12 && y >= q.y - 12 && y <= q.y + q.h + 12)) { why.covered++; continue; }
+      if (m.nearest(...m.toWorld(x, y), 6 / S.view.scale) === i) return { i, x: r.x + x, y: r.y + y };
+      why.notNearest++;
     }
-    return null;
+    return { why };
   })()`);
-  check('found a post to hover', spot, JSON.stringify(spot));
+  const spot = spot0.why ? null : spot0;
+  check('found a post to hover', spot, JSON.stringify(spot0));
   if (spot) {
     await page.move(spot.x, spot.y);
     await page.waitFor('!document.querySelector("#tip").hidden && document.querySelector("#tip .txt")');
@@ -137,9 +143,7 @@ export default async (page) => {
   await page.eval(`(() => { const c = document.querySelector('#f-coh'); c.value = '0'; c.dispatchEvent(new Event('change')); })()`);
 
   // Zoomed in far enough, segments are named.
-  await page.eval('window.__map.flyTo(0, 0, window.__map.S.fit * 6)');
-  await page.wait(800);
-  const segLabels = await page.eval('window.__map.labelRects.filter((r) => r.kind === "seg").length');
+  const segLabels = await page.eval(`(() => { const m = window.__map, S = m.S; S.view = { cx: (S.bounds[0] + S.bounds[2]) / 2, cy: (S.bounds[1] + S.bounds[3]) / 2, scale: S.fit * 6 }; m.draw(); return m.labelRects.filter((r) => r.kind === 'seg').length; })()`);
   check('segments are labelled when zoomed in', segLabels > 0, segLabels);
   await page.screenshot(shots + '-zoomed.png');
 
