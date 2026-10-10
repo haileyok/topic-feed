@@ -6,6 +6,9 @@
 //	POSTMAP_DIR   directory holding the snapshots and the "latest" link to the newest (postclusters/data/snapshot)
 //	HTTP_ADDR     listen address (127.0.0.1:8740)
 //	LOG_LEVEL     debug, info, warn or error (info)
+//	POSTMAP_NO_LIMITS  1 to turn off the per-client rate limits (they are on by default)
+//	POSTMAP_TRUST_PROXY  1 to take the client's address from CF-Connecting-IP whoever sends it (only when nothing but
+//	              the Cloudflare tunnel can reach the port; otherwise it is believed only from the loopback address)
 //
 // A new snapshot is picked up within a minute of "latest" being repointed; nothing restarts. The service shows the
 // text of public posts and has no access control, so it listens on the loopback address unless told otherwise.
@@ -70,6 +73,10 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
 	s := &postmap.Server{Dir: *dir, Log: log}
+	if os.Getenv("POSTMAP_NO_LIMITS") != "1" {
+		s.Limits = postmap.DefaultLimits()
+		s.Limits.TrustProxyHeader = os.Getenv("POSTMAP_TRUST_PROXY") == "1"
+	}
 	if err := s.Load(); err != nil {
 		// Keep running: the first map may simply not be built yet, and Watch will pick it up.
 		log.Warn("no map loaded", "err", err)
@@ -82,6 +89,7 @@ func main() {
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      2 * time.Minute, // the snapshot's biggest file is 27 MB, to a slow connection
 		IdleTimeout:       2 * time.Minute,
 	}
 	go func() {

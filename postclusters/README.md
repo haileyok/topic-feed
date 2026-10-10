@@ -57,7 +57,7 @@ posts by the words in them (at least 3 characters; matching posts are ringed on 
 and ads, adult content, segments without opposing sides, or segments below a coherence.
 
 ```sh
-make postmap                     # container on port 8740 of the internal network; picks up a new snapshot within a minute
+make postmap                     # the container, on 127.0.0.1:8730 (the Cloudflare tunnel serves it as https://graph.hailey.at); picks up a new snapshot within a minute
 go run ./cmd/postmap             # or without a container (POSTMAP_DIR, HTTP_ADDR; listens on 127.0.0.1 unless HTTP_ADDR says otherwise)
 node tools/cdp.mjs tools/scenarios/postmap.mjs        # headless checks of the page (needs the service; CHROMIUM=...)
 node tools/cdp.mjs tools/scenarios/postmap-perf.mjs   # draw, drag and wheel-zoom speed at several zooms, to compare versions of the page
@@ -73,8 +73,18 @@ out. Labels are laid out once for a zoom and a stretch of map and drawn from cac
 copies the ones on screen. Panels over the map are translucent but not blurred (blur over a canvas that changes every
 frame is slow on many GPUs). Keys: `/` search, `+` `-` zoom, `0` the whole map, `Esc` clear.
 
-The service shows the text of public posts and has no access control: `make postmap` publishes it on the internal network only (the way the labelling report viewer is), and it must not be exposed publicly. It loads every post's lower-cased text into memory for search (about 470 MB for 3.4 million
-posts) and never serves `posts.jsonl` or `texts.txt` whole.
+The map is public at https://graph.hailey.at. The host's Cloudflare tunnel sends that name to `localhost:8730`, where
+the container publishes the service (on the loopback address only). The snapshots live in `/data/postmap/snapshot`
+(`postclusters/data/snapshot` is a link to it, so `build_snapshot.py` writes there and the service picks the new
+snapshot up within a minute). The service shows the text of public posts and has no login, so it protects itself
+(`internal/postmap/protect.go`): each client (by `CF-Connecting-IP`) gets about 12 post lookups and 2 text searches a
+second with a burst, at most 4 searches run at once, search text is cut at 120 characters, every response carries a
+content security policy and the usual headers, `robots.txt` keeps crawlers off `/api/` and `/snap/`, and the files that
+hold every post's text (`posts.jsonl`, `texts.txt`) are never served whole. `POSTMAP_NO_LIMITS=1` turns the limits off.
+Cloudflare adds its analytics script to the page; the policy blocks it. Deleted posts stay on the map until the next
+snapshot is built, and the map includes adult content (about 3% of topics; the filter hides it).
+It loads every post's lower-cased text into memory for search (about 470 MB for 3.4 million posts) and never serves
+`posts.jsonl` or `texts.txt` whole.
 
 Positions mean two things. Where a segment sits among the others comes from a UMAP of the segment centres, nudged so that segments sized by their posts do not overlap, so
 distances between segments are as meaningful as that UMAP and no more. Inside a segment a post is placed by the first two

@@ -38,11 +38,12 @@ services:
       retries: 30
       start_period: 10s
 
-  # The post map: every recent post on a 2D map, in segments an LLM has named. Reads the snapshots
-  # postclusters/build_snapshot.py writes under postclusters/data/snapshot and picks up a new
-  # one within a minute; needs no database. Shows the text of public posts with no access
-  # control: it is reachable from the internal network (like the viewer below) and must not be
-  # exposed publicly.
+  # The post map: every recent post on a 2D map, in topics an LLM has named. Reads the snapshots
+  # postclusters/build_snapshot.py writes (kept in /data/postmap/snapshot) and picks up a new one within a
+  # minute; needs no database. It is public: https://graph.hailey.at goes through the host's Cloudflare
+  # tunnel to localhost:8730, so the port is published on the loopback address only. The service rate-limits
+  # each client, caps concurrent text searches and sends security headers (internal/postmap/protect.go), but it
+  # shows the text of public posts and has no login.
   postmap:
     profiles: ["postmap"]
     build:
@@ -57,10 +58,11 @@ services:
       POSTMAP_DIR: /snapshot
       HTTP_ADDR: ":8740"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTMAP_TRUST_PROXY: "1"  # the port is published on loopback only, so what reaches it came through the tunnel
     volumes:
-      - ../postclusters/data/snapshot:/snapshot:ro
+      - ${POSTMAP_SNAPSHOTS:-/data/postmap/snapshot}:/snapshot:ro
     ports:
-      - "0.0.0.0:8740:8740"
+      - "127.0.0.1:8730:8740"
     healthcheck:
       # distroless has no curl: the binary itself answers a health probe.
       test: ["CMD", "/app", "-healthcheck"]

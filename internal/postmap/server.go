@@ -73,6 +73,8 @@ type Snapshot struct {
 type Server struct {
 	Dir string
 	Log *slog.Logger
+	// Limits, when set, keep clients from asking too often; set them when the service can be reached from the internet.
+	Limits *Limits
 
 	mu   sync.RWMutex
 	snap *Snapshot
@@ -249,12 +251,26 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/latest", s.handleLatest)
 	mux.HandleFunc("GET /snap/{id}/{name}", s.handleSnapFile)
-	mux.HandleFunc("GET /api/v1/overview", s.handleOverview)
-	mux.HandleFunc("GET /api/v1/segments/{id}", s.handleSegment)
-	mux.HandleFunc("GET /api/v1/post/{i}", s.handlePost)
-	mux.HandleFunc("GET /api/v1/posts", s.handlePosts)
-	mux.HandleFunc("GET /api/v1/search", s.handleSearch)
-	return mux
+	posts := func(h http.HandlerFunc) http.HandlerFunc {
+		if s.Limits == nil {
+			return h
+		}
+		return s.Limits.limit("posts", s.Limits.PostsPerSec, s.Limits.PostsBurst, h)
+	}
+	search := s.handleSearch
+	if s.Limits != nil {
+		search = s.Limits.limit("search", s.Limits.SearchPerSec, s.Limits.SearchBurst, s.handleSearch)
+	}
+	mux.HandleFunc("GET /api/v1/overview", posts(s.handleOverview))
+	mux.HandleFunc("GET /api/v1/segments/{id}", posts(s.handleSegment))
+	mux.HandleFunc("GET /api/v1/post/{i}", posts(s.handlePost))
+	mux.HandleFunc("GET /api/v1/posts", posts(s.handlePosts))
+	mux.HandleFunc("GET /api/v1/search", search)
+	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		io.WriteString(w, "User-agent: *\nDisallow: /api/\nDisallow: /snap/\n")
+	})
+	return protect(mux)
 }
 
 func (s *Server) current() *Snapshot {
@@ -400,10 +416,21 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := strings.ToLower(strings.Join(strings.Fields(r.URL.Query().Get("q")), " "))
+	if s.Limits != nil && s.Limits.MaxQueryChars > 0 && len([]rune(q)) > s.Limits.MaxQueryChars {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("search text is limited to %d characters", s.Limits.MaxQueryChars)})
+		return
+	}
 	if len([]rune(q)) < minSearchChars {
 		writeJSON(w, 200, map[string]any{"snapshot": sn.ID, "posts": []json.RawMessage{}, "note": fmt.Sprintf("type at least %d characters", minSearchChars)})
 		return
 	}
+	done := s.Limits.startSearch()
+	if done == nil {
+		w.Header().Set("Retry-After", "1")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy: try again in a moment"})
+		return
+	}
+	defer done()
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 || limit > maxSearch {
 		limit = 30

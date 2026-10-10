@@ -263,7 +263,8 @@ export default async (page) => {
   check('a link to a segment opens it', await page.eval(`window.__map.S.sel && window.__map.S.sel.id === ${segId}`));
 
   // The page's own errors.
-  const errors = page.logs.filter((l) => /EXCEPTION|console\.error|log\.error/.test(l));
+  // (Cloudflare adds its analytics script to pages it proxies; the page's policy blocks it, which logs an error that is not the page's)
+  const errors = page.logs.filter((l) => /EXCEPTION|console\.error|log\.error/.test(l) && !/cloudflareinsights|Executing inline script violates/.test(l));
   check('no console errors', errors.length === 0, errors.join(' | '));
 
   const failed = results.filter((r) => !r.ok);
