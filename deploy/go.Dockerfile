@@ -1,6 +1,9 @@
 # Builds one of the Go commands under cmd/. Usage (from compose):
 #   build: { context: .., dockerfile: deploy/go.Dockerfile, args: { CMD: ingest } }
-FROM golang:1.26 AS build
+# golang:1.26.10 is the first release with the crypto/x509 mitigation for CVE-2026-111943
+# (the eight eMudhra intermediates revoked for cACompromise in Oct 2026); guarded by
+# internal/toolchain. Don't unpin this back to a floating tag.
+FROM golang:1.26.10 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
