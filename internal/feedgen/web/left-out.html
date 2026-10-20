@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Left out of your feed · Topic Feeds</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0f18">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
+  <link rel="stylesheet" href="/static/v/__V__/filtered.css">
+  <script type="module" src="/static/v/__V__/left-out.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <nav class="sitenav" aria-label="Pages">
+      <a class="sitenav-link" href="/" data-view="build">Build a feed</a>
+      <a class="sitenav-link" href="/?view=browse" data-view="browse">Browse feeds</a>
+      <a class="sitenav-link" href="/feeds">Your feeds</a>
+      <a class="sitenav-link" href="/me">For you</a>
+      <a class="sitenav-link" href="/filtered" aria-current="page">Filtered</a>
+      <a class="sitenav-link" id="nav-inspect" href="/inspect" hidden>Post inspector</a>
+    </nav>
+    <div class="account" id="account" data-state="checking">
+      <span class="account-problem" id="account-problem" role="alert" hidden></span>
+      <a class="btn btn-ghost" id="account-signin" href="/me" hidden>Sign in</a>
+      <span class="account-who" id="account-who" hidden></span>
+      <button class="btn btn-ghost" id="account-signout" type="button" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main class="me">
+    <section class="me-card me-wide" id="left-out">
+      <p class="me-fine"><a href="/filtered">← Your filtered feeds</a></p>
+      <h1 id="title">Left out of your feed</h1>
+      <p class="me-lead">The posts your filters took out of this feed for you in the last week, newest first, and
+        which filter did it. Only you can see this.</p>
+      <nav class="filtered-tabs" id="feed-tabs" aria-label="Feeds"></nav>
+      <p class="me-note" id="notice" role="alert" hidden></p>
+      <p class="me-fine" id="status" role="status">Loading…</p>
+      <ol class="preview filtered-left-out-list" id="posts"></ol>
+      <div id="more-row" hidden>
+        <button class="btn" id="more" type="button">Load more</button>
+      </div>
+      <div id="sentinel" aria-hidden="true"></div>
+    </section>
+  </main>
+</body>
+</html>

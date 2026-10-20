@@ -363,9 +363,11 @@ type taxonomyTopic struct {
 
 // HandleTaxonomy answers GET /api/taxonomy: the topics the builder offers ("unclear" is
 // left out, and the adult topics too unless the request has the adult-access cookie), and
-// the tone and signal names.
+// the tone and signal names. With ?for=filters it is the topics a filtered feed can leave out,
+// which are every one: leaving adult posts out is for anybody.
 func (p *Previewer) HandleTaxonomy(c echo.Context) error {
-	adult := p.adultAllowed(c)
+	owner := p.adultAllowed(c)
+	adult := owner || c.QueryParam("for") == "filters"
 	var broad []taxonomyTopic
 	for _, b := range p.Tax.Broad {
 		if b.ID == "unclear" || (b.ID == "adult_content" && !adult) {
@@ -385,12 +387,12 @@ func (p *Previewer) HandleTaxonomy(c echo.Context) error {
 	p.mu.Unlock()
 	// The answer depends on the adult-access cookie: never share the owner's version.
 	c.Response().Header().Set("Vary", "Cookie")
-	if adult {
+	if owner {
 		c.Response().Header().Set("Cache-Control", "private, no-store")
 	} else {
 		c.Response().Header().Set("Cache-Control", "public, max-age=300")
 	}
 	return c.JSON(http.StatusOK, map[string]any{"version": p.Tax.Version, "topics": broad,
 		"tones": Tones, "signals": Signals, "default_ranking": DefaultRanking, "per_hour": vols,
-		"adult_allowed": adult})
+		"adult_allowed": owner})
 }

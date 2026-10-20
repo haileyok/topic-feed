@@ -17,16 +17,52 @@ import (
 // decide everything about critical for its posts, and leave every other score to the feed's
 // own. A maximum of 1 lets every post through, so {max: {critical: 1}} lifts the feed's own
 // cutoff on critical for the topic.
+//
+// MinProb (0: the feed's own) is how sure the model must be that a post is about the topic, in
+// place of the feed's min_prob. In a feed of topic paths it is the threshold of the feed's path
+// for the topic (a subtopic path takes its broad topic's when it has none of its own), so it can
+// loosen or tighten the match; in a feed of every topic, and in a personal feed, posts whose most
+// likely subtopic is in the topic need at least this probability for that subtopic.
 type TopicRules struct {
-	Tone    Rules `yaml:"tone" json:"tone,omitzero"`
-	Signals Rules `yaml:"signals" json:"signals,omitzero"`
+	Tone    Rules   `yaml:"tone" json:"tone,omitzero"`
+	Signals Rules   `yaml:"signals" json:"signals,omitzero"`
+	MinProb float32 `yaml:"min_prob" json:"min_prob,omitempty"`
 }
 
 // maxTopicRules is how many topics a feed or a tuning can give rules of their own.
 const maxTopicRules = 50
 
 // IsZero reports whether the rules name no score.
-func (t TopicRules) IsZero() bool { return t.Tone.IsZero() && t.Signals.IsZero() }
+func (t TopicRules) IsZero() bool { return t.Tone.IsZero() && t.Signals.IsZero() && t.MinProb == 0 }
+
+// topicMinProb is the MinProb of the rules that decide it for posts whose most likely subtopic is
+// topPath: the subtopic's, or else its broad topic's; 0 when neither has one.
+func topicMinProb(topics map[string]TopicRules, topPath string) float32 {
+	if v := topics[topPath].MinProb; v > 0 {
+		return v
+	}
+	if b := broadOf(topPath); b != topPath {
+		return topics[b].MinProb
+	}
+	return 0
+}
+
+// ruleKeyFor is which topic's MinProb decides it for posts whose most likely subtopic is topPath.
+func ruleKeyFor(topics map[string]TopicRules, topPath string) string {
+	if topics[topPath].MinProb > 0 {
+		return topPath
+	}
+	return broadOf(topPath)
+}
+
+// pathMinProb is how sure the model must be of one of the feed's paths for a post to match it:
+// the path's own rules, a subtopic path's broad topic's, or else the feed's min_prob.
+func (f Feed) pathMinProb(path string) float32 {
+	if v := topicMinProb(f.TopicRules, path); v > 0 {
+		return v
+	}
+	return f.MinProb
+}
 
 // names is every score the rules name, with a cutoff or a boost.
 func (r Rules) names() map[string]bool {
@@ -133,6 +169,9 @@ func validateTopicRules(topics map[string]TopicRules, known map[string]bool, che
 			return fmt.Errorf("topic rules: %q is not a broad topic or subtopic path in the taxonomy", key)
 		}
 		o := topics[key]
+		if !(o.MinProb >= 0 && o.MinProb <= 1) { // also rejects NaN
+			return fmt.Errorf("topic rules for %s: min_prob must be between 0 and 1 (0 for the feed's own)", key)
+		}
 		if err := check("tone", o.Tone, Tones); err != nil {
 			return fmt.Errorf("topic rules for %s: %w", key, err)
 		}

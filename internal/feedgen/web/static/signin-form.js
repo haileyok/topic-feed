@@ -31,10 +31,10 @@ export function notice(text) {
 
 // startLogin asks where to send the browser to sign in the account, and returns that address. The
 // page it is on goes along, so signing in comes back to it (the server only goes back to its own pages).
-async function startLogin(handle) {
+async function startLogin(handle, endpoint) {
   let res;
   try {
-    res = await fetch("/oauth/login", {
+    res = await fetch(endpoint, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ handle, return: location.pathname }),
@@ -61,9 +61,10 @@ async function startLogin(handle) {
  * setupSignInForm makes the form work, and takes a problem the last sign-in came back with (?signin=...)
  * out of the address bar. It returns that problem's code, or null: the page shows it with
  * showSignInProblem once it knows nobody is signed in. beforeLeave is called just before the browser
- * goes to the person's server, for a page to keep what it would otherwise lose.
+ * goes to the person's server, for a page to keep what it would otherwise lose. endpoint is the sign-in
+ * it starts: /oauth/login, or /oauth/connect for the filtered feeds' (which keeps the sign-in).
  */
-export function setupSignInForm({ beforeLeave = () => {} } = {}) {
+export function setupSignInForm({ beforeLeave = () => {}, endpoint = "/oauth/login" } = {}) {
   const problem = new URLSearchParams(location.search).get("signin");
   if (problem !== null) {
     const q = new URLSearchParams(location.search);
@@ -89,7 +90,7 @@ export function setupSignInForm({ beforeLeave = () => {} } = {}) {
     button.disabled = true;
     button.textContent = "Opening Bluesky…";
     try {
-      const to = await startLogin(handle);
+      const to = await startLogin(handle, endpoint);
       beforeLeave();
       location.assign(to);
     } catch (err) {

@@ -11,6 +11,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
+	"github.com/haileyok/topic-feed/internal/chdb"
 	"github.com/haileyok/topic-feed/internal/labelpolicy"
 )
 
@@ -25,9 +26,10 @@ const maxQuerySize = 16 << 20
 // right because every version of a post_pipeline row has the same indexed_at (the pipeline, the
 // rescore and the picture retry copy it from the post), so a post's versions share a partition.
 // The exception is a post indexed again on another day (about 0.003% of posts, after a
-// re-index): both rows can come back, and Rank and mergeCandidates keep one of them by URI. Do
-// not use it for lookups by URI: the primary key already narrows those, and such a post would
-// count twice.
+// re-index): both rows can come back, and Rank and mergeCandidates keep one of them by URI. A
+// lookup by URI gains from it only with a time limit as well (ScorePosts): the primary key narrows
+// a single URI, but a batch of URIs spread over the key range touches nearly every granule of
+// every day. Such a lookup must keep one row per URI itself.
 const perPartitionFinal = ` SETTINGS do_not_merge_across_partitions_select_final = 1`
 
 // Store builds feeds from ClickHouse.
@@ -61,7 +63,7 @@ type Removed struct {
 func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) ([]Post, Removed, error) {
 	// The lookups below pass every candidate's URI; with max_posts at 10,000 that is
 	// ~700 KB of query text, past ClickHouse's 256 KB default.
-	ctx = clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{"max_query_size": maxQuerySize}))
+	ctx = chdb.Op(ctx, "feed_build", clickhouse.Settings{"max_query_size": maxQuerySize})
 	policies := []string{labelpolicy.OK}
 	if f.AllowAdult {
 		policies = append(policies, labelpolicy.AdultOnly)
@@ -77,7 +79,9 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 		scoreExpr = "greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?)))"
 		args = append(args, subs, broads)
 	}
-	args = append(args, since, policies, f.MinProb)
+	args = append(args, since, policies)
+	match, margs := matchCondition(f)
+	args = append(args, margs...)
 	// Exclusions and tone/signal cutoffs, as conditions on the stored scores, so the limit
 	// counts only posts that pass. Names are checked when the config loads, and passed as
 	// parameters.
@@ -96,16 +100,48 @@ func (s *Store) Build(ctx context.Context, f Feed, since time.Time, limit int) (
 	args = append(args, limit)
 	var cands []candidate
 	// Posts the pipeline dropped are never classified (model = ''), so they can't match.
-	err := s.Conn.Select(ctx, &cands, `
+	err := s.Conn.Select(chdb.Op(ctx, "candidates"), &cands, `
 		SELECT `+candidateColumns(scoreExpr)+`
 		FROM post_pipeline FINAL
-		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND score >= ?`+where.String()+`
+		WHERE indexed_at >= ? AND model != '' AND feed_policy IN ? AND `+match+where.String()+`
 		ORDER BY indexed_at DESC, uri DESC
 		LIMIT ?`+perPartitionFinal, args...)
 	if err != nil {
 		return nil, Removed{}, fmt.Errorf("select candidates: %w", err)
 	}
 	return s.finish(ctx, f, cands)
+}
+
+// matchCondition is the SQL condition for a post to match the feed's topics, with its arguments:
+// its best probability for the feed's paths (the score column) at least min_prob, or, when rules
+// for particular topics give some paths thresholds of their own (TopicRules.MinProb), at least
+// one path's probability at least that path's threshold.
+func matchCondition(f Feed) (string, []any) {
+	if f.anyTopic() {
+		return "score >= ?", []any{f.MinProb}
+	}
+	byLimit := map[float32][]string{}
+	for _, p := range f.Paths {
+		byLimit[f.pathMinProb(p)] = append(byLimit[f.pathMinProb(p)], p)
+	}
+	if len(byLimit) == 1 {
+		for limit := range byLimit {
+			return "score >= ?", []any{limit}
+		}
+	}
+	var sb strings.Builder
+	var args []any
+	sb.WriteString("(")
+	for i, limit := range slices.Sorted(maps.Keys(byLimit)) {
+		if i > 0 {
+			sb.WriteString(" OR ")
+		}
+		subs, broads := split(byLimit[limit])
+		sb.WriteString("greatest(arrayMax(arrayMap(p -> path_probs[p], ?)), arrayMax(arrayMap(b -> broad_probs[b], ?))) >= ?")
+		args = append(args, subs, broads, limit)
+	}
+	sb.WriteString(")")
+	return sb.String(), args
 }
 
 // cutoffCondition is the feed's tone and signal cutoffs as SQL conditions on post_pipeline, each
@@ -153,18 +189,25 @@ func cutoffCondition(f Feed) (string, []any) {
 	const broadExpr = "splitByChar('/', top_path)[1]"
 	sb.WriteString(" AND (")
 	groups := 0
-	group := func(match string, matchArgs []any, rules TopicRules) {
+	// In a feed of every topic, a topic's own min_prob is how sure the model must be of its posts'
+	// most likely subtopic (topPath stands for the group's posts). In a feed of topic paths it is a
+	// path's threshold instead (matchCondition).
+	group := func(match string, matchArgs []any, rules TopicRules, topPath string) {
 		if groups > 0 {
 			sb.WriteString(" OR ")
 		}
 		groups++
 		sb.WriteString("(" + match)
 		args = append(args, matchArgs...)
+		if v := topicMinProb(f.TopicRules, topPath); f.anyTopic() && v > 0 {
+			sb.WriteString(" AND top_path_p >= ?")
+			args = append(args, v)
+		}
 		cutoffs(rules)
 		sb.WriteString(")")
 	}
 	for _, s := range subs {
-		group("top_path = ?", []any{s}, f.RulesFor(s))
+		group("top_path = ?", []any{s}, f.RulesFor(s), s)
 	}
 	for _, b := range broads {
 		var under []string
@@ -174,9 +217,9 @@ func cutoffCondition(f Feed) (string, []any) {
 			}
 		}
 		// The rules of a broad topic: those of any of its subtopics without rules of their own.
-		group(broadExpr+" = ? AND top_path NOT IN ?", []any{b, orNone(under)}, f.RulesFor(b+"/"))
+		group(broadExpr+" = ? AND top_path NOT IN ?", []any{b, orNone(under)}, f.RulesFor(b+"/"), b+"/")
 	}
-	group("top_path NOT IN ? AND "+broadExpr+" NOT IN ?", []any{orNone(subs), orNone(broads)}, TopicRules{Tone: f.Tone, Signals: f.Signals})
+	group("top_path NOT IN ? AND "+broadExpr+" NOT IN ?", []any{orNone(subs), orNone(broads)}, TopicRules{Tone: f.Tone, Signals: f.Signals}, noTopic)
 	sb.WriteString(")")
 	return sb.String(), args
 }
@@ -209,15 +252,15 @@ func (s *Store) finish(ctx context.Context, f Feed, cands []candidate) ([]Post, 
 			dids = append(dids, c.DID)
 		}
 	}
-	deleted, err := s.deleted(ctx, dids, uris)
+	deleted, err := s.deleted(chdb.Op(ctx, "deleted"), dids, uris)
 	if err != nil {
 		return nil, rm, err
 	}
-	inactive, err := s.inactive(ctx, dids)
+	inactive, err := s.inactive(chdb.Op(ctx, "inactive"), dids)
 	if err != nil {
 		return nil, rm, err
 	}
-	labels, err := s.Policy.Current(ctx, s.Conn, append(slices.Clone(uris), dids...))
+	labels, err := s.Policy.Current(chdb.Op(ctx, "labels"), s.Conn, append(slices.Clone(uris), dids...))
 	if err != nil {
 		return nil, rm, err
 	}
@@ -237,7 +280,7 @@ func (s *Store) finish(ctx context.Context, f Feed, cands []candidate) ([]Post, 
 				TopPath: c.TopPath, TopPathP: c.TopPathP, TopPaths: c.TopPaths, TopPs: c.TopPs, Tone: c.Tone})
 		}
 	}
-	if err := s.engagement(ctx, out); err != nil {
+	if err := s.engagement(chdb.Op(ctx, "engagement"), out); err != nil {
 		return nil, rm, err
 	}
 	return out, rm, nil
@@ -352,7 +395,7 @@ func (s *Store) Volumes(ctx context.Context) (map[string]float64, error) {
 		Key string `ch:"key"`
 		N   uint64 `ch:"n"`
 	}
-	err := s.Conn.Select(ctx, &rows, `
+	err := s.Conn.Select(chdb.Op(ctx, "topic_volumes"), &rows, `
 		SELECT key, count() AS n FROM (
 			SELECT arrayConcat(
 				arrayFilter(k -> path_probs[k] >= 0.5, mapKeys(path_probs)),

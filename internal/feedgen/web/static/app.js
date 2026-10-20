@@ -333,7 +333,7 @@ function renderControls() {
         el("span", {}, el("i", { style: "background:var(--danger)" }), "left out"),
         el("span", { text: "Click a topic again to change it. ~n/h: posts per hour." })),
       el("div", { id: "strictness-row" }, slider({
-        label: "Match strictness", min: 0.3, max: 0.95, step: 0.05, value: state.minProb,
+        label: "Match strictness", min: 0.1, max: 0.95, step: 0.05, value: state.minProb,
         fmt: (v) => `≥ ${Math.round(v * 100)}% sure`, ends: ["More posts", "Only clear matches"],
         onInput: (v) => { state.minProb = v; changed(); },
       })),
@@ -402,13 +402,26 @@ function topicRulesSection() {
     names: { tone: Object.keys(TONES), signals: Object.keys(SIGNALS) },
     get: () => state.topicRules,
     own: (key, name) => ({ ...(state[key][name] || dial()) }),
+    // How sure the model must be of a topic: a threshold for that topic when the feed includes it
+    // (a broad topic's covers the subtopics included without one of their own); with all topics,
+    // what posts most likely about it need.
+    sure: {
+      min: 0.1,
+      own: () => state.minProb,
+      hint: (path) => {
+        if (state.any) return "With all topics: posts most likely about this topic need the model at least this sure.";
+        const included = (p) => state.topics[p] === "include";
+        const covers = included(path) || (!path.includes("/") && Object.keys(state.topics).some((k) => k.startsWith(path + "/") && included(k)));
+        return covers ? null : "This feed doesn't include this topic, so how sure doesn't change anything here. Include it, or a subtopic of it, above.";
+      },
+    },
     changed: () => { showCount(); changed(); },
     id: "builder-rules",
   });
   showCount();
   return el("details", { class: "section", open: topicRulesCount(state.topicRules) > 0 },
     el("summary", {}, el("div", { class: "section-title" }, el("span", { text: "Rules for particular topics" }), count)),
-    el("p", { class: "section-hint", text: "Give a topic its own Vibe or Quality signal setting, e.g. allow critical posts about politics but not about games. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above." }),
+    el("p", { class: "section-hint", text: "Give a topic its own match strictness, Vibe or Quality signal setting, e.g. allow critical posts about politics but not about games, or take looser matches for a quiet topic. A post counts as about its most likely subtopic; a subtopic's rules win over its broad topic's, and scores a topic doesn't set follow the settings above." }),
     editor.node,
     el("button", { class: "btn btn-ghost", text: "Remove all topic rules", onclick: () => { state.topicRules = {}; editor.refresh(); showCount(); changed(); } }));
 }

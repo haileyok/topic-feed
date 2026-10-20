@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account inspector · Topic Feeds</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0b0f18">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v/__V__/app.css">
+  <link rel="stylesheet" href="/static/v/__V__/me.css">
+  <link rel="stylesheet" href="/static/v/__V__/inspect.css">
+  <script type="module" src="/static/v/__V__/inspect-account.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Topic Feeds home">
+      <img src="/static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Topic Feeds</span>
+    </a>
+    <nav class="sitenav" aria-label="Pages">
+      <a class="sitenav-link" href="/" data-view="build">Build a feed</a>
+      <a class="sitenav-link" href="/?view=browse" data-view="browse">Browse feeds</a>
+      <a class="sitenav-link" href="/feeds">Your feeds</a>
+      <a class="sitenav-link" href="/me">For you</a>
+      <a class="sitenav-link" href="/filtered">Filtered</a>
+      <a class="sitenav-link" id="nav-inspect" href="/inspect" aria-current="page" hidden>Post inspector</a>
+    </nav>
+    <div class="account" id="account" data-state="checking">
+      <span class="account-problem" id="account-problem" role="alert" hidden></span>
+      <a class="btn btn-ghost" id="account-signin" href="/me" hidden>Sign in</a>
+      <span class="account-who" id="account-who" hidden></span>
+      <button class="btn btn-ghost" id="account-signout" type="button" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main class="me inspect">
+    <section class="me-card" id="loading" aria-live="polite">
+      <p class="me-lead">Loading…</p>
+    </section>
+
+    <section class="me-card" id="signed-out" hidden>
+      <h1>Account inspector</h1>
+      <p class="me-lead">Sign in with your Bluesky account to see what an account is most interested in.</p>
+      <p class="me-note" id="signin-notice" role="alert" hidden></p>
+      <form id="login" class="me-form">
+        <label for="handle">Your Bluesky handle</label>
+        <div class="me-row">
+          <input id="handle" name="handle" type="text" placeholder="alice.bsky.social" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="username" maxlength="300" required>
+          <button class="btn btn-primary" id="login-button" type="submit">Sign in with Bluesky</button>
+        </div>
+      </form>
+      <p class="me-fine">You'll approve this on your own Bluesky server. We only learn which account is yours: we get no password, and we keep no access to your account.</p>
+    </section>
+
+    <section class="me-card" id="forbidden" hidden>
+      <h1>Account inspector</h1>
+      <p class="me-lead">This page is for the owner of these feeds. The account you're signed in with isn't.</p>
+      <p><a class="btn" href="/me">Back to your feed</a></p>
+    </section>
+
+    <section id="inspector" hidden>
+      <div class="me-head">
+        <div class="me-title">
+          <h1>Account inspector</h1>
+          <p class="me-who">What an account's likes say it's most interested in, as its For you feed reads them.
+            <a href="/inspect">Inspect a post instead</a></p>
+        </div>
+      </div>
+
+      <form id="account-form" class="insp-form" novalidate>
+        <label for="account-input">A handle, a DID, or a link to a profile on bsky.app</label>
+        <div class="me-row">
+          <input id="account-input" name="account" type="text" placeholder="alice.bsky.social" autocapitalize="none"
+                 autocorrect="off" spellcheck="false" autocomplete="off" maxlength="600">
+          <button class="btn btn-primary" id="account-button" type="submit">Inspect</button>
+        </div>
+      </form>
+      <p class="me-note" id="account-error" role="alert" hidden></p>
+      <p class="me-lead insp-status" id="account-status" role="status" hidden>Reading their likes…</p>
+
+      <div id="account-result" hidden>
+        <h2 class="me-h2" id="account-who-title"></h2>
+        <p class="me-summary" id="account-summary"></p>
+        <p class="me-info" id="account-mix" hidden></p>
+        <ol class="interests acct-interests" id="acct-interests"></ol>
+        <p class="me-fine" id="account-other" hidden></p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

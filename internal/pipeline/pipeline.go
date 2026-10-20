@@ -151,7 +151,7 @@ func (p *Pipeline) sleep(ctx context.Context, d time.Duration) {
 func (p *Pipeline) upperBound(ctx context.Context) (time.Time, error) {
 	upper := time.Now().UTC().Add(-p.Cfg.Delay)
 	var written time.Time
-	if err := p.Conn.QueryRow(ctx, "SELECT max(indexed_at) FROM posts WHERE indexed_at > now() - INTERVAL 1 DAY").Scan(&written); err != nil {
+	if err := p.Conn.QueryRow(chdb.Op(ctx, "upper_bound"), "SELECT max(indexed_at) FROM posts WHERE indexed_at > now() - INTERVAL 1 DAY").Scan(&written); err != nil {
 		return time.Time{}, err
 	}
 	if written.IsZero() {
@@ -166,15 +166,22 @@ func (p *Pipeline) upperBound(ctx context.Context) (time.Time, error) {
 // batch processes posts with from < indexed_at <= to and returns the position to
 // resume from and how many posts it processed.
 func (p *Pipeline) batch(ctx context.Context, from, to time.Time) (time.Time, int, error) {
+	ctx = chdb.Op(ctx, "batch")
 	start := time.Now()
 	var posts []post
-	err := p.Conn.Select(ctx, &posts, `
+	// FINAL merging across partitions stops ClickHouse from skipping the days outside the window:
+	// with it, every poll read the whole posts table (all 14 days, about 1 GiB) for a few seconds of
+	// posts, and was most of the database's CPU. Merging each daily partition on its own reads only
+	// the window's part of today. A post indexed again on another day (rare) has a version in each
+	// partition and can come back in both windows; processing it again replaces its row.
+	err := p.Conn.Select(chdb.Op(ctx, "posts"), &posts, `
 		SELECT uri, did, indexed_at, text, media_alts, link_domain, link_title, link_description, quote_text, tags,
 		       self_labels, media_kinds, media_cids, media_alt_texts
 		FROM posts FINAL
 		WHERE indexed_at > fromUnixTimestamp64Micro(toInt64(?)) AND indexed_at <= fromUnixTimestamp64Micro(toInt64(?))
 		ORDER BY indexed_at, uri
-		LIMIT ?`, from.UnixMicro(), to.UnixMicro(), p.Cfg.BatchLimit)
+		LIMIT ?
+		SETTINGS do_not_merge_across_partitions_select_final = 1`, from.UnixMicro(), to.UnixMicro(), p.Cfg.BatchLimit)
 	if err != nil {
 		return from, 0, fmt.Errorf("select posts: %w", err)
 	}
@@ -239,7 +246,7 @@ func (p *Pipeline) labelerLabels(ctx context.Context, posts []post) (map[string]
 			}
 		}
 	}
-	return p.Policy.Current(ctx, p.Conn, subjects)
+	return p.Policy.Current(chdb.Op(ctx, "labels"), p.Conn, subjects)
 }
 
 // process applies the label policy to a post and downloads the pictures the model looks at. Dropped

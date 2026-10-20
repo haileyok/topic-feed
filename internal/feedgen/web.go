@@ -132,6 +132,34 @@ func addWebRoutes(e *echo.Echo, origin string) {
 		c.Response().Header().Set("X-Robots-Tag", "noindex")
 		return page(c, inspect)
 	})
+	// The account inspector: what an account's likes say it's into. The owner's too (/api/inspect/account).
+	accountRaw, err := webFS.ReadFile("web/inspect-account.html")
+	if err != nil {
+		panic(err)
+	}
+	account := fill(accountRaw)
+	e.GET("/inspect/account", func(c echo.Context) error {
+		c.Response().Header().Set("X-Robots-Tag", "noindex")
+		return page(c, account)
+	})
+
+	// The filtered feeds: signing in for them, and choosing what they leave out.
+	filteredRaw, err := webFS.ReadFile("web/filtered.html")
+	if err != nil {
+		panic(err)
+	}
+	filtered := fill(filteredRaw)
+	e.GET("/filtered", func(c echo.Context) error { return page(c, filtered) })
+	// What the filtered feeds left out of the signed-in viewer's own feeds: for one person at a time.
+	leftOutRaw, err := webFS.ReadFile("web/left-out.html")
+	if err != nil {
+		panic(err)
+	}
+	leftOut := fill(leftOutRaw)
+	e.GET("/filtered/left-out", func(c echo.Context) error {
+		c.Response().Header().Set("X-Robots-Tag", "noindex")
+		return page(c, leftOut)
+	})
 
 	// A signed-in person's own feeds, and publishing them to Bluesky from their browser. It has a
 	// policy of its own (see feedsContentSecurityPolicy).

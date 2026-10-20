@@ -88,6 +88,9 @@ func SpecOf(f Feed) (FeedSpec, error) {
 	if f.Personal != nil {
 		return FeedSpec{}, fmt.Errorf("feed %q is a personal feed: it is made from each viewer's likes, not from a spec", f.Rkey)
 	}
+	if f.Filtered != nil {
+		return FeedSpec{}, fmt.Errorf("feed %q is a filtered feed: it is another feed's posts, not made from a spec", f.Rkey)
+	}
 	return FeedSpec{
 		DisplayName: f.DisplayName, Description: f.Description, Paths: f.Paths, Exclude: f.Exclude, MinProb: f.MinProb,
 		AllowAdult: f.AllowAdult, Ranking: f.Ranking, AcceptsInteractions: f.AcceptsInteractions, Tone: f.Tone,

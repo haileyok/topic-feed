@@ -156,7 +156,7 @@ func (s *Store) SeedFeeds(ctx context.Context, owner string, feeds []Feed) (int,
 	base := time.Now().UTC().Truncate(time.Millisecond)
 	n := 0
 	for _, f := range feeds {
-		if f.Personal != nil || known[f.Rkey] {
+		if f.fromConfig() || known[f.Rkey] {
 			continue
 		}
 		spec, err := SpecOf(f)

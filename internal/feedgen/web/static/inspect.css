@@ -1,4 +1,13 @@
-/* The post inspector at /inspect. It uses the panels, fields, badges and colours of me.css. */
+/* The post inspector at /inspect, and the account inspector at /inspect/account. They use the panels,
+   fields, badges and colours of me.css. */
+
+.acct-interests { margin-top: 16px; }
+.acct-interest-head { display: flex; align-items: baseline; gap: 8px; }
+.acct-rank { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.5em; }
+.acct-share { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.acct-bar { height: 6px; border-radius: 999px; background: var(--line); margin: 8px 0 4px; overflow: hidden; }
+.acct-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.acct-samples { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 
 .inspect { --warn-text: #8a5a00; max-width: 1500px; }
 @media (prefers-color-scheme: dark) {

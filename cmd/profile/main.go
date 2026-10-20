@@ -91,7 +91,7 @@ func run(ctx context.Context, did, feedName, configPath, policyPath, taxPath str
 	if err != nil {
 		return err
 	}
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("profile"))
 	if err != nil {
 		return err
 	}

@@ -261,7 +261,9 @@ func TestEvaluatePersonal(t *testing.T) {
 	}{
 		{name: "a well-liked post about AI", matches: true},
 		{name: "unclear topic", in: func(i *EvalInput) { i.Post.TopPath = "unclear" }, fails: []string{"Belongs to a subtopic"}},
-		{name: "model not sure of the subtopic", in: func(i *EvalInput) { i.Post.TopPathP = 0.3 }, fails: []string{"Belongs to a subtopic"}},
+		{name: "model not sure of the subtopic", in: func(i *EvalInput) { i.Post.TopPathP = 0.25 }, fails: []string{"Belongs to a subtopic"}},
+		// In the pool, for viewers who lowered how sure the topic must be.
+		{name: "sure enough for the pool only", in: func(i *EvalInput) { i.Post.TopPathP = 0.4 }, matches: true},
 		{name: "exactly as sure as the feed needs", in: func(i *EvalInput) { i.Post.TopPathP = 0.5 }, matches: true},
 		{name: "nobody has reacted enough", in: func(i *EvalInput) { i.Post.Likes, i.Post.Reposts = 3, 0 }, fails: []string{"Enough reactions"}},
 		{name: "reposts count double", in: func(i *EvalInput) { i.Post.Likes, i.Post.Reposts = 1, 2 }, matches: true},

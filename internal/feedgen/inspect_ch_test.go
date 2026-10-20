@@ -141,7 +141,7 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 		f := cfg.Feeds[i]
 		if f.Personal != nil {
 			personal = &cfg.Feeds[i]
-			thresholds = append(thresholds, float32(f.Personal.MinTopicProb))
+			thresholds = append(thresholds, f.Personal.MinTopicProb, f.Personal.PoolMinTopicProb)
 			continue
 		}
 		feeds = append(feeds, f)
@@ -161,6 +161,9 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 		rules := []Rules{f.Tone, f.Signals}
 		for p, o := range f.TopicRules {
 			rules = append(rules, o.Tone, o.Signals)
+			if o.MinProb > 0 {
+				thresholds = append(thresholds, o.MinProb)
+			}
 			// Posts about the topics with rules of their own, too.
 			if isBroad(p) {
 				feedPaths = append(feedPaths, subsOfBroad[p]...)
@@ -352,7 +355,7 @@ func TestEvaluateFeedAgreesWithTheSQLAgainstClickHouse(t *testing.T) {
 
 	// ----- the personal feed: the pool's SQL against EvaluatePersonal (less the reaction minimum,
 	// which is applied when a viewer's feed is shown, not in the pool) -----
-	pool, err := store.TopicPool(ctx, PoolQuery{Since: since, Newest: 100000, Engaged: 0, MinProb: float32(personal.Personal.MinTopicProb)})
+	pool, err := store.TopicPool(ctx, PoolQuery{Since: since, Newest: 100000, Engaged: 0, MinProb: personal.Personal.PoolMinTopicProb})
 	if err != nil {
 		t.Fatal(err)
 	}

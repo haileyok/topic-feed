@@ -158,11 +158,16 @@ feeds:
     topic_rules:
       technology:
         signals: {max: {critical: 1}, min: {news: 0.25}}
+        min_prob: 0.25            # the path technology at a looser threshold
       technology/ai:
         signals: {max: {critical: 0.75}}
         tone: {min: {informative: 0.5}, weights: {outraged: -2}}
       world_news/europe:
         tone: {max: {outraged: 1}}
+      gaming/video_games:
+        min_prob: 0.75            # the path gaming/video_games at a stricter one
+      world_news:
+        min_prob: 0.9             # and world_news stricter still
 
   # Rules only for topics, on a feed of every topic.
   - rkey: any-topic-rules
@@ -173,10 +178,14 @@ feeds:
     topic_rules:
       us_politics:
         signals: {max: {critical: 0.25}}
+        min_prob: 0.5             # posts most likely about US politics need it at 0.5
       us_politics/elections:
         signals: {min: {news: 0.5}}
+        min_prob: 0.75            # and elections at 0.75
       humor:
         tone: {min: {humorous: 0.9}}
+      gaming/video_games:
+        min_prob: 0.25
 
   # Built for each viewer from the posts they liked (see `personal` above). Needs FEEDGEN_WELCOME_POST.
   - rkey: for-you

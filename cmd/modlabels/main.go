@@ -72,7 +72,7 @@ func run(log *slog.Logger, dump int) error {
 		}
 	}()
 
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("modlabels"))
 	if err != nil {
 		return err
 	}

@@ -168,7 +168,7 @@ func TestPoolCandidatesAgainstClickHouse(t *testing.T) {
 
 	// Posts that must never be in a pool, however much they are liked.
 	post("unclear-hot", "unclear", time.Hour, nil)
-	post("lowprob-hot", busy, time.Hour, func(r *pipelineRow) { r.TopPathP = 0.3 })
+	post("lowprob-hot", busy, time.Hour, func(r *pipelineRow) { r.TopPathP = 0.2 }) // under the pool's 0.3
 	post("adult-hot", busy, time.Hour, func(r *pipelineRow) { r.FeedPolicy = "adult_only" })
 	post("unclassified-hot", busy, time.Hour, func(r *pipelineRow) { r.Model = "" })
 	for _, name := range []string{"unclear-hot", "lowprob-hot", "adult-hot", "unclassified-hot"} {

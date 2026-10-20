@@ -180,7 +180,7 @@ func runServe(ctx context.Context, addr, did, feedName, configPath, policyPath, 
 	if err != nil {
 		return err
 	}
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("profile-web"))
 	if err != nil {
 		return err
 	}

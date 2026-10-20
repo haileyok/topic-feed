@@ -22,11 +22,14 @@ func Columns[T any]() string {
 	return strings.Join(cols, ", ")
 }
 
-// Insert writes rows (structs with `ch` tags) to table in one batch.
-func Insert[T any](ctx context.Context, conn driver.Conn, table string, rows []T) error {
+// Insert writes rows (structs with `ch` tags) to table in one batch. The insert is named
+// "insert_<table>", inside the caller's Op if there is one (observe.go).
+func Insert[T any](ctx context.Context, conn driver.Conn, table string, rows []T) (err error) {
 	if len(rows) == 0 {
 		return nil
 	}
+	ctx, done := track(Op(ctx, "insert_"+table))
+	defer func() { done(err) }()
 	batch, err := conn.PrepareBatch(ctx, "INSERT INTO "+table+" ("+Columns[T]()+")")
 	if err != nil {
 		return fmt.Errorf("prepare %s: %w", table, err)

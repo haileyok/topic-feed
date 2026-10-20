@@ -25,7 +25,7 @@ func (s *Store) ViewerTuning(ctx context.Context, did string) (Tuning, error) {
 	}
 	// Every save is a row and old ones are only dropped when parts merge, so take the newest
 	// rather than counting on a merge having happened.
-	if err := s.Conn.Select(ctx, &rows, `
+	if err := s.Conn.Select(chdb.Op(ctx, "viewer_tuning"), &rows, `
 		SELECT settings FROM viewer_settings WHERE viewer_did = ? ORDER BY updated_at DESC LIMIT 1`, did); err != nil {
 		return Tuning{}, fmt.Errorf("select viewer settings (is schema/010_viewer_settings.sql applied?): %w", err)
 	}

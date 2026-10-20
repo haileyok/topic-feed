@@ -135,6 +135,11 @@ func TestTaxonomyShowsAdultTopicsOnlyWithTheCookie(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "private") {
 		t.Errorf("owner taxonomy must not be cached publicly: %q", cc)
 	}
+	// The topics a filtered feed can leave out are every one, for anybody; that grants nothing else.
+	rec = do(s, http.MethodGet, "/api/taxonomy?for=filters", "", "")
+	if topic, allowed := hasAdult(rec); !topic || allowed {
+		t.Errorf("filters taxonomy: adult topic %v, adult_allowed %v (want true, false)", topic, allowed)
+	}
 
 	s.Preview.AdultKey = ""
 	if rec := do(s, http.MethodGet, "/adult-access?key=", "", ""); rec.Code != http.StatusNotFound {

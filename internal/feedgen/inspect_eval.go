@@ -184,20 +184,45 @@ func EvaluateFeed(f Feed, in EvalInput, now time.Time, window time.Duration) Fee
 
 	// The topic.
 	topic := Check{Name: "Topic"}
-	if f.anyTopic() {
+	switch {
+	case f.anyTopic():
 		v.Match = 1
 		topic.Pass, topic.Detail = true, "this feed takes posts about any topic"
-	} else {
+		// A topic's own min_prob holds its posts to a surer most likely subtopic.
+		if limit := topicMinProb(f.TopicRules, in.Post.TopPath); limit > 0 {
+			got := in.Post.TopPathP
+			topic.Pass = got >= limit
+			verb := "needs"
+			if !topic.Pass {
+				verb = "is under the"
+			}
+			topic.Detail = fmt.Sprintf("most likely %s at %s; the feed takes any topic, but %s %s it sets for this topic (%s)", in.Post.TopPath, numVs(got, limit), verb, num3(limit), ruleKeyFor(f.TopicRules, in.Post.TopPath))
+		}
+	default:
 		best, path := topicMatch(f, in)
 		v.Match = best
-		topic.Pass = best >= f.MinProb
+		// Each path has its threshold: the feed's min_prob, or one a topic's rules set.
+		var passed string
+		for _, p := range f.Paths {
+			if probOf(in, p) >= f.pathMinProb(p) {
+				passed = p
+				break
+			}
+		}
+		topic.Pass = passed != ""
+		need := func(p string) string {
+			if limit := f.pathMinProb(p); limit != f.MinProb {
+				return fmt.Sprintf("%s (the feed's rule for %s)", num3(limit), p)
+			}
+			return num3(f.MinProb)
+		}
 		switch {
-		case best == 0:
-			topic.Detail = fmt.Sprintf("none of the feed's topics (%s) is among the topics the model scored for this post; it needs at least %s", strings.Join(f.Paths, ", "), num3(f.MinProb))
 		case topic.Pass:
-			topic.Detail = fmt.Sprintf("%s at %s, and the feed needs at least %s", path, numVs(best, f.MinProb), num3(f.MinProb))
+			topic.Detail = fmt.Sprintf("%s at %s, and the feed needs at least %s", passed, numVs(probOf(in, passed), f.pathMinProb(passed)), need(passed))
+		case best == 0:
+			topic.Detail = fmt.Sprintf("none of the feed's topics (%s) is among the topics the model scored for this post; it needs at least %s", strings.Join(f.Paths, ", "), need(path))
 		default:
-			topic.Detail = fmt.Sprintf("best match is %s at %s, and the feed needs at least %s", path, numVs(best, f.MinProb), num3(f.MinProb))
+			topic.Detail = fmt.Sprintf("best match is %s at %s, and the feed needs at least %s", path, numVs(best, f.pathMinProb(path)), need(path))
 		}
 	}
 	v.Checks = append(v.Checks, topic)
@@ -293,18 +318,22 @@ func EvaluatePersonal(f Feed, in EvalInput, now time.Time) FeedVerdict {
 	}
 	v.Checks = append(v.Checks, policy)
 
-	// A post counts for its most likely subtopic, when the model is sure enough of it.
+	// A post counts for its most likely subtopic, when the model is sure enough of it for the pool.
+	// Viewers who didn't lower it need min_topic_prob, which is checked when it is less.
 	topPath, topP := in.Post.TopPath, in.Post.TopPathP
-	topic := Check{Name: "Belongs to a subtopic", Pass: topPath != "" && topPath != unclearTopic && topP >= float32(cfg.MinTopicProb)}
+	pool, own := cfg.PoolMinTopicProb, cfg.MinTopicProb
+	topic := Check{Name: "Belongs to a subtopic", Pass: topPath != "" && topPath != unclearTopic && topP >= pool}
 	switch {
 	case topPath == "":
 		topic.Detail = "no topic"
 	case topPath == unclearTopic:
 		topic.Detail = fmt.Sprintf("the model's best guess is %q, which isn't a topic a viewer can have", unclearTopic)
+	case topic.Pass && topP >= own:
+		topic.Detail = fmt.Sprintf("%s at %s, and the feed needs at least %s", topPath, numVs(topP, own), num3(own))
 	case topic.Pass:
-		topic.Detail = fmt.Sprintf("%s at %s, and the feed needs at least %s", topPath, numVs(topP, float32(cfg.MinTopicProb)), num3(float32(cfg.MinTopicProb)))
+		topic.Detail = fmt.Sprintf("%s at %s: enough for the feed's pool (%s), but only viewers who lowered how sure the topic must be are shown it (the feed's own setting is %s)", topPath, numVs(topP, pool), num3(pool), num3(own))
 	default:
-		topic.Detail = fmt.Sprintf("most likely %s at %s, under the %s the feed needs", topPath, numVs(topP, float32(cfg.MinTopicProb)), num3(float32(cfg.MinTopicProb)))
+		topic.Detail = fmt.Sprintf("most likely %s at %s, under the %s the feed's pool needs", topPath, numVs(topP, pool), num3(pool))
 	}
 	v.Match = topP
 	v.Checks = append(v.Checks, topic)

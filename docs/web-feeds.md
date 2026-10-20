@@ -32,7 +32,9 @@ Bluesky can keep showing a removed feed for a while.
   feeds are **not looked at**: editing one there changes nothing, and a feed taken down on the web is not
   brought back by a restart. The file still supplies the `personal:` For you feed and documents the
   fields.
-- **`make feeds-publish`** now writes the owner's feeds from the database.
+- **`make feeds-publish`** writes only the feeds the config file still supplies (the personal and
+  filtered feeds). Topic feeds, the owner's included, are published from `/feeds`; their records are
+  listed and left alone.
 - **The record in Bluesky** (an `app.bsky.feed.generator` record in the person's own repo, pointing at this
   service's DID) is not stored here at all: the browser reads and writes it.
 

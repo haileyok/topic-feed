@@ -38,8 +38,9 @@ func serviceAuthDirectory() *atmosidentity.Directory {
 // signed with FEEDGEN_SESSION_SECRET; without it sign-in is off and this returns nil, so
 // the service runs without the page. It also returns how to find a handle for a DID, which
 // the pages that show who is signed in use too. owner is the DID of the account that runs the
-// service: /api/me tells the pages when it is the one signed in.
-func newSignIn(origin, owner string, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
+// service: /api/me tells the pages when it is the one signed in. connect is the filtered feeds'
+// sign-in, or nil.
+func newSignIn(origin, owner string, connect *signin.Connector, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
 	secret := os.Getenv("FEEDGEN_SESSION_SECRET")
 	if secret == "" {
 		return nil, nil, nil
@@ -64,7 +65,8 @@ func newSignIn(origin, owner string, log *slog.Logger) (*signin.Handler, func(ct
 		Origin: origin, Auth: auth, Metadata: auth.Metadata(), Sessions: sessions,
 		Handle: handle, Owner: owner, Allow: logins.AllowRequest, Log: log,
 		// The pages with the sign-in form: signing in comes back to the one it was started from.
-		Returns: []string{"/me", "/feeds", "/inspect", "/"},
+		Returns: []string{"/me", "/feeds", "/inspect", "/filtered", "/"},
+		Connect: connect,
 	})
 	if err != nil {
 		return nil, nil, err

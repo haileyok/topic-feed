@@ -60,6 +60,10 @@ type InspectAPI struct {
 	Resolve func(ctx context.Context, handle string) (string, error)
 	Handle  func(ctx context.Context, did string) string
 	Remote  RemoteSource
+	// Interests reads what an account's likes say it is into, with the tuning it saved (Tunings), for
+	// the account inspector; nil: that answers 404.
+	Interests *InterestsBuilder
+	Tunings   TuningStore
 	// Limit bounds how often one account can ask: each answer reads the database.
 	Limit *IPLimiter
 	Log   *slog.Logger
@@ -260,6 +264,9 @@ func (a *InspectAPI) respond(ctx context.Context, facts PostFacts) InspectRespon
 
 	in := facts.EvalInput(a.Policy)
 	for _, f := range a.Feeds.List() {
+		if f.Filtered != nil { // its posts are another feed's, and its filters each viewer's own
+			continue
+		}
 		if f.Personal != nil {
 			resp.Feeds = append(resp.Feeds, EvaluatePersonal(f, in, now))
 			continue

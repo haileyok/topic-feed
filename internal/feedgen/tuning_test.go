@@ -273,7 +273,10 @@ func TestTuningConfig(t *testing.T) {
 	if got := (Tuning{MinTopicProb: 0.8}).Config(base); got.MinTopicProb != 0.8 {
 		t.Errorf("a surer topic: %v", got.MinTopicProb)
 	}
-	if got := (Tuning{MinTopicProb: 0.2}).Config(base); got.MinTopicProb != base.MinTopicProb {
+	if got := (Tuning{MinTopicProb: 0.4}).Config(base); got.MinTopicProb != 0.4 {
+		t.Errorf("a less sure topic than the feed's own, which the pool holds: %v", got.MinTopicProb)
+	}
+	if got := (Tuning{MinTopicProb: 0.2}).Config(base); got.MinTopicProb != base.PoolMinTopicProb {
 		t.Errorf("a less sure topic than the pool holds: %v", got.MinTopicProb)
 	}
 	// The feed's own configuration is never changed through the copy.
@@ -312,11 +315,20 @@ func TestTuningExcludes(t *testing.T) {
 	post := func(ageHours float64, p float32) Post {
 		return Post{IndexedAt: now.Add(-time.Duration(ageHours * float64(time.Hour))), TopPathP: p, Signals: map[string]float32{"substance": 0.9}}
 	}
-	// Nothing about the window or the topic probability is checked unless the viewer set it: the
-	// feed's own pool decides what is in range, and the clock has moved on since it was read.
+	// The window isn't checked unless the viewer set it: the feed's own pool decides what is in
+	// range, and the clock has moved on since it was read.
 	untuned := Tuning{}
-	if untuned.Excludes(post(1000, 0.01), untuned.Config(cfg), now) {
-		t.Error("an untuned viewer's posts are the pool's business")
+	if untuned.Excludes(post(1000, 0.9), untuned.Config(cfg), now) {
+		t.Error("an untuned viewer's window is the pool's business")
+	}
+	// The pool holds posts the model is less sure of than the feed's own setting, for viewers who
+	// lower it: everyone else is shown only those at the feed's own.
+	if !untuned.Excludes(post(1, 0.4), untuned.Config(cfg), now) || untuned.Excludes(post(1, 0.5), untuned.Config(cfg), now) {
+		t.Error("an untuned viewer gets the feed's own min_topic_prob")
+	}
+	lower := Tuning{MinTopicProb: 0.35}
+	if c := lower.Config(cfg); lower.Excludes(post(1, 0.4), c, now) || !lower.Excludes(post(1, 0.3), c, now) {
+		t.Error("a viewer who lowered it to 0.35")
 	}
 	short := Tuning{WindowHours: 6}
 	if c := short.Config(cfg); short.Excludes(post(5.9, 0.9), c, now) || !short.Excludes(post(6.1, 0.9), c, now) {

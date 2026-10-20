@@ -139,7 +139,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	conn, err := chdb.Open(ctx, chdb.FromEnv())
+	conn, err := chdb.Open(ctx, chdb.FromEnv().For("labeler"))
 	if err != nil {
 		return err
 	}

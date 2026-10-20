@@ -91,7 +91,7 @@ type TuningLimits struct {
 	// MinWindowHours and MinEngagementPower are the least those can be set to.
 	MinWindowHours     float64 `json:"minWindowHours"`
 	MinEngagementPower float64 `json:"minEngagementPower"`
-	MinTopicProb       float64 `json:"minTopicProb"` // the feed's own, which can't be gone below
+	MinTopicProb       float64 `json:"minTopicProb"` // what the feed's pool holds, which can't be gone below
 	MaxServes          int     `json:"maxServes"`
 	ListSize           int     `json:"listSize"` // the feed's own, which can't be exceeded
 	// MinEngagement is the most a viewer can ask of a post.
@@ -264,7 +264,7 @@ func (m *MeAPI) ServeTuning(w http.ResponseWriter, r *http.Request) {
 			MaxServes: cfg.MaxServes, ListSize: cfg.ListSize, MinEngagement: minEngagement, Ranking: rankings},
 		Limits: TuningLimits{Weight: MaxTopicWeight, Boost: MaxBoost, Gravity: MaxGravity, FreshEvery: MaxFreshEvery, PromoPenalty: MaxPromoPenalty,
 			Engagement: MaxEngagement, AuthorGap: MaxAuthorGap, LookbackDays: MaxLookbackDays, MinLikes: MaxMinLikes, Interests: MaxInterests,
-			WindowHours: cfg.WindowHours, MinTopicProb: round3(cfg.MinTopicProb), MaxServes: MaxServesSetting, ListSize: min(cfg.ListSize, MaxListSetting),
+			WindowHours: cfg.WindowHours, MinTopicProb: round3(cfg.PoolMinTopicProb), MaxServes: MaxServesSetting, ListSize: min(cfg.ListSize, MaxListSetting),
 			MinEngagement: MaxMinEngagement, MinWindowHours: MinWindowHours, MinEngagementPower: MinEngagementPower},
 		MaxWeight: MaxTopicWeight,
 		Tones:     Tones,

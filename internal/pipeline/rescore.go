@@ -104,6 +104,7 @@ func (p *Pipeline) prepareWindow(ctx context.Context, start, lo, end time.Time, 
 // The next window is read and its pictures downloaded while the current one is being classified, so
 // the GPU isn't left waiting for the network.
 func (p *Pipeline) Rescore(ctx context.Context, oldModel string, after, before time.Time, window time.Duration) error {
+	ctx = chdb.Op(ctx, "rescore")
 	if after.IsZero() {
 		after = time.Unix(0, 0).UTC()
 	}

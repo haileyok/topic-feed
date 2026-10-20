@@ -449,7 +449,8 @@ func (t Tuning) Config(base PersonalConfig) PersonalConfig {
 		c.WindowHours = min(c.WindowHours, int(math.Ceil(t.WindowHours)))
 	}
 	if t.MinTopicProb != 0 {
-		c.MinTopicProb = max(c.MinTopicProb, float32(t.MinTopicProb))
+		// Down to what the pool holds.
+		c.MinTopicProb = max(c.PoolMinTopicProb, float32(t.MinTopicProb))
 	}
 	if t.MaxServes != 0 {
 		c.MaxServes = t.MaxServes
@@ -501,8 +502,9 @@ func belowMinEngagement(p Post, cfg PersonalConfig, w Weights) bool {
 }
 
 // Excludes reports whether the tuning leaves a post out of the viewer's feed: for what the model
-// scored it (Hides), or because the viewer asked for newer posts or surer topics than the feed's
-// own pool of posts holds. cfg is the configuration with the tuning applied (Config).
+// scored it (Hides), because the viewer asked for newer posts than the feed's own pool of posts
+// holds, or because the model isn't as sure of its topic as the viewer's feed needs (MinTopicProb
+// for the post). cfg is the configuration with the tuning applied (Config).
 func (t Tuning) Excludes(p Post, cfg PersonalConfig, now time.Time) bool {
 	if t.Hides(p) {
 		return true
@@ -513,5 +515,15 @@ func (t Tuning) Excludes(p Post, cfg PersonalConfig, now time.Time) bool {
 			return true
 		}
 	}
-	return t.MinTopicProb != 0 && p.TopPathP < cfg.MinTopicProb
+	return p.TopPathP < t.MinTopicProbFor(cfg, p.TopPath)
+}
+
+// MinTopicProbFor is how sure the model must be of a post's most likely subtopic, topPath, for the
+// post to be in the viewer's feed: the rules for its topic, or else the feed's (with the tuning
+// applied, cfg), never under what the pool holds.
+func (t Tuning) MinTopicProbFor(cfg PersonalConfig, topPath string) float32 {
+	if v := topicMinProb(t.TopicRules, topPath); v > 0 {
+		return max(cfg.PoolMinTopicProb, v)
+	}
+	return cfg.MinTopicProb
 }

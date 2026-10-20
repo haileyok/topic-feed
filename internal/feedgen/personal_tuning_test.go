@@ -278,8 +278,8 @@ func TestPersonalTuningIsPerViewer(t *testing.T) {
 // oldAndFresh is an old post with a lot of likes, and one just posted with none: popular
 // ranks the old one first, fresh the new one.
 func oldAndFresh() (old, fresh Post) {
-	old = Post{URI: "at://did:plc:old/app.bsky.feed.post/1", DID: "did:plc:old", IndexedAt: now.Add(-20 * time.Hour), Likes: 100, TopPath: ai}
-	fresh = Post{URI: "at://did:plc:new/app.bsky.feed.post/1", DID: "did:plc:new", IndexedAt: now.Add(-time.Minute), TopPath: ai}
+	old = Post{URI: "at://did:plc:old/app.bsky.feed.post/1", DID: "did:plc:old", IndexedAt: now.Add(-20 * time.Hour), Likes: 100, TopPath: ai, TopPathP: 0.9}
+	fresh = Post{URI: "at://did:plc:new/app.bsky.feed.post/1", DID: "did:plc:new", IndexedAt: now.Add(-time.Minute), TopPath: ai, TopPathP: 0.9}
 	return old, fresh
 }
 

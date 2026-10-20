@@ -185,7 +185,7 @@ func TestInspectorFindsTheAccountOfAHandle(t *testing.T) {
 
 func TestInspectorIsWiredToTheOwnerAndAnswersNobodyElse(t *testing.T) {
 	t.Setenv("FEEDGEN_SESSION_SECRET", strings.Repeat("s", 32))
-	signIn, handle, err := newSignIn("https://feeds.example.test", "", quiet)
+	signIn, handle, err := newSignIn("https://feeds.example.test", "", nil, quiet)
 	if err != nil || signIn == nil {
 		t.Fatalf("%v, %v", signIn, err)
 	}
