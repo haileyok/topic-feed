@@ -24,7 +24,7 @@ const maxFiltersBody = 64 << 10
 // cookie says, never anything in the request.
 type FilteredAPI struct {
 	Viewer func(r *http.Request) (did string, ok bool)
-	// Connected says whether a viewer has a sign-in for the filtered feeds (signin.Connector).
+	// Connected says whether a viewer has a sign-in for the filtered feeds (signin.Connecter).
 	Connected func(ctx context.Context, did string) (bool, error)
 	Feeds     *Feeds
 	Sources   *Sources

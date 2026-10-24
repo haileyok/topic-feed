@@ -225,6 +225,10 @@ func NewConnector(cfg ConnectConfig) (*Connector, error) {
 // Metadata is the client metadata to serve at the client ID.
 func (c *Connector) Metadata() oauth.ClientMetadata { return c.client.ClientMetadata }
 
+// Ready is always true: a Connector was made from services that are known (a Deferred one may not
+// have been made yet).
+func (c *Connector) Ready() bool { return true }
+
 // Start begins the sign-in of account (a handle or DID), asking for the permission in the metadata.
 func (c *Connector) Start(ctx context.Context, account string) (string, string, error) {
 	if _, err := atmos.ParseATIdentifier(account); err != nil {

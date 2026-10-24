@@ -50,8 +50,9 @@ type Config struct {
 	// used, so a link can't send someone elsewhere after they sign in.
 	Returns []string
 	// Connect, if set, is the sign-in for the filtered feeds (/oauth/connect...), which keeps the
-	// viewer's sign-in to ask their server for tokens; nil: those routes answer 404.
-	Connect *Connector
+	// viewer's sign-in to ask their server for tokens; nil: those routes answer 404. One that isn't
+	// ready yet (its sources' services haven't been found) answers 503.
+	Connect Connecter
 	Log     *slog.Logger
 }
 
@@ -223,10 +224,18 @@ func normalizeAccount(s string) string {
 func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) { h.serveLogin(w, r, h.cfg.Auth) }
 
 // ServeConnect starts the sign-in for the filtered feeds, which also signs the browser in. It
-// answers 404 when they are off.
+// answers 404 when they are off, and 503 until their sign-in can be made.
 func (h *Handler) ServeConnect(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Connect == nil {
 		http.NotFound(w, r)
+		return
+	}
+	if !h.cfg.Connect.Ready() {
+		// The sources' services haven't been found yet, so there is nothing to ask permission for.
+		// The filtered feeds' sources are looked up again every minute until they are (Sources.Run),
+		// and the sign-in is made as soon as they are (Deferred.Run).
+		noStore(w)
+		h.problem(w, r, "off", http.StatusServiceUnavailable)
 		return
 	}
 	h.serveLogin(w, r, h.cfg.Connect)
@@ -239,6 +248,11 @@ func (h *Handler) ServeConnectCallback(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if !h.cfg.Connect.Ready() {
+		noStore(w)
+		h.home(w, r, "off")
+		return
+	}
 	h.serveCallback(w, r, h.cfg.Connect)
 }
 
@@ -246,6 +260,12 @@ func (h *Handler) ServeConnectCallback(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ServeConnectMetadata(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Connect == nil {
 		http.NotFound(w, r)
+		return
+	}
+	if !h.cfg.Connect.Ready() {
+		// The metadata's scope is the permission asked for, which names the sources' services: it
+		// can't be written before they are known, and a sign-in started then couldn't ask for it.
+		http.Error(w, "the filtered feeds' sign-in isn't ready yet", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

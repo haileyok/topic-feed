@@ -36,8 +36,13 @@ every feed; the token for the source is always that viewer's own.
   (`rpc?lxm=...&aud=did:web:foryou.club%23bsky_fg`); some other servers (cocoon) compare a token
   request with the bare DID instead. A server ignores the form it can't read. Tokens are asked for
   with the `#bsky_fg` form first, then the bare DID. The services are the ones the sources' records
-  name when the service starts: a source moved to another service needs a restart, and viewers must
-  sign in again.
+  name: a source moved to another service needs a restart, and viewers must sign in again.
+- **Looking the services up.** The sources' records and documents are read when the service starts,
+  and again every minute until all of them have been read (a feed can move, and the network can be
+  down for a while when the service starts: a machine that has just booted finds no DNS at all). The
+  sign-in can't be made until they are known, so until then `/oauth/connect*` answers 503, which the
+  page shows as "Signing in isn't turned on for this site yet", and the feeds show the sign-in post.
+  It is made as soon as the sources have been found, in that same process: nobody has to restart it.
 - **A confidential client.** The sign-in is its own OAuth client (`/oauth/connect-metadata.json`)
   that proves itself with a key made from `FEEDGEN_FILTER_SECRET`. Bluesky ends a public client's
   sign-in after two weeks no matter what. A confidential client's lasts while it is used at least
@@ -129,8 +134,9 @@ feeds.yaml it reads "Use the feed's own filters"). API: `GET /api/me/filtered`,
 Metrics: `feedgen_filtered_pages_total{feed,state}` (`state` is `signin` for the sign-in post),
 `feedgen_filtered_posts_total{feed,kind}` (read, dropped),
 `feedgen_filtered_source_requests_total{feed,status}`, `feedgen_filtered_source_seconds`,
-`feedgen_forwarded_interactions_total{feed,result}`. A source that refuses a request is logged with
-its answer.
+`feedgen_forwarded_interactions_total{feed,result}`, and `feedgen_filtered_signin_ready`, which is 0
+until the sign-in has been made from the sources found (everything above says `signin` while it is).
+A source that refuses a request is logged with its answer.
 
 ## Not known yet
 

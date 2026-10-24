@@ -69,6 +69,11 @@ var (
 		Help: "Pages of filtered feeds served, by feed and state (ok, signin: only the sign-in post).",
 	}, []string{"feed", "state"})
 
+	metricFilteredSignIn = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "feedgen_filtered_signin_ready",
+		Help: "Whether the filtered feeds' sign-in is up (1), or waiting for their sources' services to be found (0).",
+	})
+
 	metricFilteredSource = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "feedgen_filtered_source_requests_total",
 		Help: "Requests to filtered feeds' sources, by filtered feed and HTTP status (or error).",
@@ -189,3 +194,14 @@ var (
 		Help: "Unix time of each feed's latest successful rebuild.",
 	}, []string{"feed"})
 )
+
+// SetFilteredSignInReady records whether the filtered feeds' sign-in is up: 1 once it has been
+// made, 0 while its sources' services are still being looked for (and while it is off). The
+// filtered feeds show the sign-in post for as long as it is 0, so it is worth alerting on.
+func SetFilteredSignInReady(ready bool) {
+	v := 0.0
+	if ready {
+		v = 1
+	}
+	metricFilteredSignIn.Set(v)
+}

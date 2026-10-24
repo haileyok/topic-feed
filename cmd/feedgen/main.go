@@ -235,7 +235,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	// The posts they leave out of each viewer's feed are kept a week, for the viewer to look back at.
 	leftOut := feedgen.NewLeftOutWriter(conn, log)
 	go leftOut.Run(wctx)
-	filtered, connector, err := newFiltered(ctx, s, store, feeds, leftOut, log)
+	filtered, connect, err := newFiltered(ctx, s, store, feeds, leftOut, log)
 	if err != nil {
 		stopWriter()
 		iw.Wait()
@@ -246,7 +246,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	// Signing in with Bluesky, for the pages where viewers see and tune their feeds. The filtered
 	// feeds' sign-in (which keeps the viewer's sign-in) is one of its routes.
-	signIn, handleOf, err := newSignIn("https://"+s.hostname, s.owner.String(), connector, log)
+	signIn, handleOf, err := newSignIn("https://"+s.hostname, s.owner.String(), connect, log)
 	if err != nil {
 		stopWriter()
 		iw.Wait()
@@ -255,7 +255,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if signIn == nil {
 		log.Info("sign-in is off: FEEDGEN_SESSION_SECRET is not set")
 	} else if filtered != nil {
-		srv.FilteredAPI = newFilteredAPI(s, signIn, connector, store, feeds, filtered, taxonomyPaths, log)
+		srv.FilteredAPI = newFilteredAPI(s, signIn, connect, store, feeds, filtered, taxonomyPaths, log)
 	}
 
 	// Personal feeds (`personal:` in the config): built per viewer from their likes. What

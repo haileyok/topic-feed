@@ -19,7 +19,7 @@ import (
 	"github.com/haileyok/topic-feed/internal/signin"
 )
 
-// TokenSource asks a viewer's own server for a token for a source feed: signin.Connector. It
+// TokenSource asks a viewer's own server for a token for a source feed: signin.Connecter. It
 // returns signin.ErrNotConnected when the viewer has no sign-in that works.
 type TokenSource interface {
 	Token(ctx context.Context, did, aud, lxm string) (string, error)

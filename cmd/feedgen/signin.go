@@ -40,7 +40,7 @@ func serviceAuthDirectory() *atmosidentity.Directory {
 // the pages that show who is signed in use too. owner is the DID of the account that runs the
 // service: /api/me tells the pages when it is the one signed in. connect is the filtered feeds'
 // sign-in, or nil.
-func newSignIn(origin, owner string, connect *signin.Connector, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
+func newSignIn(origin, owner string, connect signin.Connecter, log *slog.Logger) (*signin.Handler, func(ctx context.Context, did string) string, error) {
 	secret := os.Getenv("FEEDGEN_SESSION_SECRET")
 	if secret == "" {
 		return nil, nil, nil
